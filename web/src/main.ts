@@ -1381,6 +1381,12 @@ function route(): void {
   const chat = !page && !tree && !list;
   const sub = SUB.exec(p);
   const left = !$("#log").hidden && v.page === null;
+  // the chat left, as it was: read before chat_to() sets the next chat to
+  // open at its end, and before the list hides this one, whose page is
+  // then too short to keep its place
+  if ((!chat || sub !== null) && left && SCROLL.away === null) {
+    SCROLL.away = { y: scrollY, end: SCROLL.end };
+  }
   chat_to(AGENT.exec(p)?.[1] ?? sub?.[1] ?? (tree ? new URLSearchParams(location.search).get("a") ?? first() : p === "/" ? first() : v.agent));
   sessionStorage.setItem(kept("chat"), v.agent);
   for (const out of View.view_act(v, { $: "Goto", name: sub?.[2] ?? null })) {
@@ -1395,9 +1401,6 @@ function route(): void {
     a.dataset.go = to;
     a.href = to;
   });
-  if ((!chat || sub !== null) && left && SCROLL.away === null) {
-    SCROLL.away = { y: scrollY, end: SCROLL.end };
-  }
   $("#log").hidden = !chat;
   document.body.classList.toggle("account", page);
   document.body.classList.toggle("tree", tree);
