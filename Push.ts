@@ -25,7 +25,8 @@ type Keys = { jwk: JsonWebKey; public: string };
 
 // the push service's answer: its status (201: taken; 404, 410: the
 // subscription is gone; 0: none came, or push is off), and in how many ms
-// to try once more, when it was busy (429, 5xx) or none came
+// to try once more, when it was busy (429, 5xx) for no longer than
+// AGAIN_MOST, or none came
 type Answer = { status: number; again: number | null };
 
 const FILE   = config.DIR + "/vapid.json";
@@ -41,6 +42,11 @@ const AGE    = 12 * 60 * 60;
 const ANSWER = 30 * 1000;
 
 const AGAIN = 10 * 1000;
+
+// a busy push service's Retry-After is waited at most this long: a reply's
+// notification later than that is of little use, and one sent before the
+// time asked for would only be refused again
+const AGAIN_MOST = 5 * 60 * 1000;
 
 // the most an endpoint's URL may be (Chrome's, Firefox's, Apple's are
 // under 500)
@@ -113,11 +119,13 @@ export namespace Push {
     }
   }
 
-  // Retry-After (RFC 9110 10.2.3): seconds or a date; else AGAIN
-  export function after(header: string | null): number {
+  // Retry-After (RFC 9110 10.2.3): seconds or a date; else AGAIN; null
+  // for none, past AGAIN_MOST
+  export function after(header: string | null): number | null {
     const now = Date.now();
     const at = header === null || header.trim() === "" ? NaN : /^\d+$/.test(header.trim()) ? now + Number(header) * 1000 : Date.parse(header);
-    return at > now ? at - now : AGAIN;
+    const wait = at > now ? at - now : AGAIN;
+    return wait > AGAIN_MOST ? null : wait;
   }
 
 
