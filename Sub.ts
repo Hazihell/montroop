@@ -20,6 +20,7 @@ export type Spawn = { task: string; role: Role; memory: boolean; mcp: boolean };
 export type Sub<M> = {
   name    : string;
   role    : Role;
+  pick    : Pick | null;
   task    : string;
   view    : Block[];
   replies : string[];
@@ -32,8 +33,7 @@ export type Sub<M> = {
   bytes   : number;
 };
 
-// how it runs or ran: its pick (null: its model no longer offered) and
-// the model and effort that says, else those it was spawned with
+// how it runs or ran: its last pick, else what its spawn recorded
 export type How = { model: string; effort: string; pick: Pick | null };
 
 // a subagent's row in the chat list
@@ -109,7 +109,7 @@ export namespace Sub {
   }
 
   export function how(role: Role, pick: Pick | null): How {
-    return { model: pick?.model ?? role.model ?? "", effort: pick?.effort ?? role.effort ?? "", pick };
+    return { model: pick?.model ?? role.model ?? "model not recorded", effort: pick?.effort ?? role.effort ?? "", pick };
   }
 
   export function row<M>(sub: Sub<M>, pick: Pick | null, meter: Talk | null, sent: number[]): Row {

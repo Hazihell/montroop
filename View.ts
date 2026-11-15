@@ -443,13 +443,14 @@ function view_heard(v: View, msg: Server): Client[] {
         return [];
       }
       page.done = msg.done;
+      page.how = msg.how ?? page.how;
       if (msg.end === true) {
         page.live = [];
         return [];
       }
       if (msg.found && (msg.before === undefined || msg.before === page.from)) {
         page.log = [...msg.entries, ...(msg.before === undefined ? [] : page.log ?? [])];
-        [page.from, page.loading, page.how] = [msg.from, false, msg.how ?? page.how];
+        [page.from, page.loading] = [msg.from, false];
         return [];
       }
       if (!msg.found) {

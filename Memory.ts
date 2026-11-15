@@ -10,7 +10,7 @@ import { Pick } from "./Pick.ts";
 import * as Prompts from "./Prompts.ts";
 import type { Timer } from "./Timer.ts";
 import { FIT, HEAD, IMAGE, image_kind, LINES, MEDIA, media_ext, PIXELS, STORED, TOKEN, type Pending } from "./View.ts";
-import { move_over } from "./Write.ts";
+import { move_over, write_whole } from "./Write.ts";
 
 export type Root = Msg & { i: number; size: number; date: string };
 
@@ -1208,6 +1208,23 @@ export namespace Memory {
       fs.writeFileSync(file, JSON.stringify(texts));
     }
     return texts;
+  }
+
+  // the last model a subagent ran on, independent of its spawner's later pick
+  export function agent_pick(mem: Memory, name: string, pick?: Pick): Pick | null {
+    if (!/^[A-Za-z]+$/.test(name)) {
+      return null;
+    }
+    const file = mem.dir + AGENTS + name + ".pick.json";
+    if (pick !== undefined) {
+      write_whole(file, JSON.stringify(pick) + "\n");
+      return pick;
+    }
+    try {
+      return JSON.parse(fs.readFileSync(file, "utf8")) as Pick;
+    } catch {
+      return null;
+    }
   }
 
   export function agent(mem: Memory, name: string): Root[] | null {

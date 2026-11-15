@@ -951,7 +951,7 @@ export namespace Chat {
     // a name no other agent's subagent has, now or before: it keys the
     // seat at the tools, the jobs' reports and the scratch folder
     const it = name ?? Memory.agent_new(chat.mem, (n) => [...Main.chats.values()].some((c) => c.subs.has(n) || Memory.agent(c.mem, n) !== null));
-    const sub: Sub<Msg> = { name: it, role, task, view, replies: [], why: null, run: Run.make<Say, Msg>(it, Chat.sub_kind(chat, () => sub)), doing: "starting", at: Date.now(), used: null, used_at: 0, bytes: 0 };
+    const sub: Sub<Msg> = { name: it, role, pick: Memory.agent_pick(chat.mem, it), task, view, replies: [], why: null, run: Run.make<Say, Msg>(it, Chat.sub_kind(chat, () => sub)), doing: "starting", at: Date.now(), used: null, used_at: 0, bytes: 0 };
     sub.bytes = (Memory.agent(chat.mem, it) ?? []).reduce((n, root) => n + Chat.sub_bytes(root), 0);
     chat.subs.set(it, sub);
     // a job's report reaches it while it runs, else its spawner
@@ -1018,19 +1018,27 @@ export namespace Chat {
     return Sub.pick(chat.pick, sub.role, sub.name);
   }
 
-  export function sub_shown(chat: Chat, role: Role, name: string): Pick | null {
+  export function sub_shown(chat: Chat, sub: Sub<Msg>): Pick | null {
     try {
-      return Sub.pick(chat.pick, role, name);
+      return sub.pick ?? Chat.sub_pick(chat, sub);
     } catch {
       return null;
     }
   }
 
-  // how a subagent runs, or ran, by its log's first line once it's done:
-  // its page says it, also after a reload (#180)
+  // a finished page uses its own last pick, never the spawner's current one
   export function sub_how(chat: Chat, name: string, log: Root[] | null): How | null {
-    const role = chat.subs.get(name)?.role ?? (log?.[0]?.kind === "note" ? Sub.role(log[0].text)?.role : undefined);
-    return role === undefined ? null : Sub.how(role, Chat.sub_shown(chat, role, name));
+    const sub = chat.subs.get(name);
+    const role = sub?.role ?? (log?.[0]?.kind === "note" ? Sub.role(log[0].text)?.role : undefined);
+    const pick = sub === undefined ? Memory.agent_pick(chat.mem, name) : Chat.sub_shown(chat, sub);
+    return role === undefined ? null : Sub.how(role, pick);
+  }
+
+  export function sub_picked(chat: Chat, sub: Sub<Msg>, pick: Pick): void {
+    if (sub.pick === null || Pick.label(sub.pick) !== Pick.label(pick)) {
+      sub.pick = Memory.agent_pick(chat.mem, sub.name, pick);
+      Main.team_soon();
+    }
   }
 
   // how full its context is (#156): its last request and its log since,
@@ -1046,7 +1054,7 @@ export namespace Chat {
   }
 
   export function sub_row(chat: Chat, sub: Sub<Msg>): SubRow {
-    const pick = Chat.sub_shown(chat, sub.role, sub.name);
+    const pick = Chat.sub_shown(chat, sub);
     return Sub.row(sub, pick, Chat.sub_meter(sub, pick), sub.run.sent.flatMap(({ m }) => Array.from({ length: m.end - m.id }, (_, k) => m.id + k)));
   }
 
@@ -1065,7 +1073,9 @@ export namespace Chat {
       [sub.used, sub.used_at] = [tokens, sub.bytes];
       Main.team_soon();
     };
-    return { ...Pick.ask(Chat.sub_pick(chat, sub)), system: Prompts.prompt("sub"), own, blocks, searches: SEARCHES, server: Tools.at(chat.tools, sub.name), agent: true, who: sub.name, used };
+    const pick = Chat.sub_pick(chat, sub);
+    Chat.sub_picked(chat, sub, pick);
+    return { ...Pick.ask(pick), system: Prompts.prompt("sub"), own, blocks, searches: SEARCHES, server: Tools.at(chat.tools, sub.name), agent: true, who: sub.name, used };
   }
 
   export function sub_put(chat: Chat, run: Talk, msg: Log, sent: boolean): Msg {
@@ -1082,6 +1092,9 @@ export namespace Chat {
   // what it does now, for its row: a tool, a usage limit, thinking
   export function sub_on(chat: Chat, sub: Sub<Msg>, ev: Heard): void {
     const run = sub.run;
+    if (ev.$ === "Run") {
+      Chat.sub_picked(chat, sub, ev.run);
+    }
     Chat.on(chat, run, ev);
     const call = [...run.calls.values()].at(-1);
     const doing = run.limit !== null ? "usage limit" : call !== undefined ? tool_name(call.tool) : run.live.at(-1)?.kind === "reply" ? "writing" : "thinking";
@@ -1101,7 +1114,7 @@ export namespace Chat {
     chat.tools.seats.delete(sub.name);
     chat.gone.set(sub.name, sub.why === null ? "finished" : "stopped");
     void Chat.sub_sweep(chat, sub.name);
-    Chat.all(chat, { $: "agent", name: sub.name, found: true, from: 0, entries: [], done: true, end: true });
+    Chat.all(chat, { $: "agent", name: sub.name, found: true, from: 0, entries: [], done: true, end: true, how: Sub.how(sub.role, sub.pick) });
     Chat.report(chat, Sub.report(sub), take);
     Chat.change(chat);
   }
