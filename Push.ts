@@ -114,7 +114,8 @@ export namespace Push {
   }
 
   // Retry-After (RFC 9110 10.2.3): seconds or a date; else AGAIN
-  export function after(header: string | null, now: number = Date.now()): number {
+  export function after(header: string | null): number {
+    const now = Date.now();
     const at = header === null || header.trim() === "" ? NaN : /^\d+$/.test(header.trim()) ? now + Number(header) * 1000 : Date.parse(header);
     return at > now ? at - now : AGAIN;
   }
