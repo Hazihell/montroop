@@ -290,16 +290,20 @@ function chat(): void {
   };
   $(".mine").onclick = mine;
   $(".down").onclick = down;
+  // the chat's rows, not #log, whose room for the footer this sets: one
+  // that changed size here would be seen only after this frame, which the
+  // browser says as a ResizeObserver loop error
   const keep = new ResizeObserver(() => {
-    document.documentElement.style.setProperty("--foot", innerHeight - $("footer").getBoundingClientRect().top + "px");
+    foot();
     if (SCROLL.still) {
       SCROLL.still = false;
     } else if (SCROLL.end && !$("#log").hidden && !at_end()) {
       scrollTo(0, document.documentElement.scrollHeight);
     }
   });
-  keep.observe($("#log"));
-  keep.observe($("footer"));
+  keep.observe($("#log .rows"));
+  keep.observe($("#log .tail"));
+  keep.observe($("footer"), { box: "border-box" });
   // a tool line opened at the chat's end grows down, its line staying put
   $("#log").addEventListener("toggle", (ev) => {
     if (ev.target instanceof HTMLDetailsElement && ev.target.matches(".line")) {
@@ -316,6 +320,11 @@ function chat(): void {
   // a subagent's row says how long it has been at its tool
   setInterval(() => v.team.some((m) => (m.subs ?? []).length > 0) && draw(false), 30e3);
   draw(true);
+}
+
+// the footer's height, which the chat leaves room for (#180)
+function foot(): void {
+  document.documentElement.style.setProperty("--foot", $("footer").getBoundingClientRect().height + "px");
 }
 
 function signed(): void {
