@@ -96,14 +96,12 @@ const CHAT = ["busy", "wait", "importing", "limit", "queue", "sent", "sums", "ag
 type Chat = { [K in (typeof CHAT)[number]]: View[K] };
 
 // agent: the agent whose chat is wanted; on: whose chat the server sends
-// the link now, as its last state said ("" before its first); asked: whose
-// chat the link was opened for (#178); held: whose chat the view holds, ""
-// for none yet, kept over a reconnect (#114); kept: the one it held before
-// the last switch, shown again on a switch back
+// the link now, as its last state said ("" before its first); held: whose
+// chat the view holds, "" for none yet, kept over a reconnect (#114); kept:
+// the one it held before the last switch, shown again on a switch back
 export type View = State & {
   agent : string;
   on    : string;
-  asked : string;
   held  : string;
   kept  : { agent: string; chat: Chat } | null;
   pages : Map<string, Page>;
@@ -129,6 +127,7 @@ export type View = State & {
   retry : ReturnType<typeof setTimeout> | null;
   flush : () => void;
   wake  : () => void;
+  reopen: () => void;
 };
 
 type Pack = { nodes?: Record<string, Node>; whole?: Record<string, Entry> };
@@ -304,7 +303,6 @@ export function view_new(agent: string): View {
   return {
     agent     : agent,
     on        : "",
-    asked     : "",
     team      : [],
     busy      : false,
     wait      : "",
@@ -344,18 +342,24 @@ export function view_new(agent: string): View {
     retry     : null,
     flush     : () => {},
     wake      : () => {},
+    reopen    : () => {},
   };
 }
 
 // to another agent's chat: what the view holds of the one before goes at
-// once (#178), kept for a switch back, and the server is asked for it, by
-// the link once it's up; a link yet to hear its first state asks then
+// once (#178), kept for a switch back, and the server is asked for it: by
+// a link that's up; a link on its way up opens again for it, and one down
+// opens for it when it next tries
 export function view_switch(v: View, agent: string): Client[] {
   if (v.agent === agent) {
     return [];
   }
   view_to(v, agent);
-  return v.on === "" ? [] : [{ $: "open", agent }];
+  if (v.up) {
+    return [{ $: "open", agent }];
+  }
+  v.reopen();
+  return [];
 }
 
 function view_to(v: View, agent: string): void {
@@ -383,20 +387,19 @@ const OWN = ["team", "ack", "error", "note", "jobs", "job"];
 
 // a state says whose chat the server sends the link from now on (#178):
 // what comes after it is the wanted chat's only when it is the wanted
-// agent's. A link's first is the server's own pick only when it had no
-// agent the link was opened for (one deleted); a wanted agent the link
-// wasn't opened for is asked for again
+// agent's. A link opens for the wanted chat: its first state is another's
+// only when the server had no such agent (one deleted) and gave its own pick
 export function view_hear(v: View, msg: Server): Client[] {
   if (msg.$ !== "state" || msg.agent === undefined) {
     return view_heard(v, msg);
   }
   const was = v.on;
   v.on = msg.agent;
-  if (was === "" && v.agent === v.asked && msg.agent !== v.asked) {
+  if (was === "" && msg.agent !== v.agent) {
     view_to(v, msg.agent);
   }
   if (msg.agent !== v.agent) {
-    return was === "" ? [{ $: "open", agent: v.agent }] : [];
+    return [];
   }
   if (msg.agent !== v.held) {
     view_chat(v);
@@ -827,7 +830,7 @@ function view_entry(v: View, msg: Server & { $: "entry" }): void {
   }
 }
 
-// offline shows only once a reconnect has failed or this long has gone
+// offline shows only once this long has gone, or a reconnect has failed
 export const GRACE = 3000;
 const BACKOFF = 30000;
 // just after the page comes back in view (#159), while the phone's network
@@ -836,8 +839,11 @@ const BACKOFF = 30000;
 const WOKE = 30000;
 const OPEN_WAIT = 3000;
 
-export function view_offline(v: View, now = Date.now()): boolean {
-  return !v.up && (v.tries > 1 || now - v.down >= GRACE);
+// a link that answered is no offline one, however long the chat it sends
+// takes to come (#178); just after a wake, a phone's first tries may fail
+// while its network comes back, so only the time counts then
+export function view_offline(v: View): boolean {
+  return v.on === "" && (Date.now() - v.down >= GRACE || (v.tries > 1 && !woken(v)));
 }
 
 // a link that drops is opened again at once, then after 1, 2, 4… s
@@ -845,9 +851,7 @@ export function link_open(v: View, link: Link): void {
   v.retry = null;
   // the link opens for the wanted chat: an open sent before is spent
   v.out = v.out.filter((p) => p.msg.$ !== "open");
-  v.asked = v.agent;
   const ws   = link.open("?tab=" + v.tab + "&wire=" + WIRE + "&agent=" + v.agent);
-  v.on = "";
   let heard  = Date.now();
   const tick = setInterval(() => {
     if (Date.now() - heard > PING) {
@@ -875,7 +879,7 @@ export function link_open(v: View, link: Link): void {
     clearInterval(tick);
     clearTimeout(slow);
     ws.close();
-    [v.ws, v.up] = [null, false];
+    [v.ws, v.up, v.on] = [null, false, ""];
   }
   function drop(): void {
     const up = v.up;
@@ -944,7 +948,15 @@ export function link_open(v: View, link: Link): void {
       link.hear({ $: "error", text, ...(old && msg.build !== undefined ? { build: msg.build } : {}) });
     }
   }
-  [v.ws, v.flush, v.wake] = [ws, flush, wake];
+  // a link not yet up, opened for a chat no longer wanted, opens again for
+  // the wanted one rather than be sent all of the other first (#178)
+  function reopen(): void {
+    if (v.ws === ws && !v.up) {
+      shut();
+      link_open(v, link);
+    }
+  }
+  [v.ws, v.flush, v.wake, v.reopen] = [ws, flush, wake, reopen];
   ws.onmessage = (ev) => {
     heard = Date.now();
     if (ev.data === TICK) {

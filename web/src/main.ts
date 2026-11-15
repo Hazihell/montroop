@@ -655,6 +655,9 @@ function heard(out: View.Answer): void {
 }
 
 function connect(): void {
+  // offline counts from the link's first try, not from the page's load
+  // (#178): a slow sign-in check on a waking phone came first
+  v.down = Date.now();
   View.link_open(v, {
     open : (query) => new WebSocket(location.origin.replace(/^http/, "ws") + "/ws" + query),
     post : (path, body) => fetch(path, { method: "POST", body: body as BodyInit }),
