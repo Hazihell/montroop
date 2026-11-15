@@ -1752,7 +1752,7 @@ async function notify(on: boolean, push: Push): Promise<void> {
     }
     toast(out.error === undefined ? "Notifications are " + what + "." : failed(text_of(out.error)));
   } catch (err) {
-    toast(failed(Notification.permission === "denied" ? BLOCKED : err_why(err)));
+    toast(failed(err_why(err)));
   }
   void account();
 }
