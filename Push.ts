@@ -23,6 +23,11 @@ type Who = { title: string; url: string; tag: string };
 
 type Keys = { jwk: JsonWebKey; public: string };
 
+// the push service's answer: its status (201: taken; 404, 410: the
+// subscription is gone; 0: none came, or push is off), and in how many ms
+// to try once more, when it was busy (429, 5xx) or none came
+type Answer = { status: number; again: number | null };
+
 const FILE   = config.DIR + "/vapid.json";
 
 // a record's size (RFC 8188): one record holds any message sent here
@@ -34,6 +39,8 @@ const TTL    = 24 * 60 * 60;
 const AGE    = 12 * 60 * 60;
 
 const ANSWER = 30 * 1000;
+
+const AGAIN = 10 * 1000;
 
 // the most an endpoint's URL may be (Chrome's, Firefox's, Apple's are
 // under 500)
@@ -83,20 +90,33 @@ export namespace Push {
       console.log("push " + who.title + ": no browser has notifications on");
     }
     for (const sub of subs) {
-      const host = new URL(sub.endpoint).host;
-      const at = Date.now();
-      void Push.send(sub, body).then((status) => {
-        const took = " in " + (Date.now() - at) + " ms";
-        if (status === 404 || status === 410) {
-          db.query("delete from web_pushes where endpoint = ?").run(sub.endpoint);
-          console.log("push " + who.title + ": " + host + " " + status + took + ": that subscription is gone, removed");
-        } else if (status !== 0 && (status < 200 || status > 299)) {
-          console.error("web push: " + host + ": HTTP " + status);
-        } else if (status !== 0) {
-          console.log("push " + who.title + ": sent " + host + " " + status + took);
-        }
-      });
+      void Push.deliver(db, sub, body, who.title, true);
     }
+  }
+
+  // tried once more when the push service was busy or didn't answer (#178)
+  export async function deliver(db: Database, sub: Sub, body: string, title: string, first: boolean): Promise<void> {
+    const host = new URL(sub.endpoint).host;
+    const at = Date.now();
+    const { status, again } = await Push.send(sub, body);
+    const took = " in " + (Date.now() - at) + " ms";
+    if (status === 404 || status === 410) {
+      db.query("delete from web_pushes where endpoint = ?").run(sub.endpoint);
+      console.log("push " + title + ": " + host + " " + status + took + ": that subscription is gone, removed");
+    } else if (again !== null && first) {
+      console.log("push " + title + ": " + host + " " + (status === 0 ? "no answer" : status) + took + ", again in " + Math.round(again / 1000) + " s");
+      setTimeout(() => void Push.deliver(db, sub, body, title, false), again);
+    } else if (status !== 0 && (status < 200 || status > 299)) {
+      console.error("web push: " + host + ": HTTP " + status);
+    } else if (status !== 0) {
+      console.log("push " + title + ": sent " + host + " " + status + took);
+    }
+  }
+
+  // Retry-After (RFC 9110 10.2.3): seconds or a date; else AGAIN
+  export function after(header: string | null, now: number = Date.now()): number {
+    const at = header === null || header.trim() === "" ? NaN : /^\d+$/.test(header.trim()) ? now + Number(header) * 1000 : Date.parse(header);
+    return at > now ? at - now : AGAIN;
   }
 
 
@@ -206,19 +226,19 @@ export namespace Push {
     return "https://github.com/arteeh/ki";
   }
 
-  // a message to a browser: the push service's answer's status (201:
-  // taken; 404, 410: the subscription is gone), 0 if none came or push is
-  // off. The answer's body is never read: the status says all
-  export async function send(sub: Sub, text: string): Promise<number> {
+  // a message to a browser. The answer's body is never read: the status
+  // and Retry-After say all
+  export async function send(sub: Sub, text: string): Promise<Answer> {
     const keys = Push.keys();
     if (keys === null) {
-      return 0;
+      return { status: 0, again: null };
+    }
+    // checked again here: a name may resolve elsewhere since it was taken
+    if (await Push.inside(sub.endpoint)) {
+      console.error("web push: " + new URL(sub.endpoint).host + ": inside the server's network, not sent");
+      return { status: 0, again: null };
     }
     try {
-      // checked again here: a name may resolve elsewhere since it was taken
-      if (await Push.inside(sub.endpoint)) {
-        throw new Error("inside the server's network, not sent");
-      }
       const headers = {
         authorization      : Push.vapid(sub.endpoint, keys),
         "content-encoding" : "aes128gcm",
@@ -229,10 +249,10 @@ export namespace Push {
       const body = new Uint8Array(Push.encrypt(sub, Buffer.from(text)));
       const res = await fetch(sub.endpoint, { method: "POST", headers, body, redirect: "manual", signal: AbortSignal.timeout(ANSWER) });
       await res.body?.cancel().catch(() => null);
-      return res.status;
+      return { status: res.status, again: res.status === 429 || res.status >= 500 ? Push.after(res.headers.get("retry-after")) : null };
     } catch (err) {
       console.error("web push: " + new URL(sub.endpoint).host + ": " + err_why(err));
-      return 0;
+      return { status: 0, again: AGAIN };
     }
   }
 

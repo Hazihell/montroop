@@ -92,10 +92,12 @@ export type Talk = { from: number; used: number; tokens: number; window: number;
 export type Plug = { name: string; on: boolean };
 
 // agent: the agent whose chat is wanted; on: whose chat the server sends;
-// held: whose chat the view holds, kept over a reconnect (#114)
+// asked: whose chat the link was opened for (#178); held: whose chat the
+// view holds, kept over a reconnect (#114)
 export type View = State & {
   agent : string;
   on    : string;
+  asked : string;
   held  : string;
   pages : Map<string, Page>;
   page  : Page | null;
@@ -295,6 +297,7 @@ export function view_new(agent: string): View {
   return {
     agent     : agent,
     on        : "",
+    asked     : "",
     team      : [],
     busy      : false,
     wait      : "",
@@ -372,8 +375,15 @@ export function view_hear(v: View, msg: Server): Client[] {
   return [...again, ...view_heard(v, msg)];
 }
 
+// a new link's first chat is the server's own pick only when it couldn't
+// give the one asked for (an agent unknown or archived): one asked for
+// before the wanted one changed while the link was down is asked again
 function view_heard(v: View, msg: Server): Client[] {
   if (msg.$ === "state" && msg.agent !== undefined && v.on === "" && msg.agent !== v.agent) {
+    if (msg.agent === v.asked) {
+      v.asked = v.agent;
+      return [{ $: "open", agent: v.agent }];
+    }
     v.agent = msg.agent;
   }
   if (msg.$ === "state" && msg.agent !== undefined && msg.agent !== v.on && msg.agent === v.agent) {
@@ -803,6 +813,7 @@ export function view_offline(v: View, now = Date.now()): boolean {
 // a link that drops is opened again at once, then after 1, 2, 4… s
 export function link_open(v: View, link: Link): void {
   v.retry = null;
+  v.asked = v.agent;
   const ws   = link.open("?tab=" + v.tab + "&wire=" + WIRE + "&agent=" + v.agent);
   v.on = "";
   let heard  = Date.now();

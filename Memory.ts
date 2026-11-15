@@ -157,7 +157,8 @@ export namespace Memory {
     mem.work = saved?.work ?? [];
     mem.timers = saved?.timers ?? [];
     mem.hop = saved?.hop ?? 0;
-    mem.origin = saved?.origin !== undefined ? saved.origin : mem.hop === 0 ? null : "";
+    // a memory from before origin was kept: its turn counts as the user's (#178)
+    mem.origin = saved?.origin ?? null;
     const queues = Memory.queues(dir);
     mem.queue = queues.main;
     mem.held = queues.held;

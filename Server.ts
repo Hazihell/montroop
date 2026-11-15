@@ -46,6 +46,7 @@ import icon_512 from "./web/icon-512.png" with { type: "file" };
 import icon_mask_192 from "./web/icon-maskable-192.png" with { type: "file" };
 import icon_mask from "./web/icon-maskable-512.png" with { type: "file" };
 import icon_apple from "./web/apple-touch-icon.png" with { type: "file" };
+import badge from "./web/badge.png" with { type: "file" };
 
 // agent: the chat a browser shows, by its agent's id
 type Sock = ServerWebSocket<{ who: string; tab: string; wire: string | null; host: string | null; work: string; scratch: string | null; shell: string | null; device: string | null; seen: Set<string>; active: number; agent: string }>;
@@ -172,6 +173,7 @@ const WEB: Record<string, string> = {
   "/account"        : PAGE,
   "/app.js"         : app_js,
   "/apple-touch-icon.png": icon_apple,
+  "/badge.png"      : badge,
   "/favicon.svg"    : mark_svg,
   "/icon-192.png"   : icon_192,
   "/icon-512.png"   : icon_512,

@@ -2,10 +2,8 @@ const CACHE = "ki-shell-{build}";
 const SHELL = ["/", "/app.js", "/style.css", "/favicon.svg", "/mark.svg", "/manifest.webmanifest", "/icon-192.png"];
 const PAGES = ["/", "/settings", "/account", "/tree", "/new"];
 const PAGE_WAIT = 3000;
-
-// Safari takes a subscription back from a site whose pushes show nothing,
-// so there every push shows
-const QUIET = !/AppleWebKit/.test(navigator.userAgent) || /Chrom|Android/.test(navigator.userAgent);
+// an agent's replies in its one notification, newest first (#178)
+const SHOWN = 5;
 
 self.addEventListener("install", (ev) => {
   ev.waitUntil(caches.open(CACHE).then((cache) => Promise.allSettled(SHELL.map((path) => cache.add(path)))).then(() => self.skipWaiting()));
@@ -50,7 +48,8 @@ async function fresh(ev, req, key) {
 }
 
 // a reply of an agent: its name and chat; no picture, which Android would
-// show on the right, not where a messaging app has it (#152)
+// show on the right, not where a messaging app has it (#152), but Ki's mark
+// in the status bar
 self.addEventListener("push", (ev) => {
   let msg = {};
   try {
@@ -59,14 +58,13 @@ self.addEventListener("push", (ev) => {
   ev.waitUntil(notify(msg));
 });
 
-// none while a focused window shows that agent's chat
+// every push shows: the server pushes none for a chat in view (#178)
 async function notify(msg) {
-  const tabs = await self.clients.matchAll({ type: "window" });
   const url = typeof msg.url === "string" ? msg.url : "/";
-  if (QUIET && tabs.some((tab) => tab.focused && new URL(tab.url).pathname === url)) {
-    return;
-  }
-  await self.registration.showNotification(String(msg.title ?? "Ki"), { body: String(msg.text ?? ""), tag: String(msg.tag ?? "ki"), renotify: true, data: { url } });
+  const tag = String(msg.tag ?? "ki");
+  const had = (await self.registration.getNotifications({ tag })).flatMap((n) => n.body.split("\n"));
+  const body = [String(msg.text ?? ""), ...had].slice(0, SHOWN).join("\n");
+  await self.registration.showNotification(String(msg.title ?? "Ki"), { body, tag, renotify: true, badge: "/badge.png", data: { url } });
 }
 
 // the push service renewed the subscription: the server gets the new one
@@ -86,16 +84,12 @@ self.addEventListener("notificationclick", (ev) => {
   ev.waitUntil(open_chat(ev.notification.data?.url ?? "/"));
 });
 
+// an open app goes there itself, so its history stays one stack
 async function open_chat(url) {
-  const tabs = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-  const tab = tabs.find((t) => new URL(t.url).origin === location.origin);
+  const [tab] = await self.clients.matchAll({ type: "window" });
   if (tab === undefined) {
     return self.clients.openWindow(url);
   }
   await tab.focus();
-  // an open app goes there itself, so its history stays one stack
-  if ((await self.clients.matchAll({ type: "window" })).some((t) => t.id === tab.id)) {
-    return tab.postMessage({ go: url });
-  }
-  return tab.navigate(url).catch(() => null);
+  return tab.postMessage({ go: url });
 }

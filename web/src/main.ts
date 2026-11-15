@@ -26,6 +26,7 @@ const ME_WAIT = 4000;
 // "on" or "off": notifications as the user last had them on this device
 const NOTIFY = "ki.notify";
 const BLOCKED = "they're blocked in this browser's settings for this site.";
+const KEEP_EVERY = 60 * 60 * 1000;
 const TRAVEL = 1000;
 
 const NONE   = "No Claude or ChatGPT chats in that folder. Choose ~/.claude or ~/.codex.";
@@ -77,6 +78,7 @@ const P = {
   frame : 0,
   rows  : true,
   toast : 0,
+  kept  : 0,
   used  : { ws: null as WebSocket | null, on: false, at: 0, agent: "" },
   after : false,
   at    : "",
@@ -171,6 +173,9 @@ async function boot(): Promise<void> {
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {
       v.wake();
+    }
+    if (!document.hidden && Date.now() - P.kept >= KEEP_EVERY) {
+      void notify_keep();
     }
     in_use();
     notes_close();
@@ -665,12 +670,10 @@ function on_screen(): string | null {
   return document.visibilityState === "visible" && !$("#log").hidden && v.page === null ? v.agent : null;
 }
 
-// that agent's notifications, only while its chat is still in view once
-// they are found
+// all of Ki's notifications, once the app is in view on any page (#178)
 function notes_close(): void {
-  const agent = on_screen();
-  if (agent !== null) {
-    navigator.serviceWorker?.ready.then((reg) => reg.getNotifications({ tag: "ki-" + agent })).then((notes) => notes.forEach((n) => on_screen() === agent && n.close())).catch(() => {});
+  if (document.visibilityState === "visible") {
+    navigator.serviceWorker?.ready.then((reg) => reg.getNotifications()).then((notes) => notes.forEach((n) => n.close())).catch(() => {});
   }
 }
 
@@ -1711,10 +1714,13 @@ async function notify_sub(): Promise<PushSubscription | null> {
   return (await reg?.pushManager.getSubscription()) ?? null;
 }
 
-// notifications this device had on stay on (#152): when the app opens with
-// the permission granted, a subscription the server or the browser lost is
-// made again, without a word. Off is only what the user turned off here
+// notifications this device had on stay on (#152): when the app opens, and
+// when it comes back in view an hour or more after (a browser renews a
+// subscription without a word, and an installed app may stay open for days),
+// with the permission granted, a subscription the server or the browser lost
+// is made again, without a word. Off is only what the user turned off here
 async function notify_keep(): Promise<void> {
+  P.kept = Date.now();
   const bell = await notify_state().catch(() => null);
   if (localStorage.getItem(NOTIFY) === "off" || bell?.push == null || Notification.permission !== "granted") {
     return;
