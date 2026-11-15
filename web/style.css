@@ -582,7 +582,7 @@ body.tree { height: 100dvh; }
 #tree .top [hidden] { display: none; } #tree .note { position: absolute; left: 0; right: 0; padding: 0 14px; font: 12.5px/1.45 var(--sans); color: var(--mid); }
 #tree section { display: none; flex: 1; overflow: auto; padding: 0 20px 20px; outline: none; font: 15px/1.55 var(--serif); text-wrap: pretty; } #tree section.on { display: block; }
 #tree h4 { margin: .8em 0 .2em; font: 600 11.5px/1.5 var(--sans); color: var(--mid); } #tree pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
-#tree .bracket { --g: 30px; gap: var(--g); scroll-snap-type: x mandatory; scroll-padding: 0 20px; } #tree .bracket.on { display: flex; }
+#tree .bracket { --g: 30px; gap: var(--g); scroll-snap-type: x mandatory; scroll-padding: 0 20px; touch-action: pan-y pinch-zoom; } #tree .bracket.on { display: flex; }
 #tree .bracket::after { content: ""; flex: 0 0 calc(100% - min(22em, 65vw) - var(--g)); }
 #tree .col { flex: 0 0 min(22em, 65vw); position: relative; scroll-snap-align: start; }
 #tree .col h3 { position: sticky; top: 0; z-index: 2; margin: 0; height: 3em; font: 600 .8em/3em var(--sans); letter-spacing: .06em; color: var(--mid); background: var(--paper); cursor: pointer; margin-right: calc(0px - var(--g)); } @media (hover: hover) { #tree .col h3:hover { color: var(--ink); } } @media (hover: none) { #tree .col h3:active { color: var(--ink); } }

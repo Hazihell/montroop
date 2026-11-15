@@ -19,6 +19,9 @@ type Old = Map<string, number[]> & { total?: number };
 
 type Which = "TREE" | "VIEW";
 
+// px/ms
+const FLICK = .3;
+
 const S = {
   agent : "",
   want  : null as Which | null,
@@ -373,7 +376,7 @@ const pack = () => {
   requestAnimationFrame(frame);
 };
 const end = "onscrollend" in tree;
-// (not while a mouse drags it: each step it sets ends a scroll; its
+// (not while a pointer drags it: each step it sets ends a scroll; its
 // slide to a column, once let go, restores the snap)
 tree.addEventListener(end ? "scrollend" : "scroll", () => {
   if (drag?.on) return;
@@ -414,11 +417,20 @@ const slide = (c: number) => {
   done();
   tree.scrollTo({ left: goal * step(), behavior: calm.matches ? "instant" : "smooth" });
 };
-let drag: { x: number; y: number; left: number; id: number; on: boolean } | null = null, dragged = false;
+// a touch pans the tree up and down only (style.css), so a finger's
+// wobble or a fling up or down never takes it to another level; a touch
+// that first goes sideways drags it here, as a mouse does (not on an open
+// card, whose text scrolls). Let go, it slides to the nearest column, or
+// on to the next one after a flick or a quarter column; back to where it
+// was if the browser took the touch to scroll
+let drag: { x: number; y: number; left: number; id: number; on: boolean; v: number; t: number } | null = null, dragged = false;
 tree.addEventListener("pointerdown", (e) => {
+  if (drag?.on) return;
   dragged = false;
   const bar = e.target === tree && e.offsetX >= tree.clientWidth;
-  drag = e.pointerType === "mouse" && e.button === 0 && !bar && !(e.target as HTMLElement).closest(".big, h3") ? { x: e.clientX, y: e.clientY, left: tree.scrollLeft, id: e.pointerId, on: false } : null;
+  const free = (e.target as HTMLElement).closest(e.pointerType === "mouse" ? ".big, h3" : ".big") === null;
+  const ok = free && (e.pointerType === "mouse" ? e.button === 0 && !bar : e.isPrimary);
+  drag = ok ? { x: e.clientX, y: e.clientY, left: tree.scrollLeft, id: e.pointerId, on: false, v: 0, t: e.timeStamp } : null;
 }, { signal });
 addEventListener("pointermove", (e: PointerEvent) => {
   if (!drag || e.pointerId !== drag.id) return;
@@ -431,14 +443,19 @@ addEventListener("pointermove", (e: PointerEvent) => {
     tree.classList.add("drag");
   }
   getSelection()?.removeAllRanges();
+  const was = tree.scrollLeft;
   tree.scrollLeft = drag.left - dx;
+  [drag.v, drag.t] = [(tree.scrollLeft - was) / Math.max(1, e.timeStamp - drag.t), e.timeStamp];
 }, { signal });
 const drop = (e: PointerEvent) => {
   if (!drag || e.pointerId !== drag.id) return;
-  const on = drag.on;
+  const { on, left, v, t } = drag;
   drag = null;
   if (!on) return;
-  const c = Math.max(0, Math.min(Math.round(tree.scrollLeft / step()), Math.ceil((tree.scrollWidth - tree.clientWidth) / step())));
+  const at = tree.scrollLeft / step(), from = Math.round(left / step()), fling = e.timeStamp - t < 100 ? v : 0;
+  const way = Math.abs(fling) > FLICK ? Math.sign(fling) : Math.round(at) === from && Math.abs(at - from) > .25 ? Math.sign(at - from) : 0;
+  const to = e.type === "pointercancel" ? from : way > 0 ? Math.ceil(at) : way < 0 ? Math.floor(at) : Math.round(at);
+  const c = Math.max(0, Math.min(to, Math.ceil((tree.scrollWidth - tree.clientWidth) / step())));
   if (Math.abs(tree.scrollLeft - c * step()) < 1) {
     tree.classList.remove("drag");
     pack();
