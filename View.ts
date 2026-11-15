@@ -140,7 +140,7 @@ export type Server =
   | { $: "delta"; agent?: string; kind: Kind; text: string; fresh?: boolean }
   | { $: "live"; agent?: string; live: Live[] }
   | { $: "agent"; name: string; found: boolean; from: number; before?: number; entries: Logged[]; done: boolean; end?: boolean; how?: How | null }
-  | ({ $: "state" } & State)
+  | ({ $: "state"; replaced?: string } & State)
   | { $: "note"; text: string }
   | { $: "team"; agents: Mate[] }
   | { $: "error"; text: string; build?: string; wire?: number }
@@ -395,7 +395,7 @@ export function view_hear(v: View, msg: Server): Client[] {
   }
   const was = v.on;
   v.on = msg.agent;
-  if (was === "" && msg.agent !== v.agent) {
+  if (msg.agent !== v.agent && (was === "" || msg.replaced === v.agent)) {
     view_to(v, msg.agent);
   }
   if (msg.agent !== v.agent) {
@@ -489,7 +489,7 @@ function view_heard(v: View, msg: Server): Client[] {
       return [];
     }
     case "state": {
-      const { $, agent, ...state } = msg;
+      const { $, agent, replaced, ...state } = msg;
       Object.assign(v, state);
       return [];
     }

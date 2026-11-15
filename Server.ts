@@ -1635,11 +1635,11 @@ export namespace Chat {
     return -1;
   }
 
-  export function join(chat: Chat, sock: Sock): void {
+  export function join(chat: Chat, sock: Sock, replaced?: string): void {
     sock.data.agent = chat.id;
     sock.data.seen = new Set();
     chat.socks.add(sock);
-    Chat.send(sock, Chat.state(chat));
+    Chat.send(sock, { ...Chat.state(chat), ...(replaced === undefined ? {} : { replaced }) });
     Chat.show(chat, sock);
     Chat.send(sock, { $: "live", live: chat.main.live });
   }
@@ -2192,7 +2192,7 @@ export namespace Main {
     Main.chats.delete(chat.id);
     Main.tools.seats.delete(chat.who);
     Team.drop(chat.id);
-    chat.socks.forEach((sock) => Chat.join(Main.first(), sock));
+    chat.socks.forEach((sock) => Chat.join(Main.first(), sock, chat.id));
     Main.team_soon();
     for (const [device] of Tools.opened(Main.tools)) {
       for (const agent of [chat.who, ...subs]) {
