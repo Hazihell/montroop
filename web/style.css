@@ -99,7 +99,7 @@ body.tree header > .brain { display: none; }
 body:is(.list, .wide) #list { display: block; }
 body.start.list #list { visibility: hidden; }
 body.list > :is(header, #log) { display: none; }
-body.list footer { position: fixed; inset: auto 0 0; background: none; pointer-events: none; }
+body.list footer { background: none; pointer-events: none; }
 body.list footer > :not(#toast) { display: none; }
 #list .head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 4px; height: var(--head); padding: 0 max(14px, env(safe-area-inset-right)) 0 max(20px, env(safe-area-inset-left)); background: var(--paper); border-bottom: 1px solid var(--hair); }
 #list .brand span { display: inline; }
@@ -186,16 +186,19 @@ body.subpage header > .title { display: block; }
 @media (min-width: 900px) {
   body.wide { padding-left: 33.333vw; }
   body.wide #list { position: fixed; inset: 0 auto 0 0; z-index: 3; width: 33.333vw; overflow-y: auto; border-right: 1px solid var(--hair); background: var(--paper); }
-  body.wide footer:is(body.account footer, body.tree footer) { left: 33.333vw; }
+  body.wide footer { left: 33.333vw; }
   body.wide :is(.mine, .down) { right: max(20px, (66.667vw - var(--col)) / 2); }
 }
 
-footer { position: sticky; bottom: 0; z-index: 2; margin-top: -12px; padding: 9px max(20px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); background: linear-gradient(transparent, var(--paper) 9px); }
-body:is(.account, .tree) footer { position: fixed; inset: auto 0 0; background: none; pointer-events: none; }
+/* 1px past the screen: at a fractional pixel ratio its last row of device
+   pixels showed the chat under it, more or less as it scrolled */
+footer { position: fixed; inset: auto 0 -1px; z-index: 2; padding: 9px max(20px, env(safe-area-inset-right)) calc(max(14px, env(safe-area-inset-bottom)) + 1px) max(20px, env(safe-area-inset-left)); background: linear-gradient(transparent, var(--paper) 9px); }
+body:is(.account, .tree) footer { background: none; pointer-events: none; }
 body:is(.account, .tree) footer > :not(#toast) { display: none; }
-#pick { width: min(var(--col), 100%); margin: 0 auto 6px; display: flex; align-items: center; gap: 6px; font: 12.5px/20px var(--sans); color: var(--mid); }
-#pick .rule { flex: 1; height: 1px; background: var(--hair); margin-right: 4px; }
-#pick .rule.meter { --fill: var(--mid); position: relative; background: linear-gradient(to right, var(--fill) var(--used), var(--hair) var(--used)); }
+#pick { width: min(var(--col), 100%); margin: 0 auto 6px; display: flex; align-items: baseline; gap: 6px; font: 12.5px/20px var(--sans); color: var(--mid); }
+/* from the labels' baseline up to the middle of their capitals */
+#pick .rule { flex: 1; height: 1px; background: var(--hair); margin-right: 4px; position: relative; bottom: calc(.5cap - .5px); }
+#pick .rule.meter { --fill: var(--mid); background: linear-gradient(to right, var(--fill) var(--used), var(--hair) var(--used)); }
 #pick .rule.meter.warm { --fill: var(--warm); }
 #pick .rule.meter.hot { --fill: var(--del); }
 #pick .rule.meter::before { content: ""; position: absolute; inset: -7px 0; }
@@ -249,7 +252,9 @@ body:is(.account, .tree) footer > :not(#toast) { display: none; }
 .voice span { font: 14px var(--mono); color: var(--mid); font-variant-numeric: tabular-nums; }
 .mine, .down { width: 30px; height: 26px; display: grid; place-items: center; border-radius: 7px; background: var(--block); }
 .mine { position: fixed; top: calc(var(--head) + 6px); right: max(20px, env(safe-area-inset-right), 50% - var(--col) / 2); }
-.down { position: absolute; bottom: calc(100% - 10px); right: max(20px, env(safe-area-inset-right), 50% - var(--col) / 2); }
+/* its own layer: in the footer's, showing it moves that layer by a fraction
+   of a device pixel and the composer is drawn another way (#180) */
+.down { position: absolute; bottom: calc(100% - 10px); right: max(20px, env(safe-area-inset-right), 50% - var(--col) / 2); will-change: transform; }
 @media (hover: hover) { :is(.mine, .down):hover { background: var(--hover); } } @media (hover: none) { :is(.mine, .down):active { background: var(--hover); } }
 :is(.mine, .down) svg { width: 14px; height: 14px; stroke-width: 2.2; }
 #toast { width: fit-content; max-width: min(560px, 100%); margin: 0 auto 10px; padding: 8px 16px; border-radius: 12px; background: var(--ink); color: var(--paper); font-size: 13.5px; }
@@ -318,7 +323,7 @@ header > .imping { display: flex; flex-direction: column; justify-content: cente
 @media not (pointer: fine) { #import .desk { display: none; } }
 @media (max-width: 420px) { #import .two { grid-template-columns: 1fr; } }
 
-#log { width: min(var(--col), 100% - 40px); margin: 0 auto; padding: 24px 0 0; flex: 1 0 auto; }
+#log { width: min(var(--col), 100% - 40px); margin: 0 auto; padding: 24px 0 calc(var(--foot, 0px) - 12px); flex: 1 0 auto; }
 #log > * > * { margin-block: 14px; }
 .cap { font: italic 14.5px var(--serif); color: var(--mid); }
 
@@ -462,7 +467,7 @@ header > .imping { display: flex; flex-direction: column; justify-content: cente
   .brand span { display: none; }
   header > :is(button, a) { height: 30px; padding: 0 10px; font-size: 13px; }
   #log { width: calc(100% - 28px); }
-  footer { padding: 9px 14px max(8px, env(safe-area-inset-bottom)); }
+  footer { padding: 9px 14px calc(max(8px, env(safe-area-inset-bottom)) + 1px); }
   .composer { padding: 5px 5px 5px 16px; }
   #account { width: calc(100% - 28px); }
   [popover] { left: 12px; right: 12px; width: auto; }

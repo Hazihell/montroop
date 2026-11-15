@@ -281,6 +281,7 @@ function chat(): void {
   $(".mine").onclick = mine;
   $(".down").onclick = down;
   const keep = new ResizeObserver(() => {
+    document.documentElement.style.setProperty("--foot", innerHeight - $("footer").getBoundingClientRect().top + "px");
     if (SCROLL.still) {
       SCROLL.still = false;
     } else if (SCROLL.end && !$("#log").hidden && !at_end()) {
@@ -1161,7 +1162,7 @@ function bars(): void {
   $(".mic").classList.toggle("rec", P.rec !== null);
   $(".composer").classList.toggle("rec", P.rec !== null);
   const knob = (document.activeElement as HTMLElement | null)?.dataset?.knob;
-  markup($("#pick"), v.page === null ? Html.pick_html(View.view_pick(v), v.talk, true) : Html.pick_html(View.view_pick(v), View.view_sub(v)?.meter ?? null, false));
+  markup($("#pick"), v.page === null ? Html.pick_html(View.view_pick(v), v.talk, true) : Html.pick_html(View.view_pick(v), View.view_sub_last(v)?.meter ?? null, false));
   if (knob !== undefined) {
     $("#pick [data-knob=" + knob + "]").focus();
   }
