@@ -732,6 +732,7 @@ function hear(msg: View.Server): void {
     in_use();
   }
   const sent = JSON.stringify(v.sent);
+  const agent = v.agent;
   for (const out of View.view_hear(v, msg)) {
     View.link_send(v, out);
   }
@@ -749,7 +750,9 @@ function hear(msg: View.Server): void {
       leader_draw(form, FORM.exec(location.pathname)?.[2] ?? null);
     }
   }
-  if (AGENT.test(location.pathname) && !FORM.test(location.pathname) && AGENT.exec(location.pathname)?.[1] !== v.agent) {
+  // the server's own pick for an agent it doesn't have; not a chat that
+  // was asked for and hasn't come yet, while the screen is going to it
+  if (v.agent !== agent && AGENT.test(location.pathname) && !FORM.test(location.pathname)) {
     history.replaceState({ chain: depth("/a/" + v.agent) }, "", "/a/" + v.agent);
   }
   P.rows ||= msg.$ === "state" ? JSON.stringify(v.sent) !== sent : msg.$ !== "delta" && msg.$ !== "live";

@@ -91,14 +91,21 @@ export type Talk = { from: number; used: number; tokens: number; window: number;
 
 export type Plug = { name: string; on: boolean };
 
-// agent: the agent whose chat is wanted; on: whose chat the server sends;
-// asked: whose chat the link was opened for (#178); held: whose chat the
-// view holds, kept over a reconnect (#114)
+// what the view holds of one agent's chat
+const CHAT = ["busy", "wait", "importing", "limit", "queue", "sent", "sums", "again", "timers", "talk", "pick", "mcp", "parts", "turn", "nodes", "whole", "firsts", "open", "live", "minds"] as const;
+type Chat = { [K in (typeof CHAT)[number]]: View[K] };
+
+// agent: the agent whose chat is wanted; on: whose chat the server sends
+// the link now, as its last state said ("" before its first); asked: whose
+// chat the link was opened for (#178); held: whose chat the view holds, ""
+// for none yet, kept over a reconnect (#114); kept: the one it held before
+// the last switch, shown again on a switch back
 export type View = State & {
   agent : string;
   on    : string;
   asked : string;
   held  : string;
+  kept  : { agent: string; chat: Chat } | null;
   pages : Map<string, Page>;
   page  : Page | null;
   team  : Mate[];
@@ -314,6 +321,7 @@ export function view_new(agent: string): View {
     mcp       : [],
     talk      : null,
     held      : "",
+    kept      : null,
     pages     : new Map(),
     page      : null,
     parts     : [],
@@ -339,31 +347,64 @@ export function view_new(agent: string): View {
   };
 }
 
-// another chat's state starts the wanted one's chat afresh, and what the
-// server sent of the chat before it is dropped
+// to another agent's chat: what the view holds of the one before goes at
+// once (#178), kept for a switch back, and the server is asked for it, by
+// the link once it's up; a link yet to hear its first state asks then
 export function view_switch(v: View, agent: string): Client[] {
   if (v.agent === agent) {
     return [];
   }
-  v.agent = agent;
+  view_to(v, agent);
+  return v.on === "" ? [] : [{ $: "open", agent }];
+}
+
+function view_to(v: View, agent: string): void {
+  const back = v.kept?.agent === agent ? v.kept.chat : null;
+  if (v.held !== "") {
+    v.kept = { agent: v.held, chat: Object.fromEntries(CHAT.map((k) => [k, v[k]])) as Chat };
+  }
+  view_chat(v);
+  Object.assign(v, back ?? {});
+  [v.agent, v.held] = [agent, back === null ? "" : agent];
   v.pages.clear();
   v.page = null;
-  return v.up ? [{ $: "open", agent }] : [];
+  // the open of a chat no longer wanted would take the link back to it
+  v.out = v.out.filter((p) => p.msg.$ !== "open");
 }
 
 function view_chat(v: View): void {
   const fresh = view_new(v.agent);
-  for (const k of ["busy", "wait", "importing", "limit", "queue", "sent", "sums", "again", "timers", "talk", "parts", "turn", "nodes", "whole", "firsts", "open", "live", "minds"] as const) {
+  for (const k of CHAT) {
     Object.assign(v, { [k]: fresh[k] });
   }
 }
 
 const OWN = ["team", "ack", "error", "note", "jobs", "job"];
 
+// a state says whose chat the server sends the link from now on (#178):
+// what comes after it is the wanted chat's only when it is the wanted
+// agent's. A link's first is the server's own pick only when it had no
+// agent the link was opened for (one deleted); a wanted agent the link
+// wasn't opened for is asked for again
 export function view_hear(v: View, msg: Server): Client[] {
+  if (msg.$ !== "state" || msg.agent === undefined) {
+    return view_heard(v, msg);
+  }
+  const was = v.on;
+  v.on = msg.agent;
+  if (was === "" && v.agent === v.asked && msg.agent !== v.asked) {
+    view_to(v, msg.agent);
+  }
+  if (msg.agent !== v.agent) {
+    return was === "" ? [{ $: "open", agent: v.agent }] : [];
+  }
+  if (msg.agent !== v.held) {
+    view_chat(v);
+    v.held = msg.agent;
+  }
   // a new link: the subagents' pages seen before may have missed what
   // came while it was down, so they're asked for again; the open one now
-  const fresh = msg.$ === "state" && msg.agent !== undefined && msg.agent !== v.on && msg.agent === v.agent;
+  const fresh = msg.agent !== was;
   if (fresh) {
     v.pages.clear();
   }
@@ -375,24 +416,7 @@ export function view_hear(v: View, msg: Server): Client[] {
   return [...again, ...view_heard(v, msg)];
 }
 
-// a new link's first chat is the server's own pick only when it couldn't
-// give the one asked for (an agent unknown or archived): one asked for
-// before the wanted one changed while the link was down is asked again
 function view_heard(v: View, msg: Server): Client[] {
-  if (msg.$ === "state" && msg.agent !== undefined && v.on === "" && msg.agent !== v.agent) {
-    if (msg.agent === v.asked) {
-      v.asked = v.agent;
-      return [{ $: "open", agent: v.agent }];
-    }
-    v.agent = msg.agent;
-  }
-  if (msg.$ === "state" && msg.agent !== undefined && msg.agent !== v.on && msg.agent === v.agent) {
-    if (msg.agent !== v.held) {
-      view_chat(v);
-    }
-    v.on = msg.agent;
-    v.held = msg.agent;
-  }
   if (!OWN.includes(msg.$) && v.on !== v.agent) {
     return [];
   }
@@ -462,7 +486,7 @@ function view_heard(v: View, msg: Server): Client[] {
       return [];
     }
     case "state": {
-      const { $, ...state } = msg;
+      const { $, agent, ...state } = msg;
       Object.assign(v, state);
       return [];
     }
@@ -475,6 +499,12 @@ function view_heard(v: View, msg: Server): Client[] {
       const post = v.out.find((p) => p.msg.id === msg.id);
       v.out = v.out.filter((p) => p !== post);
       post?.done(msg);
+      // the server had no agent it was asked for (one deleted) and gave its
+      // own pick, whose chat came while it wasn't wanted
+      if (post?.msg.$ === "open" && post.msg.agent === v.agent && v.on !== v.agent) {
+        view_to(v, v.on);
+        return [{ $: "open", agent: v.agent }];
+      }
       return [];
     }
     default: {
@@ -813,6 +843,8 @@ export function view_offline(v: View, now = Date.now()): boolean {
 // a link that drops is opened again at once, then after 1, 2, 4… s
 export function link_open(v: View, link: Link): void {
   v.retry = null;
+  // the link opens for the wanted chat: an open sent before is spent
+  v.out = v.out.filter((p) => p.msg.$ !== "open");
   v.asked = v.agent;
   const ws   = link.open("?tab=" + v.tab + "&wire=" + WIRE + "&agent=" + v.agent);
   v.on = "";
