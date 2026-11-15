@@ -18,7 +18,7 @@ type Read = { sessions: Import.Session[]; moved: number };
 type Push = { reg: ServiceWorkerRegistration; key: string };
 type Bell = { state: Html.Notify; push: Push | null };
 
-type Back = { at: { a: number; top: number } | null; y: number | null; away: { y: number; end: boolean } | null; caret: [number, number]; focus: boolean };
+type Back = { at: { a: number; top: number } | null; y: number | null; away: { y: number; end: boolean; chat: string } | null; caret: [number, number]; focus: boolean };
 
 const DESK = matchMedia("(hover: hover)");
 
@@ -89,7 +89,7 @@ const SCROLL = {
   stick : true,
   y     : 0,
   still : false,
-  away  : null as { y: number; end: boolean } | null,
+  away  : null as Back["away"],
   at    : null as Spot | null,
   wide  : innerWidth,
 };
@@ -1385,7 +1385,7 @@ function route(): void {
   // open at its end, and before the list hides this one, whose page is
   // then too short to keep its place
   if ((!chat || sub !== null) && left && SCROLL.away === null) {
-    SCROLL.away = { y: scrollY, end: SCROLL.end };
+    SCROLL.away = { y: scrollY, end: SCROLL.end, chat: shown_key() };
   }
   chat_to(AGENT.exec(p)?.[1] ?? sub?.[1] ?? (tree ? new URLSearchParams(location.search).get("a") ?? first() : p === "/" ? first() : v.agent));
   sessionStorage.setItem(kept("chat"), v.agent);
@@ -1411,6 +1411,10 @@ function route(): void {
     scrollTo(0, 0);
   }
   P.at = at;
+  // another chat than the one left opens at its end, not where that was
+  if (chat && sub === null && SCROLL.away !== null && SCROLL.away.chat !== shown_key()) {
+    SCROLL.away = null;
+  }
   // a chat already in view stays where it is: crossing the 900px line
   // (WIDE.onchange) routes again and used to jump it to the end (#127)
   if (!chat || sub !== null) {
