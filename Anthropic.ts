@@ -1,5 +1,5 @@
 import type { Ask, Block, Img } from "./AskAI.ts";
-import { get } from "./Json.ts";
+import { get, text_of } from "./Json.ts";
 import { Agent, type Emit, type Entry, type Item, type Step, type Tool, type Use, type Wire } from "./Agent.ts";
 
 type Content = {
@@ -24,25 +24,42 @@ type Event = {
   index?         : number;
   message?       : { usage?: Usage };
   content_block? : Content;
-  delta?         : Delta & { stop_reason?: string | null; stop_details?: { explanation?: string | null } | null };
+  delta?         : Delta & { stop_reason?: string | null; stop_details?: { explanation?: string | null } | null; container?: { id: string } | null };
   usage?         : Usage;
   error?         : { type: string; message: string };
 };
 
+// a page web_fetch read, as its citations name it: by its index among
+// those of the request and its answer
+type Doc = { url: string; title: string };
+
 type State = {
-  blocks : Content[];
-  json   : string[];
-  stop   : string;
-  why    : { explanation?: string | null } | null;
-  speed  : string;
-  error  : { type: string; message: string } | null;
-  used   : { read: number; write: number; input: number } | null;
+  blocks    : Content[];
+  json      : string[];
+  stop      : string;
+  why       : { explanation?: string | null } | null;
+  speed     : string;
+  error     : { type: string; message: string } | null;
+  used      : { read: number; write: number; input: number } | null;
+  docs      : Doc[];
+  container : string | null;
 };
 
 type Message = { role: string; content: unknown[] };
 
 const HOUR  = { type: "ephemeral", ttl: "1h" };
-const WEB   = { type: "web_search_20260318", name: "web_search" };
+
+// called directly too, not only from code (the default): only a direct
+// call's results are cited
+const CALLERS = ["direct", "code_execution_20260120"];
+
+const PAGE  = 50000;
+
+const WEB   = [
+  { type: "web_search_20260318", name: "web_search", allowed_callers: CALLERS },
+  { type: "web_fetch_20260318", name: "web_fetch", allowed_callers: CALLERS, citations: { enabled: true }, max_content_tokens: PAGE },
+];
+
 const FAST  = "fast-mode-2026-02-01";
 
 export namespace Anthropic {
@@ -62,7 +79,7 @@ export namespace Anthropic {
   export function body(ask: Ask, items: Item[], tools: Tool[], max: number): unknown {
     const defs: object[] = tools.map((t) => ({ name: t.name, description: t.info, input_schema: t.schema, eager_input_streaming: true }));
     if (ask.searches > 0) {
-      defs.push({ ...WEB, max_uses: ask.searches });
+      defs.push(...WEB.map((tool) => ({ ...tool, max_uses: ask.searches })));
     }
     const messages: Message[] = [];
     for (const item of items) {
@@ -85,6 +102,7 @@ export namespace Anthropic {
       cache_control : cache,
       tools         : defs.length > 0 ? defs : undefined,
       speed         : ask.speed === "fast" ? "fast" : undefined,
+      container     : items.flatMap((item) => (item.$ === "Turn" && item.container !== undefined ? [item.container] : [])).at(-1),
       messages,
     };
   }
@@ -141,6 +159,7 @@ export namespace Anthropic {
       case "message_delta": {
         st.stop = ev.delta?.stop_reason ?? st.stop;
         st.why  = ev.delta?.stop_details ?? st.why;
+        st.container = ev.delta?.container?.id ?? st.container;
         Anthropic.usage(st, ev.usage ?? {});
         return false;
       }
@@ -229,7 +248,7 @@ export namespace Anthropic {
     const open = out.some((b) => b.type === "server_tool_use" && !ran.has(b.id));
     const slow = ask.speed === "fast" && st.speed !== "fast";
     const note = slow ? "ran at " + st.speed + " speed" : "";
-    const step: Step = { out, uses, entries: Anthropic.entries(out), stop: "done", why: "", note, open };
+    const step: Step = { out, uses, entries: Anthropic.entries(out, st.docs), stop: "done", why: "", note, open, container: st.container ?? undefined };
     if (st.error !== null) {
       const stop = st.error.type === "rate_limit_error" ? "limit" : ["overloaded_error", "api_error"].includes(st.error.type) ? "busy" : "fail";
       return { ...step, stop, why: st.error.type + ": " + st.error.message };
@@ -247,7 +266,7 @@ export namespace Anthropic {
     return { ...step, stop: "fail", why: "stopped: " + st.stop + (why ? " (" + why + ")" : "") };
   }
 
-  export function entries(out: Content[]): Entry[] {
+  export function entries(out: Content[], docs: Doc[] = []): Entry[] {
     const entries: Entry[] = [];
     for (const b of out) {
       const entry = Anthropic.entry(b);
@@ -258,7 +277,36 @@ export namespace Anthropic {
         entries.push(entry);
       }
     }
-    return entries.map((e) => ({ ...e, text: e.text.trim() })).filter((e) => e.text);
+    return [...entries, ...Anthropic.sources(out, [...docs, ...Anthropic.docs(out)])].map((e) => ({ ...e, text: e.text.trim() })).filter((e) => e.text);
+  }
+
+  // the pages the answer cites, as OpenAI's are shown (OpenAI.entries)
+  export function sources(out: Content[], docs: Doc[]): Entry[] {
+    const cited = out.flatMap((b) => (b.type === "text" && Array.isArray(b.citations) ? (b.citations as unknown[]) : [])).map((c) => Anthropic.cited(c, docs));
+    const lines = [...new Set(cited)];
+    return lines.length > 0 ? [{ kind: "echo", text: "sources:\n" + lines.join("\n") }] : [];
+  }
+
+  export function cited(c: unknown, docs: Doc[]): string {
+    const url = get(c, "url");
+    if (typeof url === "string") {
+      return [text_of(get(c, "title")), url].filter(Boolean).join(" ");
+    }
+    const title = text_of(get(c, "document_title"));
+    const k = get(c, "document_index");
+    const doc = typeof k === "number" ? docs.at(k) : undefined;
+    return doc !== undefined && (title === "" || doc.title === title) ? [doc.title, doc.url].filter(Boolean).join(" ") : title;
+  }
+
+  // the pages of these blocks a citation can name: a direct web_fetch's;
+  // one run from code is read by that code, not by Claude
+  export function docs(blocks: unknown[]): Doc[] {
+    return blocks.flatMap((b) => {
+      const c = get(b, "content");
+      const by = get(get(b, "caller"), "type");
+      const read = get(b, "type") === "web_fetch_tool_result" && get(c, "type") === "web_fetch_result";
+      return (by === undefined || by === "direct") && read ? [{ url: text_of(get(c, "url")), title: text_of(get(get(c, "content"), "title")) }] : [];
+    });
   }
 
   export function entry(b: Content): Entry | null {
@@ -286,6 +334,13 @@ export namespace Anthropic {
     if (Array.isArray(c)) {
       return c.map((r: unknown) => String(get(r, "title")) + " " + String(get(r, "url"))).join("\n");
     }
+    const code = get(c, "error_code");
+    if (typeof code === "string") {
+      return "error: " + code;
+    }
+    if (get(c, "type") === "web_fetch_result") {
+      return text_of(get(get(c, "content"), "title")) + " " + text_of(get(c, "url"));
+    }
     const stderr = get(c, "stderr");
     const err = typeof stderr === "string" ? stderr : "";
     if (String(get(c, "type")).startsWith("encrypted")) {
@@ -304,7 +359,7 @@ export namespace Anthropic {
     url     : "https://api.anthropic.com/v1/messages",
     headers : Anthropic.headers,
     body    : Anthropic.body,
-    start   : () => ({ blocks: [], json: [], stop: "", why: null, speed: "slow", error: null, used: null }),
+    start   : (_ask, items) => ({ blocks: [], json: [], stop: "", why: null, speed: "slow", error: null, used: null, docs: Anthropic.docs(items.flatMap((item) => (item.$ === "Turn" ? item.out : []))), container: null }),
     read    : Anthropic.read,
     begun   : (ev) => ev.type === "message_start",
     step    : Anthropic.step,

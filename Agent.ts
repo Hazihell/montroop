@@ -29,7 +29,7 @@ type Seat = { model: string; room: string; yields: boolean; held: boolean };
 
 export type Item =
   | { $: "User"; parts: Block[]; imgs: Img[] }
-  | { $: "Turn"; out: unknown[]; open?: boolean }
+  | { $: "Turn"; out: unknown[]; open?: boolean; container?: string }
   | { $: "Back"; backs: Back[] };
 
 export type Use = { id: string; name: string; input: unknown };
@@ -37,19 +37,21 @@ export type Use = { id: string; name: string; input: unknown };
 export type Entry = { kind: Kind; text: string; of?: string };
 
 // open: a server tool call it made runs only with the next request (a client
-// call beside it came first), so only tool results may follow it
+// call beside it came first), so only tool results may follow it; container:
+// where its code ran, for the next request of the turn to run on
 export type Step = {
-  out      : unknown[];
-  uses     : Use[];
-  entries  : Entry[];
-  stop     : "done" | "tools" | "again" | "busy" | "limit" | "down" | "lost" | "fail";
-  why      : string;
-  note     : string;
-  off?     : boolean;
-  refusal? : Refusal;
-  until?   : number;
-  limits?  : number;
-  open?    : boolean;
+  out        : unknown[];
+  uses       : Use[];
+  entries    : Entry[];
+  stop       : "done" | "tools" | "again" | "busy" | "limit" | "down" | "lost" | "fail";
+  why        : string;
+  note       : string;
+  off?       : boolean;
+  refusal?   : Refusal;
+  until?     : number;
+  limits?    : number;
+  open?      : boolean;
+  container? : string;
 };
 
 export type Refusal = { why: string; say: string; until?: number };
@@ -73,7 +75,7 @@ export type Wire<S, E> = {
   url     : string;
   headers : (key: string, ask: Ask) => Record<string, string>;
   body    : (ask: Ask, items: Item[], tools: Tool[], max: number) => unknown;
-  start   : (ask: Ask) => S;
+  start   : (ask: Ask, items: Item[]) => S;
   read    : (st: S, ev: E, on: Emit) => boolean;
   begun   : (ev: E) => boolean;
   step    : (st: S, ask: Ask) => Step;
@@ -153,7 +155,7 @@ export namespace Agent {
         end.limits = step.limits;
         return;
       }
-      items.push({ $: "Turn", out: step.out, open: step.open });
+      items.push({ $: "Turn", out: step.out, open: step.open, container: step.container });
       end.note = step.note || end.note;
       if (step.stop === "again") {
         continue;
@@ -197,7 +199,7 @@ export namespace Agent {
           return Agent.fail("stopped", seen);
         }
         await Agent.steered(run.ask, items);
-        const sent = typeof token === "string" ? Agent.request(wire, run, token, make(MAX), seen) : Promise.resolve({ res: null, step: token });
+        const sent = typeof token === "string" ? Agent.request(wire, run, token, make(MAX), items, seen) : Promise.resolve({ res: null, step: token });
         const got = await Agent.unless_stopped(sent, signal);
         if (got === null) {
           return Agent.fail("stopped", seen);
@@ -356,19 +358,19 @@ export namespace Agent {
     }
   }
 
-  export async function request<S, E>(wire: Wire<S, E>, run: Doing, key: string, body: unknown, seen: Entry[]): Promise<{ res: Response | null; step: Step }> {
+  export async function request<S, E>(wire: Wire<S, E>, run: Doing, key: string, body: unknown, items: Item[], seen: Entry[]): Promise<{ res: Response | null; step: Step }> {
     const flight = await AskAI.single_flight(run.ask);
     if (run.abort.signal.aborted) {
       flight.end();
       return { res: null, step: Agent.fail("stopped", []) };
     }
-    return Agent.send(wire, run, key, body, flight, seen);
+    return Agent.send(wire, run, key, body, items, flight, seen);
   }
 
-  export async function send<S, E>(wire: Wire<S, E>, run: Doing, key: string, body: unknown, flight: Flight, seen: Entry[]): Promise<{ res: Response | null; step: Step }> {
+  export async function send<S, E>(wire: Wire<S, E>, run: Doing, key: string, body: unknown, items: Item[], flight: Flight, seen: Entry[]): Promise<{ res: Response | null; step: Step }> {
     const idle = new AbortController();
     const timer = setTimeout(() => idle.abort(new Error("no word from the API in " + wire.idle / 1e3 + " s")), wire.idle);
-    const st = wire.start(run.ask);
+    const st = wire.start(run.ask, items);
     const json = JSON.stringify(body);
     let res: Response | null = null;
     let step: Step;

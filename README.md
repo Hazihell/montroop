@@ -13,6 +13,7 @@ Features
 - **Subagents** to delegate grunt work while the agent keeps the big picture.
 - **Scheduling tools** to give your agent future or repeating tasks.
 - **Memory tree viewer** to browse what your agent knows.
+- **Web search and page reading** by each vendor's own hosted tools: give the agent a link and it reads the page (on `claude-sub`, search only).
 - **Image and video viewing tools** to let the agent see images and video files.
 - **Images, video, audio and HTML pages inline** for the agent to show you things, or for you to show the agent.
 - **Conversation mode** for when you want a short continuous back-and-forth without the agent forgetting anything you said (shout out to /grill-me!).

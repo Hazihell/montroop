@@ -19,7 +19,8 @@ export const SUMS = 4;
 
 const FRESH = 60e3;
 
-
+// not WebFetch: but on a few docs sites, it hands Claude a second model's
+// answer about the page (fetched by this computer), not the page
 const WEB = ["WebSearch"];
 
 const MORE = ["Task", "DesignSync"];

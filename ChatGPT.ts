@@ -351,7 +351,7 @@ export namespace ChatGPT {
     // the backend routes its cache by the session-id header
     headers : (token, ask) => ({ ...ChatGPT.headers(token), "session-id": OpenAI.session(ask), "thread-id": OpenAI.session(ask) }),
     body    : (ask, items, tools, max) => ChatGPT.body(ask, items, tools, max),
-    start   : (ask) => ({ ...OpenAI.wire.start(ask), items: [] }),
+    start   : (ask, items) => ({ ...OpenAI.wire.start(ask, items), items: [] }),
     read    : (st, ev, on) => ChatGPT.read(st, ev, on),
     begun   : (ev) => ev.type === "response.output_item.added",
     step    : (st, ask) => ({ ...OpenAI.step(st, ask), note: "" }),
