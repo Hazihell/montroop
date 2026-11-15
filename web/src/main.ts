@@ -1419,6 +1419,8 @@ function route(): void {
     SCROLL.end = SCROLL.away.end;
     P.rows = true;
     paint();
+    // the chat's footer, not the page's before, before the page is scrolled
+    foot();
     scrollTo(0, SCROLL.end ? document.documentElement.scrollHeight : SCROLL.away.y);
     SCROLL.y = scrollY;
     SCROLL.away = null;
