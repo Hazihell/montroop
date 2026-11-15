@@ -1185,7 +1185,7 @@ function bars(): void {
   $(".mic").classList.toggle("rec", P.rec !== null);
   $(".composer").classList.toggle("rec", P.rec !== null);
   const knob = (document.activeElement as HTMLElement | null)?.dataset?.knob;
-  markup($("#pick"), v.page === null ? Html.pick_html(View.view_pick(v), v.talk, true) : Html.pick_html(View.view_pick(v), View.view_sub_last(v)?.meter ?? null, false));
+  markup($("#pick"), v.page === null ? Html.pick_html(View.view_pick(v), v.talk, true) : Html.pick_html(View.view_pick(v), View.view_sub(v)?.meter ?? null, false));
   if (knob !== undefined) {
     $("#pick [data-knob=" + knob + "]").focus();
   }

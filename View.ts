@@ -5,7 +5,7 @@ import { LABELS, type Fall, type Move, Pick } from "./Pick.ts";
 import { GLYPH, WHO } from "./Theme.ts";
 import type { Timer } from "./Timer.ts";
 import type { Bg, Job } from "./Machine.ts";
-import type { Row as SubRow } from "./Sub.ts";
+import type { How, Row as SubRow } from "./Sub.ts";
 import { rec } from "./Json.ts";
 
 export type Part = [number, number];
@@ -34,8 +34,8 @@ export type Mate = { id: string; name: string; about: string; picture: string; u
 // entries aren't yet), what it says now, whether it is done (#116)
 type Logged = Entry & { id?: number };
 
-// row: its row in the chat list as last seen, kept once it's done (#180)
-type Page = { name: string; log: Logged[] | null; live: Live[]; from: number; loading: boolean; done: boolean; row: SubRow | null };
+// how: how it runs or ran, as the server said (#180)
+type Page = { name: string; log: Logged[] | null; live: Live[]; from: number; loading: boolean; done: boolean; how: How | null };
 
 export type Progress = { done: number; total: number; why: string | null; msgs: number; open: number[] };
 
@@ -139,7 +139,7 @@ export type Server =
   | ({ $: "entry"; agent?: string; id?: number; sent?: boolean } & Entry)
   | { $: "delta"; agent?: string; kind: Kind; text: string; fresh?: boolean }
   | { $: "live"; agent?: string; live: Live[] }
-  | { $: "agent"; name: string; found: boolean; from: number; before?: number; entries: Logged[]; done: boolean; end?: boolean }
+  | { $: "agent"; name: string; found: boolean; from: number; before?: number; entries: Logged[]; done: boolean; end?: boolean; how?: How | null }
   | ({ $: "state" } & State)
   | { $: "note"; text: string }
   | { $: "team"; agents: Mate[] }
@@ -449,7 +449,7 @@ function view_heard(v: View, msg: Server): Client[] {
       }
       if (msg.found && (msg.before === undefined || msg.before === page.from)) {
         page.log = [...msg.entries, ...(msg.before === undefined ? [] : page.log ?? [])];
-        [page.from, page.loading] = [msg.from, false];
+        [page.from, page.loading, page.how] = [msg.from, false, msg.how ?? page.how];
         return [];
       }
       if (!msg.found) {
@@ -578,7 +578,7 @@ export function view_act(v: View, act: Act): Client[] {
         return [];
       }
       const known = v.pages.get(act.name);
-      v.page = known ?? { name: act.name, log: null, live: [], from: 0, loading: false, done: false, row: null };
+      v.page = known ?? { name: act.name, log: null, live: [], from: 0, loading: false, done: false, how: null };
       v.pages.set(act.name, v.page);
       return known === undefined ? [{ $: "agent", name: act.name }] : [];
     }
@@ -616,17 +616,8 @@ export function view_earlier(v: View): Client[] {
 }
 
 // the shown subagent page's row in the chat list, while it runs
-function view_sub(v: View): SubRow | undefined {
+export function view_sub(v: View): SubRow | undefined {
   return v.team.find((m) => m.id === v.agent)?.subs?.find((s) => s.name === v.page?.name);
-}
-
-// and once it's done, as last seen: its page keeps its model and effort
-export function view_sub_last(v: View): SubRow | undefined {
-  const sub = view_sub(v);
-  if (v.page !== null && sub !== undefined) {
-    v.page.row = sub;
-  }
-  return sub ?? v.page?.row ?? undefined;
 }
 
 // a subagent's page: its log, earlier entries as it scrolls up (#143),
@@ -765,10 +756,11 @@ export function view_stoppable(v: View): boolean {
   return v.busy || v.limit !== null;
 }
 
-// a subagent's page shows its model and effort, not to be changed (#156)
+// a subagent's page shows its model and effort, not to be changed (#156),
+// also once it's done (#180)
 export function view_pick(v: View): Knob[] {
   if (v.page !== null) {
-    const sub = view_sub_last(v);
+    const sub = view_sub(v) ?? v.page.how ?? undefined;
     const shown = (text: string, move: Move): Knob[] => (text === "" ? [] : [{ text, move, hint: text, choices: [] }]);
     return sub === undefined ? [] : sub.pick !== null ? view_knobs(v, sub.pick, false) : [...shown(sub.model, "model"), ...shown(sub.effort, "effort")];
   }

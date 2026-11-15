@@ -7,7 +7,7 @@ import type { ServerWebSocket } from "bun";
 import type { Out as Done } from "./Agent.ts";
 import { AskAI, type Ask, type Block, type Call, type End, type Event, type Kind, type Parked, type Said, type Say, type Vendor } from "./AskAI.ts";
 import { report_read, tool_name } from "./Call.ts";
-import { Sub, type Role, type Row as SubRow, type Spawn } from "./Sub.ts";
+import { Sub, type How, type Role, type Row as SubRow, type Spawn } from "./Sub.ts";
 import { Disk } from "./Disk.ts";
 import { Mcp } from "./Mcp.ts";
 import * as Import from "./Import.ts";
@@ -1018,12 +1018,19 @@ export namespace Chat {
     return Sub.pick(chat.pick, sub.role, sub.name);
   }
 
-  export function sub_shown(chat: Chat, sub: Sub<Msg>): Pick | null {
+  export function sub_shown(chat: Chat, role: Role, name: string): Pick | null {
     try {
-      return Chat.sub_pick(chat, sub);
+      return Sub.pick(chat.pick, role, name);
     } catch {
       return null;
     }
+  }
+
+  // how a subagent runs, or ran, by its log's first line once it's done:
+  // its page says it, also after a reload (#180)
+  export function sub_how(chat: Chat, name: string, log: Root[] | null): How | null {
+    const role = chat.subs.get(name)?.role ?? (log?.[0]?.kind === "note" ? Sub.role(log[0].text)?.role : undefined);
+    return role === undefined ? null : Sub.how(role, Chat.sub_shown(chat, role, name));
   }
 
   // how full its context is (#156): its last request and its log since,
@@ -1039,7 +1046,7 @@ export namespace Chat {
   }
 
   export function sub_row(chat: Chat, sub: Sub<Msg>): SubRow {
-    const pick = Chat.sub_shown(chat, sub);
+    const pick = Chat.sub_shown(chat, sub.role, sub.name);
     return Sub.row(sub, pick, Chat.sub_meter(sub, pick), sub.run.sent.flatMap(({ m }) => Array.from({ length: m.end - m.id }, (_, k) => m.id + k)));
   }
 
@@ -1667,7 +1674,7 @@ export namespace Chat {
         const before = asked ?? log?.length ?? 0;
         const from = Math.max(0, before - SHOWN);
         const entries = (log ?? []).slice(from, before).map(({ i, kind, text, date, of, tool }) => ({ id: i, kind, text, date, of, tool }));
-        Chat.send(sock, { $: "agent", name, found: log !== null, from, before: asked, entries, done: !chat.subs.has(name) });
+        Chat.send(sock, { $: "agent", name, found: log !== null, from, before: asked, entries, done: !chat.subs.has(name), how: Chat.sub_how(chat, name, log) });
         if (asked === undefined) {
           Chat.send(sock, { $: "live", agent: name, live: chat.subs.get(name)?.run.live ?? [] });
         }

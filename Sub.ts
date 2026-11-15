@@ -32,10 +32,14 @@ export type Sub<M> = {
   bytes   : number;
 };
 
+// how it runs or ran: its pick (null: its model no longer offered) and
+// the model and effort that says, else those it was spawned with
+export type How = { model: string; effort: string; pick: Pick | null };
+
 // a subagent's row in the chat list
 // queue: the messages it hasn't taken yet; sent: its log's ones it took
 // but hasn't answered
-export type Row = { name: string; face: string; task: string; model: string; effort: string; pick: Pick | null; meter: Talk | null; doing: string; at: number; queue: string[]; sent: number[] };
+export type Row = How & { name: string; face: string; task: string; meter: Talk | null; doing: string; at: number; queue: string[]; sent: number[] };
 
 const NOTE = "subagent";
 const ON   = " on ";
@@ -104,15 +108,17 @@ export namespace Sub {
     return "[" + sub.name + "]\n" + (sub.replies.join("\n\n").trim() || "(no reply)");
   }
 
+  export function how(role: Role, pick: Pick | null): How {
+    return { model: pick?.model ?? role.model ?? "", effort: pick?.effort ?? role.effort ?? "", pick };
+  }
+
   export function row<M>(sub: Sub<M>, pick: Pick | null, meter: Talk | null, sent: number[]): Row {
     const task = sub.task.replace(/\s+/g, " ").trim();
     return {
       name   : sub.name,
       face   : Names.name_face(sub.name),
       task   : task.length > TASK_SHOWN ? task.slice(0, TASK_SHOWN) + "…" : task,
-      model  : pick?.model ?? sub.role.model ?? "",
-      effort : pick?.effort ?? sub.role.effort ?? "",
-      pick,
+      ...Sub.how(sub.role, pick),
       meter,
       doing  : sub.doing,
       at     : sub.at,
