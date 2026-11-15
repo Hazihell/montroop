@@ -197,8 +197,9 @@ footer { position: fixed; inset: auto 0 -1px; z-index: 2; padding: 9px max(20px,
 body:is(.account, .tree) footer { background: none; pointer-events: none; }
 body:is(.account, .tree) footer > :not(#toast) { display: none; }
 #pick { width: min(var(--col), 100%); margin: 0 auto 6px; display: flex; align-items: baseline; gap: 6px; font: 12.5px/20px var(--sans); color: var(--mid); }
-/* from the labels' baseline up to the middle of their capitals */
-#pick .rule { flex: 1; height: 1px; background: var(--hair); margin-right: 4px; position: relative; bottom: calc(.5cap - .5px); }
+/* from the labels' baseline up to the middle of their capitals; where cap
+   isn't known, a capital's usual .7em */
+#pick .rule { flex: 1; height: 1px; background: var(--hair); margin-right: 4px; position: relative; bottom: calc(.35em - .5px); bottom: calc(.5cap - .5px); }
 #pick .rule.meter { --fill: var(--mid); background: linear-gradient(to right, var(--fill) var(--used), var(--hair) var(--used)); }
 #pick .rule.meter.warm { --fill: var(--warm); }
 #pick .rule.meter.hot { --fill: var(--del); }
