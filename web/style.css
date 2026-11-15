@@ -274,11 +274,9 @@ body:is(.account, .tree) footer > :not(#toast) { display: none; }
 #timers .text { grid-column: 1; font-size: 14px; overflow-wrap: anywhere; }
 #timers .cancel { grid-row: 1 / 3; grid-column: 2; padding: 5px 10px; border-radius: 8px; background: var(--block); font-size: 13px; }
 @media (hover: hover) { #timers .cancel:hover { background: var(--hover); } } @media (hover: none) { #timers .cancel:active { background: var(--hover); } }
-#import { inset: 0; margin: auto; width: min(440px, 100vw - 40px); height: fit-content; max-height: 85vh; overflow: auto; padding: 14px 20px; }
+#import { inset: 0; margin: auto; width: min(480px, 100vw - 40px); height: fit-content; max-height: 85vh; overflow: auto; padding: 20px 22px; }
 #import::backdrop { background: var(--veil); }
-#import .title { font-weight: 600; font-size: 16px; }
-#import { width: min(480px, 100vw - 40px); padding: 20px 22px; }
-#import .title { margin-top: 0; font-size: 17px; }
+#import .title { margin-top: 0; font-weight: 600; font-size: 17px; }
 #import .sub { margin-top: 4px; }
 #import :is(code, kbd) { font: .9em var(--mono); background: var(--block); border-radius: 5px; padding: .1em .35em; }
 #import kbd { margin-right: 2px; }
@@ -304,14 +302,13 @@ body:is(.account, .tree) footer > :not(#toast) { display: none; }
 #import .since input::-moz-range-thumb { width: 10px; height: 10px; border: 2px solid var(--ink); border-radius: 50%; background: var(--paper); cursor: grab; }
 #import .since input::-moz-range-track { background: transparent; }
 #import .acts { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; margin: 16px 0 0; }
-#import .acts button { padding: 7px 16px; border-radius: 8px; background: var(--block); font-size: 14px; font-weight: 500; }
+#import .acts button { padding: 7px 16px; border-radius: 8px; background: var(--block); font-size: 14px; font-weight: 500; white-space: nowrap; }
 @media (hover: hover) { #import .acts button:hover { background: var(--hover); } } @media (hover: none) { #import .acts button:active { background: var(--hover); } }
 #import .acts :is(.go, .pickdir) { background: var(--ink); color: var(--paper); }
 @media (hover: hover) { #import .acts :is(.go, .pickdir):hover { background: var(--ink); opacity: .85; } } @media (hover: none) { #import .acts :is(.go, .pickdir):active { background: var(--ink); opacity: .85; } }
 #import .acts .pickdir.alt { background: var(--block); color: var(--ink); }
 #import .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 #import .two button { min-height: 64px; padding: 10px 16px; font-size: 15px; white-space: normal; }
-#import .acts button { white-space: nowrap; }
 #import button:disabled { opacity: 0.4; cursor: default; }
 progress { --track: var(--block); --bar: var(--ink); display: block; width: 100%; height: 6px; margin: 14px 0 6px; appearance: none; border: 0; border-radius: 3px; background: var(--track); overflow: hidden; }
 progress::-webkit-progress-bar { background: var(--track); }
