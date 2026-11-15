@@ -69,11 +69,12 @@ function notify(msg) {
   return showing;
 }
 
+// a push sent again (its first answer timed out) shows its line once
 async function show(msg) {
   const url = typeof msg.url === "string" ? msg.url : "/";
   const tag = String(msg.tag ?? "ki");
   const text = String(msg.text ?? "");
-  const had = (await self.registration.getNotifications({ tag })).flatMap((n) => n.body.split("\n"));
+  const had = (await self.registration.getNotifications({ tag })).flatMap((n) => n.body.split("\n")).filter((line) => line !== text);
   const body = [text, ...had].slice(0, SHOWN).join("\n");
   await self.registration.showNotification(String(msg.title ?? "Ki"), { body, tag, renotify: true, badge: "/badge.png", data: { url } });
 }
