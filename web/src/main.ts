@@ -1724,18 +1724,20 @@ async function notify_sub(): Promise<PushSubscription | null> {
 // when it comes back in view an hour or more after (a browser renews a
 // subscription without a word, and an installed app may stay open for days),
 // with the permission granted, a subscription the server or the browser lost
-// is made again, without a word. Off is only what the user turned off here
+// is made again, without a word; if that or the look at it failed (the
+// server or the push service out of reach), again when it next comes back
+// in view. Off is only what the user turned off here
 async function notify_keep(): Promise<void> {
   P.kept = Date.now();
   const bell = await notify_state().catch(() => null);
-  if (localStorage.getItem(NOTIFY) === "off" || bell?.push == null || Notification.permission !== "granted") {
+  const push = bell?.push ?? null;
+  if (localStorage.getItem(NOTIFY) === "off" || (bell !== null && (push === null || Notification.permission !== "granted"))) {
     return;
   }
-  if (bell.state === "off") {
-    const out = await notify_on(bell.push.reg, bell.push.key).catch(() => null);
-    if (out === null || out.error !== undefined) {
-      return;
-    }
+  const out = push === null ? null : bell?.state === "off" ? await notify_on(push.reg, push.key).catch(() => null) : {};
+  if (out === null || out.error !== undefined) {
+    P.kept = 0;
+    return;
   }
   localStorage.setItem(NOTIFY, "on");
 }
