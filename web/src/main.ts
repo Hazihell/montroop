@@ -13,6 +13,11 @@ import * as Viewer from "./Viewer.ts";
 
 type Read = { sessions: Import.Session[]; moved: number };
 
+// this browser's notifications, and what turning them on or off takes:
+// nothing, while they're blocked or only on the Home Screen
+type Push = { reg: ServiceWorkerRegistration; key: string };
+type Bell = { state: Html.Notify; push: Push | null };
+
 type Back = { at: { a: number; top: number } | null; y: number | null; away: { y: number; end: boolean } | null; caret: [number, number]; focus: boolean };
 
 const DESK = matchMedia("(hover: hover)");
@@ -20,6 +25,7 @@ const DESK = matchMedia("(hover: hover)");
 const ME_WAIT = 4000;
 // "on" or "off": notifications as the user last had them on this device
 const NOTIFY = "ki.notify";
+const BLOCKED = "they're blocked in this browser's settings for this site.";
 const TRAVEL = 1000;
 
 const NONE   = "No Claude or ChatGPT chats in that folder. Choose ~/.claude or ~/.codex.";
@@ -71,7 +77,6 @@ const P = {
   frame : 0,
   rows  : true,
   toast : 0,
-  push  : null as { reg: ServiceWorkerRegistration; key: string } | null,
   used  : { ws: null as WebSocket | null, on: false, at: 0, agent: "" },
   after : false,
   at    : "",
@@ -1624,8 +1629,8 @@ function archived_draw(): void {
 async function account(): Promise<void> {
   const el = $("#account");
   const set = await fetch("/api/settings").catch(() => null);
-  const push = await notify_state().catch(() => null);
-  el.innerHTML = Html.account_html(push);
+  const bell = await notify_state().catch(() => null);
+  el.innerHTML = Html.account_html(bell?.state ?? null);
   archived_draw();
   RENEW.dirty.clear();
   el.oninput = (ev) => {
@@ -1637,11 +1642,14 @@ async function account(): Promise<void> {
   mcp_draw();
   el.querySelectorAll<HTMLButtonElement>(".retry").forEach((retry) => (retry.onclick = () => void account()));
   $("#account .out").onclick = () => void signout();
-  const bell = document.querySelector<HTMLButtonElement>("#account .notify");
-  bell?.addEventListener("click", () => {
-    bell.disabled = true;
-    void notify(push !== "on");
-  });
+  const button = document.querySelector<HTMLButtonElement>("#account .notify");
+  const push = bell?.push ?? null;
+  if (button !== null && push !== null) {
+    button.onclick = () => {
+      button.disabled = true;
+      void notify(bell?.state !== "on", push);
+    };
+  }
   const page = set?.ok ? ((await set.json().catch(() => null)) as Page | null) : null;
   if (page === null) {
     $("#account .owned").innerHTML = `<p class="sub">Could not read the server's settings. Try again in a moment.</p>`;
@@ -1668,13 +1676,12 @@ async function signout(): Promise<void> {
   location.href = "/";
 }
 
-async function notify_state(): Promise<Html.Notify | null> {
-  P.push = null;
+async function notify_state(): Promise<Bell | null> {
   if (navigator.serviceWorker === undefined || !("PushManager" in window) || !("Notification" in window)) {
-    return /iPhone|iPad/.test(navigator.userAgent) ? "home" : null;
+    return /iPhone|iPad/.test(navigator.userAgent) ? { state: "home", push: null } : null;
   }
   if (Notification.permission === "denied") {
-    return "blocked";
+    return { state: "blocked", push: null };
   }
   const wait = new Promise<undefined>((ok) => setTimeout(ok, 3000, undefined));
   const reg = (await navigator.serviceWorker.getRegistration()) ?? (await Promise.race([navigator.serviceWorker.ready, wait]));
@@ -1685,8 +1692,7 @@ async function notify_state(): Promise<Html.Notify | null> {
   if (reg === undefined || out === null || out.key === null) {
     return null;
   }
-  P.push = { reg, key: out.key };
-  return out.on && notify_keyed(sub, out.key) ? "on" : "off";
+  return { state: out.on && notify_keyed(sub, out.key) ? "on" : "off", push: { reg, key: out.key } };
 }
 
 // whether a subscription was made for the server's key (one made for a
@@ -1705,36 +1711,16 @@ async function notify_sub(): Promise<PushSubscription | null> {
   return (await reg?.pushManager.getSubscription()) ?? null;
 }
 
-// notifications this device had on stay on (#152): when the app opens, a
-// subscription the server lost is sent again and one the browser lost is
-// made again; if the browser took the permission back, a bar says so, and
-// if it blocks them, says so once. Off is only what the user turned off here
+// notifications this device had on stay on (#152): when the app opens with
+// the permission granted, a subscription the server or the browser lost is
+// made again, without a word. Off is only what the user turned off here
 async function notify_keep(): Promise<void> {
-  const was = localStorage.getItem(NOTIFY);
-  const state = await notify_state().catch(() => null);
-  if (was === "off" || state === null || state === "home") {
+  const bell = await notify_state().catch(() => null);
+  if (localStorage.getItem(NOTIFY) === "off" || bell?.push == null || Notification.permission !== "granted") {
     return;
   }
-  if (state === "blocked") {
-    if (was === "on") {
-      toast("Notifications are off on this device: they're blocked in this browser's settings for this site.", true, ["OK", () => {
-        $("#toast").hidden = true;
-      }]);
-      localStorage.setItem(NOTIFY, "blocked");
-    }
-    return;
-  }
-  if (Notification.permission !== "granted") {
-    if (was === "on" || was === "blocked") {
-      toast("Notifications are off on this device.", true, ["Turn on", () => {
-        $("#toast").hidden = true;
-        void notify(true);
-      }]);
-    }
-    return;
-  }
-  if (state === "off" && P.push !== null) {
-    const out = await notify_on(P.push.reg, P.push.key).catch(() => null);
+  if (bell.state === "off") {
+    const out = await notify_on(bell.push.reg, bell.push.key).catch(() => null);
     if (out === null || out.error !== undefined) {
       return;
     }
@@ -1742,26 +1728,27 @@ async function notify_keep(): Promise<void> {
   localStorage.setItem(NOTIFY, "on");
 }
 
-async function notify(on: boolean): Promise<void> {
-  const push = P.push;
-  if (push === null) {
-    return;
-  }
+async function notify(on: boolean, push: Push): Promise<void> {
   const what = on ? "on" : "off";
+  const failed = (why: string) => "Could not turn notifications " + what + ": " + why;
   try {
     const out = on ? await notify_on(push.reg, push.key) : await notify_off(push.reg);
     if (out.error === undefined) {
       localStorage.setItem(NOTIFY, what);
     }
-    toast(text_of(out.error, "Notifications are " + what + "."));
+    toast(out.error === undefined ? "Notifications are " + what + "." : failed(text_of(out.error)));
   } catch (err) {
-    const denied = typeof Notification !== "undefined" && Notification.permission === "denied";
-    toast(denied ? "Notifications are blocked in this browser's settings." : "Could not turn notifications " + what + ": " + err_why(err));
+    toast(failed(Notification.permission === "denied" ? BLOCKED : err_why(err)));
   }
   void account();
 }
 
+// the browser asks first, while the tap that turned them on still counts
 async function notify_on(reg: ServiceWorkerRegistration, key: string): Promise<Record<string, unknown>> {
+  const asked = Notification.permission === "default" ? await Notification.requestPermission() : Notification.permission;
+  if (asked !== "granted") {
+    return { error: asked === "denied" ? BLOCKED : "they weren't allowed when the browser asked." };
+  }
   const bytes = notify_bytes(key);
   const ask = () => reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: bytes });
   const sub = await ask().catch(async (err: unknown) => {
