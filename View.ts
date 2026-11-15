@@ -974,7 +974,7 @@ function woken(v: View): boolean {
 }
 
 export function link_send(v: View, msg: Client, done = (a: Answer) => link_note(v, a), said = ""): void {
-  const to = msg.$ === "say" ? { agent: v.agent } : {};
+  const to = "agent" in msg ? {} : { agent: v.agent };
   v.out.push({ msg: { id: uuid(), ...msg, ...to }, ws: null, done, said });
   v.flush();
 }

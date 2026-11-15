@@ -2019,7 +2019,8 @@ export namespace Main {
   }
 
   // a device's acts go to the chat of the agent that ran them (else the
-  // oldest active agent's); a browser's to the chat it shows, or open another
+  // oldest active agent's); a browser's to the chat it was made in (else the
+  // one it shows), or open another
   export function heard(sock: Sock, text: string): void {
     let msg: Record<string, unknown> = {};
     try {
@@ -2033,16 +2034,24 @@ export namespace Main {
       const chat = (who === "" ? undefined : Main.by_who(who)) ?? Main.first();
       return void Chat.answer(chat, sock, msg);
     }
-    const chat = Main.chats.get(sock.data.agent);
+    const shown = Main.chats.get(sock.data.agent);
     if (msg.$ === "open") {
-      chat?.socks.delete(sock);
+      shown?.socks.delete(sock);
       Chat.join(Main.chat_of(text_of(msg.agent)), sock);
       sock.data.active = 0;
       return Chat.send(sock, { $: "ack", id: text_of(msg.id) });
     }
-    if (chat !== undefined) {
-      void Chat.answer(chat, sock, msg);
+    // the link may have left the chat an act was made in since (#178); what
+    // the link would be sent of a chat, only its own
+    const id = typeof msg.agent === "string" ? msg.agent : sock.data.agent;
+    const chat = Main.chats.get(id);
+    if (chat === undefined) {
+      return Chat.send(sock, { $: "ack", id: text_of(msg.id), error: "No agent " + id + "." });
     }
+    if (chat !== shown && (msg.$ === "agent" || msg.$ === "zoom")) {
+      return Chat.send(sock, { $: "ack", id: text_of(msg.id) });
+    }
+    void Chat.answer(chat, sock, msg);
   }
 
   export function made(x: unknown): Answer & { agent?: Agent } {
@@ -2287,6 +2296,11 @@ export namespace Main {
           return refused;
         }
         const msg = { ...Object.fromEntries(new URL(req.url).searchParams), req };
+        // not another agent's chat for one that is gone (#178)
+        const asked = new URL(req.url).searchParams.get("agent");
+        if (asked !== null && asked !== chat.id) {
+          return Response.json({ error: "No agent " + asked + "." }, { status: 404 });
+        }
         const out = await Chat.apply(chat, msg, "");
         return Response.json(out, { status: out.status ?? (out.error === undefined ? 200 : 400) });
       }
