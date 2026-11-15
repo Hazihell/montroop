@@ -58,12 +58,23 @@ self.addEventListener("push", (ev) => {
   ev.waitUntil(notify(msg));
 });
 
-// every push shows: the server pushes none for a chat in view (#178)
-async function notify(msg) {
+// every push shows: the server pushes none for a chat in view (#178).
+// Pushes show one after another, each after the one before, failed or not:
+// one that read an agent's notification while another was shown lost the
+// other's line, even of another agent's
+let showing = Promise.resolve();
+
+function notify(msg) {
+  showing = showing.catch(() => {}).then(() => show(msg));
+  return showing;
+}
+
+async function show(msg) {
   const url = typeof msg.url === "string" ? msg.url : "/";
   const tag = String(msg.tag ?? "ki");
+  const text = String(msg.text ?? "");
   const had = (await self.registration.getNotifications({ tag })).flatMap((n) => n.body.split("\n"));
-  const body = [String(msg.text ?? ""), ...had].slice(0, SHOWN).join("\n");
+  const body = [text, ...had].slice(0, SHOWN).join("\n");
   await self.registration.showNotification(String(msg.title ?? "Ki"), { body, tag, renotify: true, badge: "/badge.png", data: { url } });
 }
 
