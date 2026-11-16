@@ -98,6 +98,8 @@ const P = {
   after : false,
   at    : "",
   copy  : 0,
+  // the chat or subagent page whose rows #log holds (shown_key)
+  drawn : "",
 };
 
 const SCROLL = {
@@ -284,15 +286,15 @@ function parsed(text: string): unknown {
 }
 
 // the chat held, or the subagent page open, from its last screenful's
-// first row (on screen; all of it when that is its first), else its last
-// COPY_PARTS; its first rows go while it is too big
+// first row (on screen, its rows drawn; all of it when that is its
+// first), else its last COPY_PARTS; its first rows go while it is too big
 function copy_keep(): void {
   const page = v.page;
   const ids = page === null ? (v.held === v.agent ? v.parts.map(([id]) => id) : []) : (page.log ?? []).flatMap((e) => (e.id === undefined ? [] : [e.id]));
   if (ids.length === 0 || localStorage.getItem(SIGNED) === null) {
     return;
   }
-  const rows = $("#log").hidden ? [] : [...document.querySelectorAll<HTMLElement>("#log .rows > [data-a]")];
+  const rows = $("#log").hidden || P.drawn !== shown_key() ? [] : [...document.querySelectorAll<HTMLElement>("#log .rows > [data-a]")];
   const end = rows.at(-1)?.getBoundingClientRect().bottom ?? 0;
   const top = rows.findLast((r) => r.getBoundingClientRect().top <= end - innerHeight) ?? rows.at(0);
   let from = top === undefined ? ids.at(-COPY_PARTS) ?? ids[0] : top === rows[0] ? ids[0] : Number(top.dataset.a);
@@ -1257,6 +1259,7 @@ function paint(): void {
     markup($("#log .rows"), View.view_body(v).map(Html.row_html));
     Box.box_sizes($("#log .rows"));
     P.rows = false;
+    P.drawn = shown_key();
     earlier_watch();
   }
   markup($("#log .tail"), View.view_tail(v).map(Html.row_html));
