@@ -25,8 +25,8 @@ No message appears in full, not even the last ones. A text too long for one
 message is split over several in a row.
 
 Each message has a kind: user (the user's words), reply (the agent's replies),
-tool (its tool calls, each with its result after it), echo (in an older
-chat, a tool result apart from its call), work (a message from another
+tool (its tool calls, each with its result after it), echo (a tool result
+logged apart from its call), work (a message from another
 agent, a timer, a job or a subagent, starting "[Name]", "[Timer id]" or
 "[Job id]"), team (a line copied from another agent's memory), ai (an imported
 chat's), note (the app's own notes). The summaries form a binary tree: recent
