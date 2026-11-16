@@ -763,13 +763,25 @@ export function view_writing(v: View): string {
   return (v.page?.live ?? v.live).findLast((l) => l.kind === "reply")?.text ?? "";
 }
 
+// the rows of the messages that wait in the tail, queued or unsent, made
+// once while they wait, so each is parsed and drawn once, not at each paint
+let WAITS = new Map<string, Row[]>();
+
 export function view_tail(v: View): Row[] {
+  const was = WAITS;
+  WAITS = new Map();
+  const waits = (kind: Kind, text: string, sent: boolean) => {
+    const key = kind + "\n" + String(sent) + "\n" + text;
+    const rows = WAITS.get(key) ?? was.get(key) ?? sent_rows(sent, entry_rows(null, kind, text));
+    WAITS.set(key, rows);
+    return rows;
+  };
   if (v.page !== null) {
     const live = v.page.live;
     const page = live.filter((l) => v.thinking !== false || l.kind !== "mind");
     const thought = v.thinking === false && live.some((_, k) => thinks(live, k)) ? [THINKING] : [];
     const sub = view_sub(v);
-    const queued = (sub?.queue ?? []).flatMap((text) => sent_rows(true, entry_rows(null, "user", text)));
+    const queued = (sub?.queue ?? []).flatMap((text) => waits("user", text, true));
     const last = v.page.log?.at(-1);
     const idle = sub !== undefined && v.page.live.length === 0 && (last?.kind !== "tool" || last.echo !== undefined) && sub.doing !== "usage limit";
     return [...thought, ...live_rows(page, sub !== undefined), ...(idle ? [WAITING] : []), ...queued];
@@ -777,9 +789,9 @@ export function view_tail(v: View): Row[] {
   const thought = v.thinking === false && (v.live.some((_, k) => thinks(v.live, k)) || (v.live.length === 0 && v.busy && v.wait === "" && thought_last(v))) ? [THINKING] : [];
   const rows = [...thought, ...live_rows(v.live.filter((l) => v.thinking !== false || l.kind !== "mind"), v.busy && v.wait === "")];
   const load = v.importing !== null ? [Cap(progress_show(v.importing))] : [];
-  const said = !v.up ? v.out.flatMap((p) => entry_rows(null, "user", p.said)) : [];
+  const said = !v.up ? v.out.flatMap((p) => waits("user", p.said, false)) : [];
   const kept = said.length > 0 ? [...said, Cap(UNSENT)] : [];
-  const queued = v.queue.flatMap((q) => entry_rows(null, q.kind, q.text).map((row) => (row.$ === "Msg" ? { ...row, queued: true } : row)));
+  const queued = v.queue.flatMap((q) => waits(q.kind, q.text, true));
   const after = [...queued, ...kept, ...load];
   if (v.limit !== null) {
     return [...rows, Cap(limit_show(v.limit)), ...after];
@@ -1137,8 +1149,15 @@ function sum_rows(id: number, n: number, msgs: number, node: Node = { text: WAIT
   return rows;
 }
 
+// a message's rows while it is queued, each made once (Html.row_html)
+const SENT = new WeakMap<Row, Row>();
+
 function sent_rows(sent: boolean, rows: Row[]): Row[] {
-  return sent ? rows.map((row) => (row.$ === "Msg" ? { ...row, queued: true } : row)) : rows;
+  return sent ? rows.map((row) => {
+    const made = SENT.get(row) ?? (row.$ === "Msg" ? { ...row, queued: true } : row);
+    SENT.set(row, made);
+    return made;
+  }) : rows;
 }
 
 export function live_push(live: Live[], kind: Kind, text: string, fresh = false): void {
