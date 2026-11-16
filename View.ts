@@ -519,7 +519,8 @@ function view_heard(v: View, msg: Server): Client[] {
 }
 
 // a copy of the chat the view holds, as the messages a link sends for it,
-// its parts from the one at from on, and the entry before them (#185)
+// its parts from the one at from on, the entry before them, and what
+// streams in (#185)
 export function view_copy(v: View, from: number): Server[] {
   const parts = v.parts.filter(([id, n]) => id + n > from);
   const nodes: Record<string, Node> = {};
@@ -539,7 +540,7 @@ export function view_copy(v: View, from: number): Server[] {
   }
   const { busy, wait, sums, again, importing, limit, queue, sent, pick, vendors, models, profiles, timers, mcp, talk, thinking } = v;
   const state = { busy, wait, sums, again, importing, limit, queue, sent, pick, vendors, models, profiles, timers, mcp, talk, thinking };
-  return [{ $: "state", agent: v.agent, ...state }, { $: "know", nodes, whole }, { $: "view", parts, turn: v.turn }];
+  return [{ $: "state", agent: v.agent, ...state }, { $: "know", nodes, whole }, { $: "view", parts, turn: v.turn }, { $: "live", live: v.live }];
 }
 
 // a copy of the open subagent page, as the messages a link sends for it,

@@ -1261,6 +1261,7 @@ function paint(): void {
   }
   markup($("#log .tail"), View.view_tail(v).map(Html.row_html));
   Box.box_sizes($("#log .tail"));
+  $("#log").classList.toggle("still", v.on !== v.agent);
   frames();
   foot();
   const back = RENEW.back === null ? null : document.querySelector<HTMLElement>(`#log [data-a="${RENEW.back.a}"]`);

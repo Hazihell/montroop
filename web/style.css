@@ -166,6 +166,12 @@ body.subpage header > .title { display: block; }
   .cap.wait i { opacity: .6; }
   :is(.cap.think, .msg.tool.line.typing > summary > .ic)::after { animation: none; content: "…"; }
 }
+/* a chat the link doesn't bring now, a copy or one held over a reconnect,
+   is as it was last seen: what was being written still shows so, not
+   moving (#185) */
+#log.still .cap.wait i { animation: none; opacity: .6; }
+#log.still :is(.msg.writing > :last-child, .msg.tool.line.running > summary > .ic)::after { animation: none; }
+#log.still :is(.cap.think, .msg.tool.line.typing > summary > .ic)::after { animation: none; content: "…"; }
 .msg.tool.line { padding: 0; background: none; }
 .msg.tool.line > summary { display: flex; align-items: baseline; gap: 6px; min-height: var(--row); padding: calc((var(--row) - 1.5em) / 2) 12px; border-radius: 10px; background: var(--block); cursor: pointer; list-style: none; white-space: nowrap; }
 .msg.tool.line > summary::-webkit-details-marker { display: none; }
