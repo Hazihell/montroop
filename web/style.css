@@ -88,7 +88,7 @@ header > .who .name { overflow: hidden; text-overflow: ellipsis; white-space: no
 header > .title { display: none; margin: 0 auto 0 0; min-width: 0; padding-left: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 17px/1.2 var(--sans); }
 body.account header > .title { display: block; }
 header .pic { width: 34px; height: 34px; }
-body.wide:not(.tree):not(.account):not(.subpage) header > .back { display: none; }
+body.wide:not(.tree):not(.account) header > .back { display: none; }
 body.tree header > .brain { display: none; }
 
 .pic { flex: none; display: block; width: 46px; height: 46px; border-radius: 50%; object-fit: cover; background: var(--block); }

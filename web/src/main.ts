@@ -49,10 +49,13 @@ let START = false;
 const START_SHOWN = 2000;
 let TRIP = 0;
 
-// the first active agent in the list, the one / opens: as Server stamped
-// it till the team comes, then the team's
+// the first active agent in the list: as Server stamped it till the team
+// comes, then the team's
 const FIRST = document.documentElement.dataset.first ?? "";
 const first = () => v.team.find((m) => m.archived === 0)?.id ?? FIRST;
+
+// the last chat opened, in this browser (#184)
+const LAST = "ki.chat";
 
 const AGENT = /^\/a\/([a-z0-9]{1,16})(\/edit)?$/;
 
@@ -61,10 +64,10 @@ const SUB = /^\/a\/([a-z0-9]{1,16})\/s\/([A-Za-z]{2,40})$/;
 
 const PAGES = ["/settings", "/account"];
 
-// a reloaded screen over a chat (#164) starts on that chat's agent, or on
-// the last chat open in this tab, whatever width the chain was laid at
-const OVER = get(history.state, "chain");
-const v = View.view_new(AGENT.exec(location.pathname)?.[1] ?? (Array.isArray(OVER) ? AGENT.exec(String(OVER.at(-2)))?.[1] : undefined) ?? ([...PAGES, "/new"].includes(location.pathname) ? sessionStorage.getItem(kept("chat")) : null) ?? FIRST);
+const TREE = "/tree";
+
+// a screen starts on its own agent's chat, else on the last one opened
+const v = View.view_new(AGENT.exec(location.pathname)?.[1] ?? SUB.exec(location.pathname)?.[1] ?? (location.pathname === TREE ? new URLSearchParams(location.search).get("a") : null) ?? localStorage.getItem(LAST) ?? FIRST);
 
 const BOX = $(".composer .field", HTMLElement);
 
@@ -214,8 +217,6 @@ async function boot_me(): Promise<unknown> {
 
 
 const FORM = /^\/(new|a\/([a-z0-9]{1,16})\/edit)$/;
-
-const TREE = "/tree";
 
 const OLDER = "This page is older than the server: reload it.";
 
@@ -751,7 +752,7 @@ function hear(msg: View.Server): void {
   if (msg.$ === "team") {
     Html.team_set(v.team);
     start(v.team);
-    if (location.pathname === "/" && v.agent !== first()) {
+    if (location.pathname === "/" && v.agent !== home()) {
       route();
     }
     if (location.pathname === "/settings") {
@@ -1314,30 +1315,32 @@ function depth(path: string): string[] {
   return up === null ? [path] : [...depth(up), path];
 }
 
-// the header's <: the screen before this one in the history, as the
-// phone's back
+// the header's <: the screen above this one, the list from any chat
+// (#184)
 function up_to(): string {
-  return stack().at(-2) ?? "/";
+  return up_from(location.pathname + location.search + location.hash) ?? "/";
 }
 
 // the screen above: from the memory or an agent's settings to its chat;
-// from Settings or a new agent, when wide, to the chat that was open
-// (#164); from those on a phone, a chat or a subagent to the list
+// from anything else to /, which is the list on a phone and the last chat
+// opened when wide
 function up_from(path: string): string | null {
   const url = new URL(path, location.origin);
   const edit = FORM.exec(url.pathname)?.[2];
   if (url.pathname === TREE) {
-    return "/a/" + (url.searchParams.get("a") ?? first());
+    return "/a/" + (url.searchParams.get("a") ?? home());
   }
   if (edit !== undefined) {
     return "/a/" + edit;
   }
-  return url.pathname === "/" ? null : over_chat(url.pathname) && WIDE.matches && v.agent !== first() ? "/a/" + v.agent : "/";
+  return url.pathname === "/" ? null : "/";
 }
 
-// a screen that sits over the chat that was open, when wide
-function over_chat(path: string): boolean {
-  return PAGES.includes(path) || path === "/new";
+// the chat / opens when wide: the last one opened while it is in the list,
+// else the first (#184)
+function home(): string {
+  const last = localStorage.getItem(LAST);
+  return last !== null && (v.team.length === 0 || v.team.some((m) => m.id === last && m.archived === 0)) ? last : first();
 }
 
 // a change of screen, in a short slide on a phone (in going down a level,
@@ -1387,8 +1390,10 @@ function route(): void {
   if ((!chat || sub !== null) && left && SCROLL.away === null) {
     SCROLL.away = { y: scrollY, end: SCROLL.end, chat: shown_key() };
   }
-  chat_to(AGENT.exec(p)?.[1] ?? sub?.[1] ?? (tree ? new URLSearchParams(location.search).get("a") ?? first() : p === "/" ? first() : v.agent));
-  sessionStorage.setItem(kept("chat"), v.agent);
+  chat_to(AGENT.exec(p)?.[1] ?? sub?.[1] ?? (tree ? new URLSearchParams(location.search).get("a") ?? home() : p === "/" ? home() : v.agent));
+  if (chat) {
+    localStorage.setItem(LAST, v.agent);
+  }
   for (const out of View.view_act(v, { $: "Goto", name: sub?.[2] ?? null })) {
     View.link_send(v, out);
   }
