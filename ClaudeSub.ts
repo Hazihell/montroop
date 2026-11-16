@@ -52,6 +52,10 @@ const HOUR = { type: "ephemeral", ttl: "1h" };
 
 const OUTLASTS_CLAUDE_CODES_MCP_TIMEOUT = 1e8;
 
+// Ki's one MCP server in Claude Code, which names each of its tools for
+// the model mcp__ki__<name> (#190)
+const MCP = "ki";
+
 const SIGN_IN = "claude-sub is not signed in, or its sign-in expired: run `ki serve claude login` on the server";
 
 const OFF = ["server_error", "overloaded", "billing_error", "account_on_hold", "oauth_org_not_allowed", "verification_required", "model_not_found"];
@@ -241,7 +245,7 @@ export namespace ClaudeSub {
       thinking               : { type: "adaptive", display: "summarized" },
       systemPrompt           : [ask.system, boundary, ...(ask.own === undefined || ask.own === "" ? [] : [ask.own])],
       tools,
-      allowedTools           : [...tools, "mcp__ki"],
+      allowedTools           : [...tools, "mcp__" + MCP],
       disallowedTools        : deny,
       permissionMode         : "dontAsk",
       mcpServers             : {},
@@ -263,7 +267,8 @@ export namespace ClaudeSub {
   }
 
   export function mcp(server: string): Parameters<Query["setMcpServers"]>[0] {
-    return server ? { ki: { type: "http", url: server, alwaysLoad: true, timeout: OUTLASTS_CLAUDE_CODES_MCP_TIMEOUT } } : {};
+    const url = server + "?prefix=mcp__" + MCP + "__";
+    return server ? { [MCP]: { type: "http", url, alwaysLoad: true, timeout: OUTLASTS_CLAUDE_CODES_MCP_TIMEOUT } } : {};
   }
 
 

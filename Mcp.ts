@@ -46,6 +46,10 @@ export type Servers = { all: Map<string, Server>; note: (text: string) => void; 
 // the servers a turn started with, which it keeps to its end
 export type Held = Servers["all"];
 
+// a tool's name, as the model sees it, is at most this long at every
+// vendor Ki talks to, tested 16 Nov 2026 (#190)
+export const NAME_MOST = 128;
+
 const START_MS = 60e3;
 const LIST_MS = 5e3;
 const KEEP_MS = 3600e3;
@@ -232,8 +236,8 @@ export namespace Mcp {
   }
 
   // its tools, named for the model; one whose name is over the vendors'
-  // 64 characters or clashes with another's once made theirs, or whose
-  // input schema they refuse, left out, logged and told the chat
+  // NAME_MOST characters or clashes with another's once made theirs, or
+  // whose input schema they refuse, left out, logged and told the chat
   export async function listed(servers: Servers, s: Server, signal: AbortSignal): Promise<Spec[]> {
     const specs: Spec[] = [];
     const names = new Map<string, string>();
@@ -246,7 +250,7 @@ export namespace Mcp {
       const got = await s.link.ask("tools/list", cursor === undefined ? {} : { cursor }, signal);
       for (const tool of items(get(got, "tools"))) {
         const name = Mcp.name(s.conf.name, String(get(tool, "name")));
-        const long = name.length > 64 ? "its name for the model, " + name + ", is over 64 characters" : null;
+        const long = name.length > NAME_MOST ? "its name for the model, " + name + ", is over " + NAME_MOST + " characters" : null;
         const schema = long ?? (names.has(name) ? "its name is another's for the model" : Mcp.schema(get(tool, "inputSchema")));
         if (typeof schema === "string") {
           left.push(JSON.stringify(String(get(tool, "name"))) + " (" + schema + ")");

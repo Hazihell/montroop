@@ -4,7 +4,7 @@ import * as config from "./Config.ts";
 import { Limit } from "./Limit.ts";
 import { INT, JOB, STR, TOOLS, spec, type Bg, type Job, type Skill, type Spec } from "./Machine.ts";
 import { clip_page } from "./Clip.ts";
-import { Mcp, type Held, type Servers } from "./Mcp.ts";
+import { Mcp, NAME_MOST, type Held, type Servers } from "./Mcp.ts";
 import { Memory } from "./Memory.ts";
 import * as Prompts from "./Prompts.ts";
 import { Team } from "./Team.ts";
@@ -71,6 +71,8 @@ export type Tools = {
   hub     : Hub;
   // the seat of the agent that spawned a subagent, one done now too
   owner   : (who: string) => Seat | undefined;
+  // the tools last left out of an agent's list for their names' length
+  short   : Map<string, string>;
 };
 
 export const SEARCHES = 10;
@@ -127,7 +129,7 @@ export namespace Tools {
     const url = Tools.base() + key + "/";
     const run = (device: string, job: Job, signal: AbortSignal) => Tools.job(tools, device, job, signal, crypto.randomUUID());
     const mcp = Mcp.servers((text) => hub.note(text), run, (device) => Tools.live(tools.devices.get(device)), () => hub.off());
-    const tools: Tools = { devices: new Map(), seats: new Map(), mcp, held: new Map(), left: false, key, url, hub, owner: () => undefined };
+    const tools: Tools = { devices: new Map(), seats: new Map(), mcp, held: new Map(), left: false, key, url, hub, owner: () => undefined, short: new Map() };
     CHATS.set(key, tools);
     return tools;
   }
@@ -189,7 +191,9 @@ export namespace Tools {
   }
 
   export async function fetch(req: Request): Promise<Response> {
-    const [, key, who, ...rest] = new URL(req.url).pathname.split("/");
+    const url = new URL(req.url);
+    const [, key, who, ...rest] = url.pathname.split("/");
+    const prefix = url.searchParams.get("prefix") ?? "";
     const tools = CHATS.get(key);
     const caller = tools?.seats.has(who) === true;
     const msg: unknown = await req.json().catch(() => ({}));
@@ -217,7 +221,7 @@ export namespace Tools {
         return new Response(null, { status: 202 });
       }
       const no = { error: { code: -32601, message: "no method " + String(method) } };
-      const out = await Tools.answer(tools, who, String(method), rec(params) ? params : {}, signal, id).then(
+      const out = await Tools.answer(tools, who, String(method), rec(params) ? params : {}, signal, id, prefix).then(
         (result) => (result === null ? no : { result }),
         (err: unknown) => ({ error: { code: -32603, message: err_why(err) } }),
       );
@@ -230,7 +234,9 @@ export namespace Tools {
     }
   }
 
-  export async function answer(tools: Tools, who: string, method: string, params: Record<string, unknown>, signal: AbortSignal, id: string): Promise<object | null> {
+  // prefix: what the caller puts before each tool's name for the model,
+  // in the same NAME_MOST characters (#190)
+  export async function answer(tools: Tools, who: string, method: string, params: Record<string, unknown>, signal: AbortSignal, id: string, prefix = ""): Promise<object | null> {
     switch (method) {
       case "initialize": {
         const protocolVersion = params.protocolVersion ?? "2025-06-18";
@@ -238,7 +244,9 @@ export namespace Tools {
       }
       case "tools/list": {
         const bare = tools.seats.get(who)?.mcp === false;
-        const theirs = bare ? [] : await Mcp.list(tools.mcp, Tools.held(tools, who));
+        const all = bare ? [] : await Mcp.list(tools.mcp, Tools.held(tools, who));
+        const theirs = all.filter((t) => t.name.length <= NAME_MOST - prefix.length);
+        Tools.shortened(tools, who, all.filter((t) => !theirs.includes(t)).map((t) => t.name), prefix);
         const notes = bare ? [] : Mcp.heard(tools.mcp, Tools.off(tools), who);
         return { tools: [...Tools.list(tools.seats.get(who)?.subs === null), ...theirs].map((t) => ({ name: t.name, description: t.info, inputSchema: t.schema })), notes };
       }
@@ -258,6 +266,19 @@ export namespace Tools {
       }
     }
     return null;
+  }
+
+  // the agent is told of the tools its turn leaves out for a name too long
+  // with the caller's prefix, when they change
+  export function shortened(tools: Tools, who: string, names: string[], prefix: string): void {
+    const now = names.join(", ");
+    if (now !== (tools.short.get(who) ?? "")) {
+      tools.short.set(who, now);
+      if (now !== "") {
+        const most = NAME_MOST - prefix.length;
+        tools.seats.get(who)?.note("MCP tools left out, their names over the " + most + " characters this model takes (" + NAME_MOST + ", with " + prefix + " before each): " + now + ".");
+      }
+    }
   }
 
   // the same for every agent, so one cached copy serves them all, and the
