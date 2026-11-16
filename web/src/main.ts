@@ -250,8 +250,8 @@ function copy_draw(): void {
   const opening = parsed(document.getElementById("opening")?.textContent ?? "null");
   const team = copy_read(TEAM_COPY);
   View.view_adopt(v, Array.isArray(opening) ? (opening as View.Server[]) : []);
-  if (v.team.length === 0 && Array.isArray(team)) {
-    v.team = team as View.Mate[];
+  if (v.team.length === 0 && get(team, "wire") === View.WIRE && Array.isArray(get(team, "team"))) {
+    v.team = get(team, "team") as View.Mate[];
   }
   Html.team_set(v.team);
 }
@@ -311,7 +311,7 @@ function copy_keep(): void {
     return;
   }
   copy_put(key, text);
-  copy_put(TEAM_COPY, JSON.stringify(v.team));
+  copy_put(TEAM_COPY, JSON.stringify({ wire: View.WIRE, team: v.team }));
 }
 
 // full storage makes room: the other chats' copies go, the oldest first
