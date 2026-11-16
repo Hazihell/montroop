@@ -99,8 +99,10 @@ $(".view").replaceChildren(...meta.view.flatMap(({ h, t }) => {
   return [a, b];
 }));
 // the columns scroll up and down in a pane of their own, inside the
-// tree's sideways scroll: Chrome on Android ends a fling up or down in a
-// scroller that snaps sideways on another level
+// tree's sideways scroll: in one scroller that did both and snapped
+// sideways, Chrome on Android often ended a swipe up or down let go
+// moving a level over, its fling cut short (seen on an emulator, 43 and
+// 44)
 const names = ["ROOT", ...B.map((_, l) => "LVL" + l)], head = document.createElement("div"), pane = document.createElement("div"), rail = document.createElement("div"), room = document.createElement("div");
 head.className = "heads";
 pane.className = "cols";
