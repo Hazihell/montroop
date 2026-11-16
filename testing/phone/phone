@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""phone touch X,Y@MS ... | phone eval JS | phone open URL
+
+touch: a finger down at the first point (pixels of the 1080x2400 screen),
+on through the next ones at 120 Hz (MS from the touch's start), up at the
+last: a touchscreen of its own (uinput), so all of Android's input and
+Chrome's gestures see it. The phone times the points; busy drawing, it may
+let a few go late at once, which spoils a fling's speed: fling with
+`adb shell input swipe X1 Y1 X2 Y2 MS`.
+eval: runs JS in Chrome's tab (remote debugging), prints its value as JSON
+(a promise's once settled). open: the tab goes to URL."""
+import base64, json, os, socket, struct, subprocess, sys, urllib.request
+
+def touch(points):
+    pts = []
+    for p in points:
+        xy, t = p.split("@") if "@" in p else (p, "0")
+        pts.append((*map(float, xy.split(",")), float(t)))
+    axes = [("SLOT", 9), ("TRACKING_ID", 65535), ("POSITION_X", 1079), ("POSITION_Y", 2399), ("PRESSURE", 255), ("TOUCH_MAJOR", 255)]
+    out = [{"command": "register", "name": "ki finger", "vid": 0x18d1, "pid": 0x4ee7, "bus": "virtual", "configuration": [
+        {"type": "UI_SET_EVBIT", "data": ["EV_KEY", "EV_ABS"]}, {"type": "UI_SET_KEYBIT", "data": ["BTN_TOUCH"]},
+        {"type": "UI_SET_ABSBIT", "data": ["ABS_MT_" + a for a, _ in axes]}, {"type": "UI_SET_PROPBIT", "data": ["INPUT_PROP_DIRECT"]}],
+        "abs_info": [{"code": "ABS_MT_" + a, "info": {"value": 0, "minimum": 0, "maximum": m, "fuzz": 0, "flat": 0, "resolution": 0}} for a, m in axes]},
+        {"command": "delay", "duration": 300}]
+    def at(x, y, *more):
+        out.append({"command": "inject", "events": [*more, "EV_ABS", "ABS_MT_POSITION_X", round(x), "EV_ABS", "ABS_MT_POSITION_Y", round(y), "EV_SYN", "SYN_REPORT", 0]})
+    at(pts[0][0], pts[0][1], "EV_ABS", "ABS_MT_TRACKING_ID", 1, "EV_ABS", "ABS_MT_PRESSURE", 60, "EV_ABS", "ABS_MT_TOUCH_MAJOR", 8, "EV_KEY", "BTN_TOUCH", 1)
+    for (x0, y0, a), (x1, y1, b) in zip(pts, pts[1:]):
+        n = max(1, round((b - a) * .12))
+        for k in range(1, n + 1):
+            out.append({"command": "delay", "duration": round(a + (b - a) * k / n) - round(a + (b - a) * (k - 1) / n)})
+            at(x0 + (x1 - x0) * k / n, y0 + (y1 - y0) * k / n)
+    out += [{"command": "inject", "events": ["EV_ABS", "ABS_MT_TRACKING_ID", -1, "EV_KEY", "BTN_TOUCH", 0, "EV_SYN", "SYN_REPORT", 0]}, {"command": "delay", "duration": 100}]
+    subprocess.run(["adb", "shell", "cat > /data/local/tmp/touch.json && uinput /data/local/tmp/touch.json"], input="\n".join(json.dumps({"id": 1, **o}) for o in out).encode(), check=True)
+
+def page():
+    tabs = json.load(urllib.request.urlopen("http://127.0.0.1:9222/json"))
+    url = next(t for t in tabs if t["type"] == "page")["webSocketDebuggerUrl"]
+    path = url.split("/", 3)[3]
+    s = socket.create_connection(("127.0.0.1", 9222))
+    s.sendall(("GET /%s HTTP/1.1\r\nHost: 127.0.0.1:9222\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n\r\n" % (path, base64.b64encode(os.urandom(16)).decode())).encode())
+    f = s.makefile("rb")
+    while f.readline() not in (b"\r\n", b""):
+        pass
+    def call(method, **params):
+        data = json.dumps({"id": 1, "method": method, "params": params}).encode()
+        n = len(data)
+        head = struct.pack("!BB", 0x81, 0x80 | n) if n < 126 else struct.pack("!BBH", 0x81, 0xfe, n) if n < 65536 else struct.pack("!BBQ", 0x81, 0xff, n)
+        s.sendall(head + b"\0\0\0\0" + data)
+        while True:
+            n = f.read(2)[1] & 127
+            n = struct.unpack("!H", f.read(2))[0] if n == 126 else struct.unpack("!Q", f.read(8))[0] if n == 127 else n
+            msg = json.loads(f.read(n))
+            if msg.get("id") == 1:
+                return msg
+    return call
+
+def main(cmd, *args):
+    if cmd == "touch":
+        touch(args)
+    elif cmd == "eval":
+        r = page()("Runtime.evaluate", expression=" ".join(args), awaitPromise=True, returnByValue=True)
+        res = r.get("result", {})
+        if "exceptionDetails" in res:
+            sys.exit(json.dumps(res["exceptionDetails"]))
+        print(json.dumps(res.get("result", {}).get("value")))
+    elif cmd == "open":
+        page()("Page.navigate", url=args[0])
+    else:
+        sys.exit(__doc__)
+
+main(*sys.argv[1:]) if len(sys.argv) > 1 else sys.exit(__doc__)
