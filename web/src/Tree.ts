@@ -419,10 +419,11 @@ const slide = (c: number) => {
 };
 // a touch pans the tree up and down only (style.css), so a finger's
 // wobble or a fling up or down never takes it to another level; a touch
-// that first goes sideways drags it here, as a mouse does (not on an open
-// card, whose text scrolls). Let go, it slides to the nearest column, or
-// on to the next one after a flick or a quarter column; back to where it
-// was if the browser took the touch to scroll
+// that first goes sideways drags it here, as a mouse does (on an open
+// card too: its text wraps, so scrolls only up and down). Let go, it
+// slides to the nearest column, or on to the next one after a flick or a
+// quarter column; back to where it was if the browser took the touch to
+// scroll
 let drag: { x: number; y: number; left: number; id: number; on: boolean; path: [number, number][] } | null = null, dragged = false;
 // its last point FLICK.ms or more before now, or its first (the older
 // ones dropped)
@@ -434,8 +435,7 @@ tree.addEventListener("pointerdown", (e) => {
   if (drag?.on) return;
   dragged = false;
   const bar = e.target === tree && e.offsetX >= tree.clientWidth;
-  const free = (e.target as HTMLElement).closest(e.pointerType === "mouse" ? ".big, h3" : ".big") === null;
-  const ok = free && (e.pointerType === "mouse" ? e.button === 0 && !bar : e.isPrimary);
+  const ok = e.pointerType === "mouse" ? e.button === 0 && !bar && (e.target as HTMLElement).closest(".big, h3") === null : e.isPrimary;
   drag = ok ? { x: e.clientX, y: e.clientY, left: tree.scrollLeft, id: e.pointerId, on: false, path: [[e.timeStamp, tree.scrollLeft]] } : null;
 }, { signal });
 addEventListener("pointermove", (e: PointerEvent) => {
