@@ -472,7 +472,9 @@ const drop = (e: PointerEvent) => {
 };
 addEventListener("pointerup", drop, { signal });
 addEventListener("pointercancel", drop, { signal });
-tree.addEventListener("click", (e) => dragged && ((dragged = false), e.stopPropagation(), e.preventDefault()), { capture: true, signal });
+// the click a drag ends in, not one with no press (detail 0, as
+// assistive tech's): a touch's drag ends in no click
+tree.addEventListener("click", (e) => dragged && e.detail > 0 && ((dragged = false), e.stopPropagation(), e.preventDefault()), { capture: true, signal });
 const here = () => goal ?? Math.round(tree.scrollLeft / step());
 back.addEventListener("click", () => slide(here() - 1), { signal });
 next.addEventListener("click", () => slide(Math.min(here() + 1, Math.ceil((tree.scrollWidth - tree.clientWidth) / step()))), { signal });
