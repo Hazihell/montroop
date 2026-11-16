@@ -9,6 +9,7 @@ emu=$!
 # up SECONDS COMMAND WHAT: waits until COMMAND succeeds
 up() { for _ in $(seq "$1"); do sh -c "$2" > /dev/null 2>&1 && return; kill -0 $emu 2> /dev/null || no "the emulator stopped"; sleep 1; done; no "$3 in $1 s"; }
 up 300 '[ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = 1 ]' "Android did not start"
+adb push /touch /data/local/tmp/touch > /dev/null 2>&1
 adb shell svc power stayon true
 adb shell settings put global hide_error_dialogs 1
 adb shell settings put system screen_off_timeout 2147483647
