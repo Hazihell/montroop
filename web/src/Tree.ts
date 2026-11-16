@@ -19,9 +19,6 @@ type Old = Map<string, number[]> & { total?: number };
 
 type Which = "TREE" | "VIEW";
 
-// a flick: faster than speed px/ms over a drag's last ms, after px
-const FLICK = { speed: .3, ms: 100, px: 24 };
-
 const S = {
   agent : "",
   want  : null as Which | null,
@@ -78,9 +75,9 @@ function $(sel: string): HTMLElement {
   return document.querySelector("#tree " + sel) as HTMLElement;
 }
 
-// (the sections have tabindex -1: Firefox focuses no other)
+// (both have tabindex -1: Firefox focuses no other)
 function focus(which: Which): void {
-  $(which === "TREE" ? ".bracket" : ".view").focus({ preventScroll: true });
+  $(which === "TREE" ? ".cols" : ".view").focus({ preventScroll: true });
 }
 
 function tabs(which: Which): void {
@@ -101,17 +98,27 @@ $(".view").replaceChildren(...meta.view.flatMap(({ h, t }) => {
   b.textContent = t;
   return [a, b];
 }));
-tree.replaceChildren(...["ROOT", ...B.map((_, l) => "LVL" + l)].map((name) => {
-  const col = document.createElement("div"), h3 = document.createElement("h3");
-  col.className = "col";
+// the columns scroll up and down in a pane of their own, inside the
+// tree's sideways scroll: Chrome on Android ends a fling up or down in a
+// scroller that snaps sideways on another level
+const names = ["ROOT", ...B.map((_, l) => "LVL" + l)], head = document.createElement("div"), pane = document.createElement("div");
+head.className = "heads";
+pane.className = "cols";
+pane.tabIndex = -1;
+head.append(...names.map((name) => {
+  const h3 = document.createElement("h3");
   h3.tabIndex = 0;
   h3.textContent = name;
-  col.append(h3);
+  return h3;
+}));
+pane.append(...names.map(() => {
+  const col = document.createElement("div");
+  col.className = "col";
   return col;
 }));
-tree.scrollTop = 0;
+tree.replaceChildren(head, pane);
 let which: Which = "TREE";
-const cols = [...tree.children] as HTMLElement[], em = parseFloat(getComputedStyle(tree).fontSize), G = .75 * em, Y = 2.6 * em, HC = 9 * em;
+const heads = [...head.children] as HTMLElement[], cols = [...pane.children] as HTMLElement[], em = parseFloat(getComputedStyle(tree).fontSize), G = .75 * em, Y = .2 * em, HC = 9 * em;
 const HL = 1.5 * 11.5, HM = .7 * 11.5, PB = .7 * em, calm = matchMedia("(prefers-reduced-motion: reduce)");
 tree.style.setProperty("--card", HC + "px");
 const T = B.length - 1, vt = Math.max(-1, ...V.map((p) => p[0])), seen = new Set(V.map((p) => p.join(".")));
@@ -119,9 +126,9 @@ const has = (l: number, i: number) => (l < 0 ? i < N : B[l][i] === "1"), at = (l
 const note = document.createElement("p");
 note.className = "note";
 const lo = <T,>(list: ArrayLike<T>, ok: (x: T) => boolean) => { let a = 0, z = list.length; while (a < z) { const m = (a + z) >> 1; ok(list[m]) ? (z = m) : (a = m + 1); } return a; };
-const step = () => cols[1].offsetLeft - cols[0].offsetLeft || 1;
+const step = () => heads[1].getBoundingClientRect().left - heads[0].getBoundingClientRect().left || 1;
 const got = new Map<string, Got | null>(), shown = new Map<string, Card>();
-let L = vt, plan!: Plan, moving = 0, wait: ReturnType<typeof setTimeout> | undefined, width = 0, started = false, left = 0, sliding = false, done: () => void = () => {}, goal: number | null = null, big: Card | null = null;
+let L = vt, plan!: Plan, moving = 0, wait: ReturnType<typeof setTimeout> | undefined, width = 0, started = false, left = 0, done: () => void = () => {}, goal: number | null = null, big: Card | null = null;
 const height = (_l: number, _i: number) => HC;
 const level_nodes = (L: number) => Array.from({ length: L < 0 ? N : B[L].length }, (_, i) => [L, i] as [number, number]);
 const layout = (L: number): Plan => {
@@ -198,7 +205,7 @@ const fill = (s: Card, x: Got) => {
 };
 const near = () => [Math.floor(tree.scrollLeft / step()) - 1, (tree.scrollLeft + tree.clientWidth) / step()];
 const load = () => {
-  const y = tree.scrollTop, sh = tree.clientHeight, [c0, c1] = near(), want = [...shown].filter(([, s]) => !s.thin).map(([k]) => k);
+  const y = pane.scrollTop, sh = pane.clientHeight, [c0, c1] = near(), want = [...shown].filter(([, s]) => !s.thin).map(([k]) => k);
   plan.cards.forEach((list, c) => {
     for (let x = c < c0 || c > c1 ? list.length : lo(list, (q) => q[9] >= y - 4 * sh); x < list.length && list[x][8] <= y + 5 * sh; x++) {
       list[x][6] < 2 && want.push(list[x][0] + "." + list[x][1]);
@@ -222,9 +229,9 @@ const load = () => {
     fetch("/api/tree?agent=" + encodeURIComponent(S.agent) + "&get=" + part.join(","), { signal }).then((r) => r.json() as Promise<(Got | null)[]>).then(put, () => put(part.map((k) => ({ h: k, t: "Could not load this: reload the page." }))));
   }
 };
-const draw = (y = tree.scrollTop, e = 1, old?: Old) => {
+const draw = (y = pane.scrollTop, e = 1, old?: Old) => {
   if (signal.aborted) return;
-  const p = plan, sh = tree.clientHeight, keep = new Set<string>(), [c0, c1] = near();
+  const p = plan, sh = pane.clientHeight, keep = new Set<string>(), [c0, c1] = near();
   cols.forEach((col, c) => {
     col.style.height = Y + Math.max(p.total, e < 1 ? old?.total ?? 0 : 0) + 4 * em + "px";
     const list = p.cards[c];
@@ -249,7 +256,7 @@ const draw = (y = tree.scrollTop, e = 1, old?: Old) => {
       cols[L + 1].append(note);
     }
   }
-  y !== tree.scrollTop && (tree.scrollTop = y);
+  y !== pane.scrollTop && (pane.scrollTop = y);
   back.disabled = tree.scrollLeft < 1;
   next.disabled = tree.scrollLeft + tree.clientWidth >= tree.scrollWidth - 1;
   load();
@@ -295,7 +302,7 @@ const grow = (s: Card) => {
   s.classList.add("big");
   s.style.height = "auto";
   pre.style.flex = "none";
-  const need = s.offsetHeight, top0 = Y + s.v[0], st = tree.scrollTop, sh = tree.clientHeight;
+  const need = s.offsetHeight, top0 = Y + s.v[0], st = pane.scrollTop, sh = pane.clientHeight;
   s.style.height = pre.style.flex = "";
   const hb = Math.min(need, Math.max(HC, sh - Y - G));
   if (hb <= HC + 1) return s.classList.remove("big", "more"), s.removeAttribute("aria-expanded");
@@ -328,7 +335,7 @@ const press = (s: Card) => {
   s.classList.contains("more") && grow(s);
 };
 const anchor = () => {
-  const { level, A, P, slot } = plan, k = Math.max(0, Math.min(plan.level.length - 1, lo(P, (z) => z > tree.scrollTop) - 1)), d = tree.scrollTop - P[k];
+  const { level, A, P, slot } = plan, k = Math.max(0, Math.min(plan.level.length - 1, lo(P, (z) => z > pane.scrollTop) - 1)), d = pane.scrollTop - P[k];
   return level.length ? { key: level[k].join("."), d, m: A[k] + Math.min(.999, d / slot[k]) * len(level[k][0]) } : null;
 };
 const place = (a: ReturnType<typeof anchor>, p: Plan) => {
@@ -336,10 +343,8 @@ const place = (a: ReturnType<typeof anchor>, p: Plan) => {
   const k = p.find(Math.floor(a.m)), [l, i] = p.level[k];
   return p.P[k] + (l + "." + i === a.key ? Math.min(a.d, p.slot[k]) : ((a.m - p.A[k]) / len(l)) * p.slot[k]);
 };
-// (not while sliding to another column: setting scrollTop would stop it;
-// its end packs anew)
 const redo = () => {
-  if (!moving && !sliding) {
+  if (!moving) {
     const a = anchor();
     plan = layout(L);
     draw(place(a, plan));
@@ -350,11 +355,10 @@ const pack = () => {
   const to = Math.max(-1, Math.min(T, Math.round(tree.scrollLeft / step()) - 1));
   // (a scroll event coming after the end, from where it ended, is no slide)
   left = tree.scrollLeft;
-  sliding = false;
   goal = null;
   if (to === L) return moving || redo();
   shut(true);
-  const a = anchor(), old: Old = new Map(), y0 = tree.scrollTop, t0 = performance.now(), me = ++moving, D = calm.matches ? 0 : 300;
+  const a = anchor(), old: Old = new Map(), y0 = pane.scrollTop, t0 = performance.now(), me = ++moving, D = calm.matches ? 0 : 300;
   plan.cards.forEach((list) => list.forEach((q) => old.set(q[0] + "." + q[1], [q[2], q[3], ...q[7].slice(1)])));
   shown.forEach((s, k) => old.set(k, s.v));
   old.total = plan.total;
@@ -376,7 +380,7 @@ const pack = () => {
   requestAnimationFrame(frame);
 };
 const end = "onscrollend" in tree;
-// (not while a pointer drags it: each step it sets ends a scroll; its
+// (not while a mouse drags it: each step it sets ends a scroll; its
 // slide to a column, once let go, restores the snap)
 tree.addEventListener(end ? "scrollend" : "scroll", () => {
   if (drag?.on) return;
@@ -384,15 +388,15 @@ tree.addEventListener(end ? "scrollend" : "scroll", () => {
   clearTimeout(wait);
   wait = setTimeout(pack, end ? 0 : 150);
 }, { signal });
-// a slide the user starts mid-ease ends the ease where it is (setting
-// scrollTop would stop the slide)
+// a slide the user starts mid-ease ends the ease where it is
 tree.addEventListener("scroll", () => {
   if (tree.scrollLeft !== left) {
-    [left, sliding, moving] = [tree.scrollLeft, true, 0];
+    [left, moving] = [tree.scrollLeft, 0];
     shut(true);
   }
   moving || draw();
 }, { signal });
+pane.addEventListener("scroll", () => moving || draw(), { signal });
 plan = layout(L);
 const show = () => {
   which === "TREE" || shut(true);
@@ -417,26 +421,11 @@ const slide = (c: number) => {
   done();
   tree.scrollTo({ left: goal * step(), behavior: calm.matches ? "instant" : "smooth" });
 };
-// a touch pans the tree up and down only (style.css), so a finger's
-// wobble or a fling up or down never takes it to another level; a touch
-// that first goes sideways drags it here, as a mouse does (on an open
-// card too: its text wraps, so scrolls only up and down). Let go, it
-// slides to the nearest column, or on to the next one after a flick or a
-// quarter column; back to where it was if the browser took the touch to
-// scroll
-let drag: { x: number; y: number; left: number; id: number; on: boolean; path: [number, number][] } | null = null, dragged = false;
-// its last point FLICK.ms or more before now, or its first (the older
-// ones dropped)
-const since = (path: [number, number][], now: number) => {
-  while (path.length > 1 && path[1][0] <= now - FLICK.ms) path.shift();
-  return path[0];
-};
+let drag: { x: number; y: number; left: number; id: number; on: boolean } | null = null, dragged = false;
 tree.addEventListener("pointerdown", (e) => {
-  if (drag?.on) return;
   dragged = false;
-  const bar = e.target === tree && e.offsetX >= tree.clientWidth;
-  const ok = e.pointerType === "mouse" ? e.button === 0 && !bar && (e.target as HTMLElement).closest(".big, h3") === null : e.isPrimary;
-  drag = ok ? { x: e.clientX, y: e.clientY, left: tree.scrollLeft, id: e.pointerId, on: false, path: [[e.timeStamp, tree.scrollLeft]] } : null;
+  const bar = e.target === tree ? e.offsetY >= tree.clientHeight : e.target === pane && e.offsetX >= pane.clientWidth;
+  drag = e.pointerType === "mouse" && e.button === 0 && !bar && !(e.target as HTMLElement).closest(".big, h3") ? { x: e.clientX, y: e.clientY, left: tree.scrollLeft, id: e.pointerId, on: false } : null;
 }, { signal });
 addEventListener("pointermove", (e: PointerEvent) => {
   if (!drag || e.pointerId !== drag.id) return;
@@ -450,19 +439,13 @@ addEventListener("pointermove", (e: PointerEvent) => {
   }
   getSelection()?.removeAllRanges();
   tree.scrollLeft = drag.left - dx;
-  drag.path.push([e.timeStamp, tree.scrollLeft]);
-  since(drag.path, e.timeStamp);
 }, { signal });
 const drop = (e: PointerEvent) => {
   if (!drag || e.pointerId !== drag.id) return;
-  const { on, left, path } = drag;
+  const on = drag.on;
   drag = null;
   if (!on) return;
-  const [t, x] = since(path, e.timeStamp), v = (tree.scrollLeft - x) / Math.max(1, e.timeStamp - t);
-  const at = tree.scrollLeft / step(), from = Math.round(left / step()), fling = Math.abs(v) > FLICK.speed && Math.abs(tree.scrollLeft - left) > FLICK.px;
-  const way = fling ? Math.sign(v) : Math.round(at) === from && Math.abs(at - from) > .25 ? Math.sign(at - from) : 0;
-  const to = e.type === "pointercancel" ? from : way > 0 ? Math.ceil(at) : way < 0 ? Math.floor(at) : Math.round(at);
-  const c = Math.max(0, Math.min(to, Math.ceil((tree.scrollWidth - tree.clientWidth) / step())));
+  const c = Math.max(0, Math.min(Math.round(tree.scrollLeft / step()), Math.ceil((tree.scrollWidth - tree.clientWidth) / step())));
   if (Math.abs(tree.scrollLeft - c * step()) < 1) {
     tree.classList.remove("drag");
     pack();
@@ -473,14 +456,14 @@ const drop = (e: PointerEvent) => {
 addEventListener("pointerup", drop, { signal });
 addEventListener("pointercancel", drop, { signal });
 // the click a drag ends in, not one with no press (detail 0, as
-// assistive tech's): a touch's drag ends in no click
+// assistive tech's): a drag let go off the tree ends in no click
 tree.addEventListener("click", (e) => dragged && e.detail > 0 && ((dragged = false), e.stopPropagation(), e.preventDefault()), { capture: true, signal });
 const here = () => goal ?? Math.round(tree.scrollLeft / step());
 back.addEventListener("click", () => slide(here() - 1), { signal });
 next.addEventListener("click", () => slide(Math.min(here() + 1, Math.ceil((tree.scrollWidth - tree.clientWidth) / step()))), { signal });
 const go = (t: HTMLElement) => {
-  const col = t.closest("h3")?.parentNode as HTMLElement | undefined;
-  col && slide(cols.indexOf(col));
+  const h3 = t.closest("h3");
+  h3 && slide(heads.indexOf(h3));
 };
 tree.addEventListener("click", (e) => {
   const s = (e.target as HTMLElement).closest<Card>(".s");
