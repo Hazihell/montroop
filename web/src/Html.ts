@@ -351,7 +351,7 @@ export function settings_html(page: Page): string {
   const error = page.error === null ? "" : `<p class="why bad">${esc(page.error)}</p>`;
   const none = page.none === null ? "" : `<p class="why bad">${esc(page.none).replace(/`([^`]+)`/g, "<code>$1</code>")}.</p>`;
   const profiles = page.profiles === null ? "" : section_html("Profiles", `<p class="sub">Falls back to the next model when one is out.</p><div class="set profiles" data-key="profiles"><div class="field"></div><p class="err"></p></div>`);
-  return error + none + `<form class="settings" autocomplete="off">` + GROUPS.map(group).join("") + profiles + keys + `</form>`;
+  return error + none + `<form class="settings" autocomplete="off">` + GROUPS.map(group).join("") + profiles + keys + `</form><p class="sub">Ki version ${esc(page.ki)}</p>`;
 }
 
 export function offered(vendors: string[], models: string[]): string[] {

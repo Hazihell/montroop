@@ -4,6 +4,7 @@ import { LABELS } from "./Pick.ts";
 import { write_whole } from "./Write.ts";
 import { err_code, err_why } from "./Err.ts";
 import { get, rec } from "./Json.ts";
+import { VERSION } from "./Update.ts";
 
 export type Row = {
   key     : string;
@@ -17,7 +18,7 @@ export type Row = {
 
 export type Key = { name: string; env: string; from: config.From; tail: string };
 
-export type Page = { version: string; settings: Row[]; keys: Key[]; profiles: Record<string, string[]> | null; error: string | null; none: string | null };
+export type Page = { version: string; ki: string; settings: Row[]; keys: Key[]; profiles: Record<string, string[]> | null; error: string | null; none: string | null };
 
 type Out = { status: number; body: object; saved: string[]; wrote: boolean };
 
@@ -64,7 +65,7 @@ export namespace Settings {
       return { name, env, from, tail: Settings.tail(key) };
     });
     const profiles = process.env.KI_PROFILES !== undefined ? null : Settings.profiles(file.profiles) ?? {};
-    return { version: snap.version, settings, keys: shown, profiles, error, none: config.config_none() };
+    return { version: snap.version, ki: VERSION, settings, keys: shown, profiles, error, none: config.config_none() };
   }
 
   export function tail(key: string): string {
