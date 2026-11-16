@@ -267,8 +267,11 @@ export namespace ClaudeSub {
   }
 
   export function mcp(server: string): Parameters<Query["setMcpServers"]>[0] {
-    const url = server + "?prefix=mcp__" + MCP + "__";
-    return server ? { [MCP]: { type: "http", url, alwaysLoad: true, timeout: OUTLASTS_CLAUDE_CODES_MCP_TIMEOUT } } : {};
+    return server ? { [MCP]: { type: "http", url: ClaudeSub.url(server), alwaysLoad: true, timeout: OUTLASTS_CLAUDE_CODES_MCP_TIMEOUT } } : {};
+  }
+
+  export function url(server: string): string {
+    return server + "?prefix=mcp__" + MCP + "__";
   }
 
 
@@ -420,7 +423,10 @@ export namespace ClaudeSub {
           if (signal.aborted) {
             return {};
           }
-          await ClaudeSub.first_message(code, ask);
+          // Claude Code passes on no note of its tools' list: Ki gives them
+          // in the first message (#190)
+          const notes = ask.server === "" ? [] : await Agent.notes(ClaudeSub.url(ask.server), signal);
+          await ClaudeSub.first_message(code, ask, notes);
         } else {
           await ClaudeSub.go_on(code, ask, lead);
         }
@@ -477,9 +483,9 @@ export namespace ClaudeSub {
 
   // a new Claude Code's message: the call's blocks and every message steered
   // into the call so far (AskAI.steered)
-  export async function first_message(code: Code, ask: Ask): Promise<void> {
+  export async function first_message(code: Code, ask: Ask, notes: string[]): Promise<void> {
     await AskAI.steered(ask);
-    const blocks = ask.blocks.filter((b) => b.text !== "");
+    const blocks = Agent.noted(ask.blocks, notes).filter((b) => b.text !== "");
     const taken = AskAI.taken(ask);
     code.box.put([...blocks.map((b) => b.text), ...taken.map((say) => say.text)], [...(ask.imgs ?? []), ...taken.flatMap((say) => say.imgs)], blocks.slice(0, -1).findLastIndex((b) => b.mark));
   }

@@ -180,6 +180,10 @@ export namespace Mcp {
     return notes;
   }
 
+  export function forget(servers: Servers, who: string): void {
+    servers.all.forEach((s) => s.heard.delete(who));
+  }
+
   export async function start(servers: Servers, s: Server): Promise<Spec[] | string> {
     if (!servers.open(s.conf.device)) {
       Mcp.close(s);

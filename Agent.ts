@@ -138,9 +138,8 @@ export namespace Agent {
       throw new Error("no API key: set " + wire.key.toUpperCase() + "_API_KEY");
     }
     const { tools, notes } = await Agent.server(run);
-    const noted = notes.length === 0 ? [] : [{ text: notes.map((note) => "Note: " + note + "\n").join("") + "\n", mark: false }];
     const taken = AskAI.taken(ask);
-    const parts = [...ask.blocks.slice(0, -1), ...noted, ...ask.blocks.slice(-1), ...taken.map((say) => ({ text: say.text, mark: false }))].filter((b) => b.text !== "");
+    const parts = [...Agent.noted(ask.blocks, notes), ...taken.map((say) => ({ text: say.text, mark: false }))].filter((b) => b.text !== "");
     const items: Item[] = [{ $: "User", parts, imgs: [...(ask.imgs ?? []), ...taken.flatMap((say) => say.imgs)] }];
     while (!signal.aborted) {
       const step = await Agent.step(wire, run, key, (max) => wire.body(ask, items, tools, max), items);
@@ -493,27 +492,44 @@ export namespace Agent {
     }
   }
 
+  // the tools' notes are for this request: Ki counts them heard as it
+  // gives them (#190)
   export async function server(run: Doing): Promise<{ tools: Tool[]; notes: string[] }> {
     if (!run.ask.server) {
       return { tools: [], notes: [] };
     }
-    const list = await Agent.rpc(run, "tools/list", {});
+    const list = await Agent.rpc(run.ask.server, run.abort.signal, "tools/list", { notes: true });
     const tools = list.tools.map((t) => ({ name: t.name, info: t.description, schema: t.inputSchema }));
-    return { tools, notes: Array.isArray(list.notes) ? list.notes.map(String) : [] };
+    return { tools, notes: Agent.notes_of(list) };
+  }
+
+  // the notes alone, for a caller that lists the tools itself (ClaudeSub)
+  export async function notes(server: string, signal: AbortSignal): Promise<string[]> {
+    return Agent.notes_of(await Agent.rpc(server, signal, "tools/list", { notes: true }));
+  }
+
+  export function notes_of(list: Listed): string[] {
+    return Array.isArray(list.notes) ? list.notes.map(String) : [];
+  }
+
+  // the request's blocks with the tools' notes before its last
+  export function noted(blocks: Block[], notes: string[]): Block[] {
+    const noted = notes.length === 0 ? [] : [{ text: notes.map((note) => "Note: " + note + "\n").join("") + "\n", mark: false }];
+    return [...blocks.slice(0, -1), ...noted, ...blocks.slice(-1)];
   }
 
   export async function call(run: Doing, name: string, input: unknown): Promise<Out> {
-    const res = await Agent.rpc(run, "tools/call", { name, arguments: input });
+    const res = await Agent.rpc(run.ask.server, run.abort.signal, "tools/call", { name, arguments: input });
     const imgs = res.content.flatMap((part) => (part.type === "image" ? [{ type: part.mimeType ?? "", data: part.data ?? "" }] : []));
     return { text: AskAI.show(res.content), fail: res.isError === true, imgs };
   }
 
-  export async function rpc<M extends keyof Rpc>(run: Doing, method: M, params: unknown): Promise<Rpc[M]> {
-    const res = await fetch(run.ask.server, {
+  export async function rpc<M extends keyof Rpc>(server: string, signal: AbortSignal, method: M, params: unknown): Promise<Rpc[M]> {
+    const res = await fetch(server, {
       method  : "POST",
       headers : { "content-type": "application/json" },
       body    : JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-      signal  : run.abort.signal,
+      signal,
       timeout : false,
     } as RequestInit);
     const msg = (await res.json()) as { result: Rpc[M]; error?: { message: string } };

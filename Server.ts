@@ -1146,7 +1146,7 @@ export namespace Chat {
       return;
     }
     chat.subs.delete(sub.name);
-    chat.tools.seats.delete(sub.name);
+    Tools.unseat(chat.tools, sub.name);
     chat.gone.set(sub.name, sub.why === null ? "finished" : "stopped");
     void Chat.sub_sweep(chat, sub.name);
     Chat.all(chat, { $: "agent", name: sub.name, found: true, from: 0, entries: [], done: true, end: true, how: Sub.how(sub.role, sub.pick) });
@@ -2247,7 +2247,7 @@ export namespace Main {
     // memory goes once their runs have ended, every one's folder with its own
     const subs = Memory.agents(chat.mem);
     const runs = [...chat.subs.values()].map((sub) => sub.run);
-    chat.subs.forEach((sub) => chat.tools.seats.delete(sub.name));
+    chat.subs.forEach((sub) => Tools.unseat(chat.tools, sub.name));
     chat.subs.clear();
     runs.forEach((run) => {
       run.queue.splice(0).forEach((x) => x.done(null));
@@ -2256,7 +2256,7 @@ export namespace Main {
     Chat.stop(chat, null);
     clearTimeout(chat.bell);
     Main.chats.delete(chat.id);
-    Main.tools.seats.delete(chat.who);
+    Tools.unseat(Main.tools, chat.who);
     Team.drop(chat.id);
     chat.socks.forEach((sock) => Chat.join(Main.first(), sock, chat.id));
     Main.team_soon();
