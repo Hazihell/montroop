@@ -3,8 +3,13 @@ import type { Pick } from "./Pick.ts";
 import type { Live } from "./View.ts";
 import { err_stack, err_why } from "./Err.ts";
 
-// answered: its result came (#193)
-type Waiting = { text: string; tool: string; logged: boolean; started: boolean; answered: boolean };
+// answered: its result came (#193); n: its place among the calls and what
+// waits for them (Later)
+type Waiting = { text: string; tool: string; logged: boolean; started: boolean; answered: boolean; n: number };
+
+// a message that waits for the calls before it (their ids) to be logged
+// with their results (#188); live: what the chat shows of it meanwhile
+type Later = { before: string[]; step: () => void; live: Live | null; n: number };
 
 export type Heard = Event | { $: "Ended" };
 
@@ -29,8 +34,7 @@ type Calling = {
   call  : Call | null;
   live  : Live[];
   calls : Map<string, Waiting>;
-  // what waits for the calls running to be logged
-  later : Array<() => void>;
+  later : Later[];
   limit : Parked | null;
   fell  : string | null;
 };

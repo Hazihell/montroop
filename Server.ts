@@ -118,6 +118,8 @@ const SETTLE     = 200;
 // a subagent page's entries at a time; how long a stop waits for one to end
 const SHOWN      = 100;
 const HALT       = 5000;
+// the order of the calls and of what waits for them (Chat.behind)
+const SEQ        = { n: 0 };
 
 // a finished subagent's scratch folders are kept this long after its log's
 // last line, then dropped on each device, looked for about this often (#147)
@@ -690,13 +692,22 @@ export namespace Chat {
     Chat.hold(chat, () => Chat.noted(chat, chat.main, text));
   }
 
-  // the app's note waits for the calls running, each logged with its
-  // result first (#188)
   export function noted(chat: Chat, run: Talk, text: string): void {
-    if (Chat.started_unlogged(run).length > 0) {
-      run.later.push(() => Chat.noted(chat, run, text));
-    } else {
-      Chat.push(chat, run, "note", text);
+    Chat.behind(chat, run, () => Chat.log(chat, run, { kind: "note", text }, false));
+  }
+
+  // a message that comes while calls written before it have no result
+  // yet waits till each is logged with its result, so a call and its result
+  // take the call's place (#188); live: what the chat shows of it meanwhile
+  export function behind(chat: Chat, run: Talk, step: () => void, live: Live | null = null): void {
+    const before = [...run.calls].filter(([, call]) => !call.logged).map(([of]) => of);
+    if (before.length === 0 && run.later.length === 0) {
+      step();
+      return;
+    }
+    run.later.push({ before, step, live, n: SEQ.n++ });
+    if (live !== null) {
+      Chat.live(chat, run, Chat.waiting(run));
     }
   }
 
@@ -707,7 +718,7 @@ export namespace Chat {
     if (call !== undefined && !call.logged && !Chat.mid_message(chat, run)) {
       call.logged = true;
       const msg = Chat.log(chat, run, { kind: "tool", text: call.text + "\n" + text, of: pair.of, tool: pair.tool, result: call.text.length, line: Chat.line_of(call.text) }, sent);
-      Chat.later(run);
+      Chat.later(chat, run);
       return msg;
     }
     Chat.flush(chat, run);
@@ -725,10 +736,14 @@ export namespace Chat {
     return call.name === "zoom" ? "tool: " + call_text(call) : undefined;
   }
 
-  // the notes that waited for the calls running, once none is (noted)
-  export function later(run: Talk): void {
-    if (Chat.started_unlogged(run).length === 0) {
-      run.later.splice(0).forEach((step) => step());
+  // what waited (behind), in order, once the calls before it are logged
+  export function later(chat: Chat, run: Talk): void {
+    const ran = run.later.length;
+    while (run.later.length > 0 && run.later[0].before.every((of) => run.calls.get(of)?.logged !== false)) {
+      run.later.shift()?.step();
+    }
+    if (run.later.length !== ran) {
+      Chat.live(chat, run, Chat.waiting(run));
     }
   }
 
@@ -772,7 +787,7 @@ export namespace Chat {
       Chat.log(chat, run, { kind: "tool", text: call.text, of, tool: call.tool }, false);
     }
     Chat.live(chat, run, Chat.waiting(run));
-    Chat.later(run);
+    Chat.later(chat, run);
   }
 
   export function talked(chat: Chat, why = TALK_FULL): void {
@@ -872,7 +887,7 @@ export namespace Chat {
       return;
     }
     if (ev.kind === "tool" && ev.of !== undefined) {
-      run.calls.set(ev.of, { text: ev.text, tool: ev.text.split(" ", 1)[0], logged: false, started: ev.queued !== true, answered: false });
+      run.calls.set(ev.of, { text: ev.text, tool: ev.text.split(" ", 1)[0], logged: false, started: ev.queued !== true, answered: false, n: SEQ.n++ });
     } else if (ev.kind === "mind") {
       Chat.all(chat, { $: "entry", agent, kind: ev.kind, text: ev.text });
     } else if (ev.kind !== "user") {
@@ -882,9 +897,15 @@ export namespace Chat {
         call.started = true;
       }
       Chat.hold(chat, () => {
-        Chat.push(chat, run, kind, text, [], false, undefined, of === undefined ? {} : { of, tool: run.calls.get(of)?.tool });
+        const pair = of === undefined ? {} : { of, tool: run.calls.get(of)?.tool };
+        if (kind === "echo" && run.calls.get(of ?? "")?.logged === false) {
+          Chat.push(chat, run, kind, text, [], false, undefined, pair);
+        } else {
+          Chat.behind(chat, run, () => Chat.log(chat, run, { kind, text, ...pair }, false), { kind, text });
+        }
         if (of !== undefined && run.calls.delete(of)) {
           Chat.live(chat, run, Chat.waiting(run));
+          Chat.later(chat, run);
         }
       });
     }
@@ -909,8 +930,11 @@ export namespace Chat {
     Chat.hold(chat, () => Chat.noted(chat, run, text));
   }
 
+  // the calls with no result yet, and what waits for them, in order
   export function waiting(run: Talk): Live[] {
-    return [...run.calls].filter(([, call]) => !call.logged).map(([of, call]) => ({ kind: "tool", text: call.text, of }));
+    const calls = [...run.calls].filter(([, call]) => !call.logged).map(([of, call]) => ({ n: call.n, live: { kind: "tool" as const, text: call.text, of } }));
+    const later = run.later.flatMap(({ n, live }) => (live === null ? [] : [{ n, live }]));
+    return [...calls, ...later].sort((a, b) => a.n - b.n).map((x) => x.live);
   }
 
   export function unanswered(chat: Chat, run: Talk): void {
@@ -918,8 +942,9 @@ export namespace Chat {
     Chat.hold(chat, () => {
       Chat.flush(chat, run);
       ids.forEach((id) => run.calls.delete(id));
+      Chat.later(chat, run);
     });
-    Chat.live(chat, run, []);
+    Chat.live(chat, run, Chat.waiting(run));
   }
 
   // the model is asked again once each call of its answer has its result
@@ -1222,10 +1247,10 @@ export namespace Chat {
       void Run.take(chat.main, { kind: "work", text, images: [] });
       return Chat.change(chat);
     }
-    Chat.hold(chat, () => {
-      Chat.push(chat, chat.main, "work", text);
+    Chat.hold(chat, () => Chat.behind(chat, chat.main, () => {
+      Chat.log(chat, chat.main, { kind: "work", text }, false);
       Chat.change(chat);
-    });
+    }));
   }
 
   // a device's job report, acked once it's queued, and taken once: a device
@@ -2650,7 +2675,11 @@ export namespace Main {
       fs.rmSync(PID, { force: true });
       Main.chats.forEach((chat) => {
         // a call cut by the restart is logged, with no result (#188)
-        [chat.main, ...[...chat.subs.values()].map((sub) => sub.run)].forEach((run) => Chat.flush(chat, run));
+        try {
+          [chat.main, ...[...chat.subs.values()].map((sub) => sub.run)].forEach((run) => Chat.flush(chat, run));
+        } catch (err) {
+          console.error("ki: " + err_stack(err));
+        }
         Chat.stop(chat, null);
         Memory.stop(chat.mem);
       });
