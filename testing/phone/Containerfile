@@ -40,5 +40,5 @@ RUN mkdir -p /root/.android/avd/phone.avd \
        hw.lcd.width=1080 hw.lcd.height=2400 hw.lcd.density=420 hw.screen=multi-touch hw.keyboard=yes \
        hw.audioInput=no hw.audioOutput=no hw.gsmModem=no disk.dataPartition.size=6G \
        > /root/.android/avd/phone.avd/config.ini
-COPY start.sh phone /usr/local/bin/
+COPY start.sh phone battery /usr/local/bin/
 CMD ["start.sh"]
