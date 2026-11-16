@@ -23,11 +23,14 @@ type Started = {
   kept  : { specs: Spec[]; at: number } | null;
 };
 
+// left: its tools left out (listed), lefts: what each agent was told of
+// that
 type Told = {
   said  : string | null;
   shown : boolean;
   heard : Map<string, string | null>;
   left  : string;
+  lefts : Map<string, string>;
 };
 
 // turns: how many running turns hold it (#142)
@@ -88,7 +91,7 @@ export namespace Mcp {
     }
     for (const conf of want.values()) {
       if (!servers.all.has(conf.name)) {
-        servers.all.set(conf.name, { conf, up: null, fail: null, link: null, names: new Map(), stale: false, kept: null, said: null, shown: false, heard: new Map(), left: "", calls: 0, turns: 0, gone: false });
+        servers.all.set(conf.name, { conf, up: null, fail: null, link: null, names: new Map(), stale: false, kept: null, said: null, shown: false, heard: new Map(), left: "", lefts: new Map(), calls: 0, turns: 0, gone: false });
       }
     }
   }
@@ -177,11 +180,25 @@ export namespace Mcp {
       s.heard.set(who, s.said);
       notes.push(s.said ?? "MCP server " + s.conf.name + " works again.");
     }
+    for (const s of servers.all.values()) {
+      if (s.gone || off.includes(s.conf.name) || s.left === (s.lefts.get(who) ?? "")) {
+        continue;
+      }
+      s.lefts.set(who, s.left);
+      notes.push(...(s.left === "" ? [] : [Mcp.left_note(s)]));
+    }
     return notes;
   }
 
+  export function left_note(s: Server): string {
+    return "MCP server " + s.conf.name + " has tools left out: " + s.left + ".";
+  }
+
   export function forget(servers: Servers, who: string): void {
-    servers.all.forEach((s) => s.heard.delete(who));
+    servers.all.forEach((s) => {
+      s.heard.delete(who);
+      s.lefts.delete(who);
+    });
   }
 
   export async function start(servers: Servers, s: Server): Promise<Spec[] | string> {
@@ -270,7 +287,7 @@ export namespace Mcp {
       s.left = left.join(", ");
       if (s.left !== "") {
         console.error("ki: MCP server " + s.conf.name + " has tools left out: " + s.left);
-        Mcp.say(servers, s, "MCP server " + s.conf.name + " has tools left out: " + s.left + ".");
+        Mcp.say(servers, s, Mcp.left_note(s));
       }
     }
     s.names = names;
