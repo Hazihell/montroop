@@ -299,29 +299,40 @@ function copy_keep(): void {
   const top = rows.findLast((r) => r.getBoundingClientRect().top <= end - innerHeight) ?? rows.at(0);
   let from = top === undefined ? ids.at(-COPY_PARTS) ?? ids[0] : top === rows[0] ? ids[0] : Number(top.dataset.a);
   const key = COPY + shown_key();
-  let text = "";
+  let msgs: View.Server[] = [];
+  let said = "";
   for (;;) {
-    text = JSON.stringify({ wire: View.WIRE, at: Date.now(), msgs: page === null ? View.view_copy(v, from) : View.view_page_copy(page, from) });
+    msgs = page === null ? View.view_copy(v, from) : View.view_page_copy(page, from);
+    said = JSON.stringify(msgs);
     const next = ids.find((id) => id > from);
-    if (text.length <= COPY_MOST || next === undefined) {
+    if (said.length <= COPY_MOST || next === undefined) {
       break;
     }
     from = next;
   }
-  if (text.length > COPY_MOST) {
+  if (said.length > COPY_MOST) {
     localStorage.removeItem(key);
     return;
   }
-  copy_put(key, text);
-  copy_put(TEAM_COPY, JSON.stringify({ wire: View.WIRE, team: v.team }));
+  copy_put(key, said, () => JSON.stringify({ wire: View.WIRE, at: Date.now(), msgs }));
+  const team = JSON.stringify({ wire: View.WIRE, team: v.team });
+  copy_put(TEAM_COPY, team, () => team);
 }
 
-// full storage makes room: the other chats' copies go, the oldest first
-function copy_put(key: string, text: string): void {
+// what this page last kept under each key, but for when
+const COPIED = new Map<string, string>();
+
+// a copy that changed, or isn't there; full storage makes room: the other
+// chats' copies go, the oldest first
+function copy_put(key: string, said: string, text: () => string): void {
+  if (COPIED.get(key) === said && localStorage.getItem(key) !== null) {
+    return;
+  }
   let olds: string[] | null = null;
   for (;;) {
     try {
-      localStorage.setItem(key, text);
+      localStorage.setItem(key, text());
+      COPIED.set(key, said);
       return;
     } catch {
       olds ??= copy_keys().filter((k) => k !== key).map((k) => ({ k, at: Number(get(copy_read(k), "at") ?? 0) })).sort((a, b) => a.at - b.at).map(({ k }) => k);
