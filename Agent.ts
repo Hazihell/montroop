@@ -255,7 +255,32 @@ export namespace Agent {
 
   export function entries_queued_till_started(step: Step): Event[] {
     const ours = new Set(step.uses.map((use) => use.id));
-    return step.entries.map((entry) => ({ $: "Entry", ...entry, ...(entry.kind === "tool" && entry.of !== undefined && ours.has(entry.of) ? { queued: true } : {}) }));
+    return Agent.paired(step.entries).map((entry) => ({ $: "Entry", ...entry, ...(entry.kind === "tool" && entry.of !== undefined && ours.has(entry.of) ? { queued: true } : {}) }));
+  }
+
+  // a step's call and result with no id, a web search's and the sources
+  // its answer cites, pair by order (#188): a call with none takes the next
+  // result with none; one with no such call goes in the step's last web
+  // result before it
+  export function paired(entries: Entry[]): Entry[] {
+    const out = entries.map((e) => ({ ...e }));
+    const web = (r: Entry) => out.some((c) => c.kind === "tool" && c.of === r.of && /^web_(search|fetch) /.test(c.text));
+    const gone = new Set<Entry>();
+    out.forEach((e, k) => {
+      if (e.kind !== "echo" || e.of !== undefined) {
+        return;
+      }
+      const before = out.slice(0, k);
+      const call = before.find((c) => c.kind === "tool" && c.of === undefined);
+      const last = before.findLast((r) => r.kind === "echo" && r.of !== undefined && !gone.has(r) && web(r));
+      if (call !== undefined) {
+        call.of = e.of = "ki-" + crypto.randomUUID();
+      } else if (last !== undefined) {
+        last.text += "\n" + e.text;
+        gone.add(e);
+      }
+    });
+    return out.filter((e) => !gone.has(e));
   }
 
   export function unless_stopped<T>(go: Promise<T>, signal: AbortSignal): Promise<T | null> {
