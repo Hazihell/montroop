@@ -6,7 +6,7 @@ type Got = { h: string; t: string; k?: string };
 
 type Card = HTMLDivElement & {
   firstChild: HTMLElement; lastChild: HTMLElement;
-  li: number[]; v: number[]; fresh: boolean; one?: boolean; thin?: boolean; dy: number; eased: ReturnType<typeof setTimeout> | undefined;
+  v: number[]; fresh: boolean; one?: boolean; thin?: boolean; dy: number; eased: ReturnType<typeof setTimeout> | undefined;
 };
 
 type Base = [number, number, number, number, number, number, number];
@@ -182,7 +182,6 @@ const make = (l: number, i: number) => {
   let x = got.get(l + "." + i);
   s.className = seen.has(l + "." + i) ? "s wait in" : "s wait";
   s.tabIndex = 0;
-  s.li = [l, i];
   s.append(document.createElement("h4"), document.createElement("pre"));
   s.firstChild.textContent = l < 0 ? "ROOT #" + i : "LVL" + l + " #" + at(l, i) + (l > 0 ? "-" + (at(l, i) + len(l) - 1) : "");
   if (!has(l, i)) {
