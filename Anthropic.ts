@@ -288,7 +288,7 @@ export namespace Anthropic {
   // the pages the answer cites, as OpenAI's are shown (OpenAI.entries)
   export function sources(out: Content[], docs: Doc[]): Entry[] {
     const cited = out.flatMap((b) => (b.type === "text" && Array.isArray(b.citations) ? (b.citations as unknown[]) : [])).map((c) => Anthropic.cited(c, docs));
-    const lines = [...new Set(cited)];
+    const lines = [...new Set(cited)].filter(Boolean);
     return lines.length > 0 ? [{ kind: "echo", text: "sources:\n" + lines.join("\n") }] : [];
   }
 
