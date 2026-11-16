@@ -371,19 +371,16 @@ const press = (s: Card) => {
   s.classList.contains("more") && grow(s);
 };
 // the point of the cards at the view's middle stays there when they change
-// (#194), as high as the view was when they were drawn; a view at a
-// level's top or end stays there
+// (#194), as high as the view was when they were drawn; where the middle
+// can't hold, the view is kept within the level
 const bottom = (p: Plan, h: number) => Math.max(0, Y + p.total + 4 * em - h);
 const anchor = () => {
-  const top = pane.scrollTop, y = top + vh / 2 - Y, { level, A, P, slot } = plan, k = Math.max(0, Math.min(plan.level.length - 1, lo(P, (z) => z > y) - 1)), d = y - P[k];
-  const edge = top < 1 ? "top" : top > bottom(plan, vh) - 1 ? "end" : null;
-  return level.length ? { key: level[k].join("."), d, m: A[k] + Math.max(0, Math.min(.999, d / slot[k])) * len(level[k][0]), edge } : null;
+  const y = pane.scrollTop + vh / 2 - Y, { level, A, P, slot } = plan, k = Math.max(0, Math.min(plan.level.length - 1, lo(P, (z) => z > y) - 1)), d = y - P[k];
+  return level.length ? { key: level[k].join("."), d, m: A[k] + Math.max(0, Math.min(.999, d / slot[k])) * len(level[k][0]) } : null;
 };
 const place = (a: ReturnType<typeof anchor>, p: Plan) => {
-  const h = pane.clientHeight;
-  if (!a || a.edge === "top") return 0;
-  if (a.edge === "end") return bottom(p, h);
-  const k = p.find(Math.floor(a.m)), [l, i] = p.level[k];
+  if (!a) return 0;
+  const h = pane.clientHeight, k = p.find(Math.floor(a.m)), [l, i] = p.level[k];
   const y = p.P[k] + (l + "." + i === a.key ? Math.max(0, Math.min(a.d, p.slot[k])) : ((a.m - p.A[k]) / len(l)) * p.slot[k]);
   return Math.max(0, Math.min(bottom(p, h), y + Y - h / 2));
 };
