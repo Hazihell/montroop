@@ -101,10 +101,14 @@ $(".view").replaceChildren(...meta.view.flatMap(({ h, t }) => {
 // the columns scroll up and down in a pane of their own, inside the
 // tree's sideways scroll: Chrome on Android ends a fling up or down in a
 // scroller that snaps sideways on another level
-const names = ["ROOT", ...B.map((_, l) => "LVL" + l)], head = document.createElement("div"), pane = document.createElement("div");
+const names = ["ROOT", ...B.map((_, l) => "LVL" + l)], head = document.createElement("div"), pane = document.createElement("div"), rail = document.createElement("div"), room = document.createElement("div");
 head.className = "heads";
 pane.className = "cols";
 pane.tabIndex = -1;
+// (with a mouse, the pane's own scrollbar would sit past the last
+// column: this one, at the tree's right edge, stands in for it)
+rail.className = "rail";
+rail.append(room);
 head.append(...names.map((name) => {
   const h3 = document.createElement("h3");
   h3.tabIndex = 0;
@@ -116,7 +120,7 @@ pane.append(...names.map(() => {
   col.className = "col";
   return col;
 }));
-tree.replaceChildren(head, pane);
+tree.replaceChildren(head, pane, rail);
 let which: Which = "TREE";
 const heads = [...head.children] as HTMLElement[], cols = [...pane.children] as HTMLElement[], em = parseFloat(getComputedStyle(tree).fontSize), G = .75 * em, Y = .2 * em, HC = 9 * em;
 const HL = 1.5 * 11.5, HM = .7 * 11.5, PB = .7 * em, calm = matchMedia("(prefers-reduced-motion: reduce)");
@@ -231,8 +235,9 @@ const load = () => {
 const draw = (y = pane.scrollTop, e = 1, old?: Old) => {
   if (signal.aborted) return;
   const p = plan, sh = pane.clientHeight, keep = new Set<string>(), [c0, c1] = near();
+  room.style.height = Y + Math.max(p.total, e < 1 ? old?.total ?? 0 : 0) + 4 * em + "px";
   cols.forEach((col, c) => {
-    col.style.height = Y + Math.max(p.total, e < 1 ? old?.total ?? 0 : 0) + 4 * em + "px";
+    col.style.height = room.style.height;
     const list = p.cards[c];
     for (let x = c < c0 || c > c1 ? list.length : lo(list, (q) => q[9] >= y - sh / 2); x < list.length && list[x][8] <= y + 1.5 * sh; x++) {
       const [l, i, t, h, , , , [up, ...v]] = list[x], k = l + "." + i, w = e < 1 && old !== undefined && (old.get(k) ?? from(old, l, i));
@@ -395,7 +400,15 @@ tree.addEventListener("scroll", () => {
   }
   moving || draw();
 }, { signal });
-pane.addEventListener("scroll", () => moving || draw(), { signal });
+// each of the pane and the rail follows the other; not back again, which
+// would stop a smooth scroll the leading one is still in
+let echo = 0;
+const follow = (from: HTMLElement, to: HTMLElement) => Math.abs(from.scrollTop - echo) < 1 || (to.scrollTop = echo = from.scrollTop);
+pane.addEventListener("scroll", () => {
+  follow(pane, rail);
+  moving || draw();
+}, { signal });
+rail.addEventListener("scroll", () => follow(rail, pane), { signal });
 plan = layout(L);
 const show = () => {
   which === "TREE" || shut(true);
@@ -424,7 +437,7 @@ let drag: { x: number; y: number; left: number; id: number; on: boolean } | null
 tree.addEventListener("pointerdown", (e) => {
   dragged = false;
   const bar = e.target === tree ? e.offsetY >= tree.clientHeight : e.target === pane && e.offsetX >= pane.clientWidth;
-  drag = e.pointerType === "mouse" && e.button === 0 && !bar && !(e.target as HTMLElement).closest(".big, h3") ? { x: e.clientX, y: e.clientY, left: tree.scrollLeft, id: e.pointerId, on: false } : null;
+  drag = e.pointerType === "mouse" && e.button === 0 && !bar && !(e.target as HTMLElement).closest(".big, h3, .rail") ? { x: e.clientX, y: e.clientY, left: tree.scrollLeft, id: e.pointerId, on: false } : null;
 }, { signal });
 addEventListener("pointermove", (e: PointerEvent) => {
   if (!drag || e.pointerId !== drag.id) return;
