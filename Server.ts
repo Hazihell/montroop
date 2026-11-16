@@ -2328,7 +2328,7 @@ export namespace Main {
     const signed = Owner.is(req);
     const id = /^\/a\/([a-z0-9]{1,16})/.exec(url.pathname)?.[1] ?? (url.pathname === "/tree" ? url.searchParams.get("a") : null);
     const page = INDEX.replace("<html ", `<html data-first="${first}" data-signed="${signed ? "in" : "out"}" `);
-    const made = signed ? page.replace("</body>", `<script type="application/json" id="opening">${Chat.opening(Main.chat_of(id))}</script>\n</body>`) : page;
+    const made = signed ? page.replace("</body>", () => `<script type="application/json" id="opening">${Chat.opening(Main.chat_of(id))}</script>\n</body>`) : page;
     return new Response(made, { headers: { "content-type": "text/html;charset=utf-8", "cache-control": "no-store" } });
   }
 

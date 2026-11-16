@@ -247,9 +247,9 @@ async function boot_me(): Promise<unknown> {
 // the chat drawn before its link is up: the page's first messages, else
 // this browser's copy, with the team it kept
 function copy_draw(): void {
-  const opening = document.getElementById("opening")?.textContent ?? null;
+  const opening = parsed(document.getElementById("opening")?.textContent ?? "null");
   const team = copy_read(TEAM_COPY);
-  View.view_adopt(v, opening === null ? [] : (JSON.parse(opening) as View.Server[]));
+  View.view_adopt(v, Array.isArray(opening) ? (opening as View.Server[]) : []);
   if (v.team.length === 0 && Array.isArray(team)) {
     v.team = team as View.Mate[];
   }
@@ -266,8 +266,13 @@ function copy_take(): void {
 }
 
 function copy_read(key: string): unknown {
+  return parsed(localStorage.getItem(key) ?? "null");
+}
+
+// a copy that doesn't parse is none
+function parsed(text: string): unknown {
   try {
-    return JSON.parse(localStorage.getItem(key) ?? "null");
+    return JSON.parse(text);
   } catch {
     return null;
   }
