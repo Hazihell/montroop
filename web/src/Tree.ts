@@ -134,7 +134,7 @@ note.className = "note";
 const lo = <T,>(list: ArrayLike<T>, ok: (x: T, j: number) => boolean) => { let a = 0, z = list.length; while (a < z) { const m = (a + z) >> 1; ok(list[m], m) ? (z = m) : (a = m + 1); } return a; };
 const step = () => heads[1].getBoundingClientRect().left - heads[0].getBoundingClientRect().left || 1;
 const got = new Map<string, Got | null>(), shown = new Map<string, Card>();
-let L = vt, plan!: Plan, moving = 0, wait: ReturnType<typeof setTimeout> | undefined, width = 0, started = false, left = 0, done: () => void = () => {}, goal: number | null = null, big: Card | null = null, down = false;
+let L = vt, plan!: Plan, moving = 0, wait: ReturnType<typeof setTimeout> | undefined, width = 0, started = false, left = 0, done: () => void = () => {}, goal: number | null = null, big: Card | null = null, down = false, vh = 0;
 // a slide this close to a level, in px, has all but arrived
 const NEAR = 16;
 const height = (_l: number, _i: number) => HC;
@@ -240,7 +240,7 @@ const load = () => {
 // (an ease draws the cards in sight before it too: `old`, at `y0`)
 const draw = (y = pane.scrollTop, old?: Old, y0 = 0) => {
   if (signal.aborted) return;
-  const p = plan, sh = pane.clientHeight, keep = new Set<string>(), [c0, c1] = near();
+  const p = plan, sh = (vh = pane.clientHeight), keep = new Set<string>(), [c0, c1] = near();
   room.style.height = Y + p.total + 4 * em + "px";
   cols.forEach((col, c) => {
     col.style.height = room.style.height;
@@ -370,14 +370,22 @@ const press = (s: Card) => {
   shut();
   s.classList.contains("more") && grow(s);
 };
+// the point of the cards at the view's middle stays there when they change
+// (#194), as high as the view was when they were drawn; a view at a
+// level's top or end stays there
+const bottom = (p: Plan, h: number) => Math.max(0, Y + p.total + 4 * em - h);
 const anchor = () => {
-  const { level, A, P, slot } = plan, k = Math.max(0, Math.min(plan.level.length - 1, lo(P, (z) => z > pane.scrollTop) - 1)), d = pane.scrollTop - P[k];
-  return level.length ? { key: level[k].join("."), d, m: A[k] + Math.min(.999, d / slot[k]) * len(level[k][0]) } : null;
+  const top = pane.scrollTop, y = top + vh / 2 - Y, { level, A, P, slot } = plan, k = Math.max(0, Math.min(plan.level.length - 1, lo(P, (z) => z > y) - 1)), d = y - P[k];
+  const edge = top < 1 ? "top" : top > bottom(plan, vh) - 1 ? "end" : null;
+  return level.length ? { key: level[k].join("."), d, m: A[k] + Math.max(0, Math.min(.999, d / slot[k])) * len(level[k][0]), edge } : null;
 };
 const place = (a: ReturnType<typeof anchor>, p: Plan) => {
-  if (!a) return 0;
+  const h = pane.clientHeight;
+  if (!a || a.edge === "top") return 0;
+  if (a.edge === "end") return bottom(p, h);
   const k = p.find(Math.floor(a.m)), [l, i] = p.level[k];
-  return p.P[k] + (l + "." + i === a.key ? Math.min(a.d, p.slot[k]) : ((a.m - p.A[k]) / len(l)) * p.slot[k]);
+  const y = p.P[k] + (l + "." + i === a.key ? Math.max(0, Math.min(a.d, p.slot[k])) : ((a.m - p.A[k]) / len(l)) * p.slot[k]);
+  return Math.max(0, Math.min(bottom(p, h), y + Y - h / 2));
 };
 const redo = () => {
   if (!moving) {
