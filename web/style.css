@@ -324,7 +324,7 @@ header > .imping { display: flex; flex-direction: column; justify-content: cente
 
 /* the footer's height (--foot), less its 1px below the screen and the 12px
    of the chat it covers */
-#log { width: min(var(--col), 100% - 40px); margin: 0 auto; padding: 24px 0 calc(var(--foot, 0px) - 13px); flex: 1 0 auto; }
+#log { width: min(var(--col), 100% - 40px); margin: 0 auto; padding: calc(24px + var(--whole, 0px)) 0 calc(var(--foot, 0px) - 13px); flex: 1 0 auto; }
 #log > * > * { margin-block: 14px; }
 .cap { font: italic 14.5px var(--serif); color: var(--mid); }
 

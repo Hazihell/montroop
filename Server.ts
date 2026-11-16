@@ -51,6 +51,9 @@ import badge from "./web/badge.png" with { type: "file" };
 // agent: the chat a browser shows, by its agent's id
 type Sock = ServerWebSocket<{ who: string; tab: string; wire: string | null; host: string | null; work: string; scratch: string | null; shell: string | null; device: string | null; seen: Set<string>; active: number; agent: string }>;
 
+// where a chat's messages go: a link, or a page being made (#185)
+type To = { data: { seen: Set<string> }; send: (text: string) => unknown };
+
 type Body = { fh: fs.promises.FileHandle; size: number };
 
 export type Msg = { id: number; end: number };
@@ -1566,8 +1569,8 @@ export namespace Chat {
     chat.socks.forEach((sock) => Chat.send(sock, msg));
   }
 
-  export function send(sock: Sock, msg: object): void {
-    sock.send(JSON.stringify(msg));
+  export function send(to: To, msg: object): void {
+    to.send(JSON.stringify(msg));
   }
 
   export function state(chat: Chat): Out {
@@ -1652,9 +1655,25 @@ export namespace Chat {
     sock.data.agent = chat.id;
     sock.data.seen = new Set();
     chat.socks.add(sock);
-    Chat.send(sock, { ...Chat.state(chat), ...(replaced === undefined ? {} : { replaced }) });
-    Chat.show(chat, sock);
-    Chat.send(sock, { $: "live", live: chat.main.live });
+    Chat.greet(chat, sock, replaced);
+  }
+
+  // what a link that opens on a chat is sent first
+  export function greet(chat: Chat, to: To, replaced?: string): void {
+    Chat.send(to, { ...Chat.state(chat), ...(replaced === undefined ? {} : { replaced }) });
+    Chat.show(chat, to);
+    Chat.send(to, { $: "live", live: chat.main.live });
+  }
+
+  // a page's first messages, as its link would be sent them, so it draws
+  // its chat before the link is up (#185); \u003c for <, which could end
+  // the script element they are in
+  export function opening(chat: Chat): string {
+    const texts: string[] = [];
+    const to = { data: { seen: new Set<string>() }, send: (text: string) => texts.push(text) };
+    Chat.send(to, { $: "team", agents: Main.mates() });
+    Chat.greet(chat, to);
+    return "[" + texts.join(",").replaceAll("<", "\\u003c") + "]";
   }
 
   export async function answer(chat: Chat, sock: Sock, msg: Record<string, unknown>): Promise<void> {
@@ -1880,7 +1899,7 @@ export namespace Chat {
     return [Math.min(lo, ...near.map(([id]) => id)), Math.max(hi, ...near.map(([id, n]) => id + n))];
   }
 
-  export function show(chat: Chat, sock: Sock): void {
+  export function show(chat: Chat, sock: To): void {
     const [from, count] = [chat.eye.from, chat.mem.count];
     const cover = Chat.import_cover(chat, count);
     const eye = chat.eye.parts.filter(([id, n]) => id + n <= cover[0] || id >= cover[1]);
@@ -1905,7 +1924,7 @@ export namespace Chat {
 
   // a page of a message split in memory goes as the whole message, under
   // its first page's id, with how many pages it has (#151)
-  export function teach(chat: Chat, sock: Sock, parts: Part[]): void {
+  export function teach(chat: Chat, sock: To, parts: Part[]): void {
     for (const [id, n] of parts.filter(([id, n]) => !sock.data.seen.has(id + "+" + n))) {
       sock.data.seen.add(id + "+" + n);
       const [a, b] = n === 1 ? Memory.pages_of(chat.mem, id) : [0, 0];
@@ -1922,7 +1941,7 @@ export namespace Chat {
   }
 
 
-  export function know(chat: Chat, sock: Sock, id: number, n: number): void {
+  export function know(chat: Chat, sock: To, id: number, n: number): void {
     const text = Memory.node(chat.mem, { l: Math.log2(n), i: id / n });
     if (text !== null) {
       Chat.send(sock, { $: "know", nodes: { [id + "+" + n]: { text, to: Memory.at(chat.mem, id + n - 1).date } } });
@@ -2286,6 +2305,9 @@ export namespace Main {
     }
     // the page also names the first agent in the list, so a page cached for another goes
     const first = file === PAGE ? Team.first().id : "";
+    if (file === PAGE && req.headers.get("sec-fetch-mode") === "navigate") {
+      return Main.navigated(req, first);
+    }
     const headers = new Headers({ "cache-control": "no-cache", etag: `"${BUILD}${first === "" ? "" : "-" + first}"` });
     if (req.headers.get("if-none-match") === headers.get("etag")) {
       return new Response(null, { status: 304, headers });
@@ -2296,6 +2318,18 @@ export namespace Main {
     }
     headers.set("content-type", file === PAGE ? "text/html;charset=utf-8" : "text/javascript;charset=utf-8");
     return new Response(made, { headers });
+  }
+
+  // a page the browser opens itself, not one the service worker keeps,
+  // says whether it is signed in, and brings its chat's first messages
+  // (#185): /a/<id>'s, the tree's, else the first agent's
+  export function navigated(req: Request, first: string): Response {
+    const url = new URL(req.url);
+    const signed = Owner.is(req);
+    const id = /^\/a\/([a-z0-9]{1,16})/.exec(url.pathname)?.[1] ?? (url.pathname === "/tree" ? url.searchParams.get("a") : null);
+    const page = INDEX.replace("<html ", `<html data-first="${first}" data-signed="${signed ? "in" : "out"}" `);
+    const made = signed ? page.replace("</body>", `<script type="application/json" id="opening">${Chat.opening(Main.chat_of(id))}</script>\n</body>`) : page;
+    return new Response(made, { headers: { "content-type": "text/html;charset=utf-8", "cache-control": "no-store" } });
   }
 
   export async function page(p: string, req: Request): Promise<Response> {

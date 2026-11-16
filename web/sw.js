@@ -1,7 +1,6 @@
 const CACHE = "ki-shell-{build}";
 const SHELL = ["/", "/app.js", "/style.css", "/favicon.svg", "/mark.svg", "/manifest.webmanifest", "/icon-192.png"];
 const PAGES = ["/", "/settings", "/account", "/tree", "/new"];
-const PAGE_WAIT = 3000;
 // an agent's replies in its one notification, newest first (#178)
 const SHOWN = 5;
 
@@ -20,31 +19,23 @@ self.addEventListener("fetch", (ev) => {
   if (req.method !== "GET" || url.origin !== location.origin || !(page || SHELL.includes(url.pathname))) {
     return;
   }
-  ev.respondWith(fresh(ev, req, page ? "/" : url.pathname));
+  ev.respondWith(kept(req, page ? "/" : url.pathname));
 });
 
-// a page or shell file whose network hangs (a phone's, just woken) comes
-// from the cache after PAGE_WAIT, and the cache is refreshed after (#159)
-async function fresh(ev, req, key) {
+// a page or shell file comes from the cache at once, as it is this build's
+// (#185): a new build is a new worker, which caches its own; one the cache
+// lacks comes from the network, and is kept
+async function kept(req, key) {
   const cache = await caches.open(CACHE);
-  const net = fetch(req.mode === "navigate" ? req.url : req, { cache: "no-cache" }).then(async (res) => {
-    if (res.ok) {
-      await cache.put(key, res.clone());
-    }
-    return res;
-  });
-  ev.waitUntil(net.catch(() => {}));
-  try {
-    const late = new Promise((ok) => setTimeout(ok, PAGE_WAIT, null));
-    const res = (await Promise.race([net, late])) ?? (await cache.match(key)) ?? (await net);
-    return res.status < 500 ? res : (await cache.match(key)) ?? res;
-  } catch (err) {
-    const kept = await cache.match(key);
-    if (kept === undefined) {
-      throw err;
-    }
-    return kept;
+  const had = await cache.match(key);
+  if (had !== undefined) {
+    return had;
   }
+  const res = await fetch(req.mode === "navigate" ? req.url : req, { cache: "no-cache" });
+  if (res.ok) {
+    await cache.put(key, res.clone());
+  }
+  return res;
 }
 
 // a reply of an agent: its name and chat; no picture, which Android would

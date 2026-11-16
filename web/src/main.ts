@@ -27,6 +27,18 @@ const ME_WAIT = 4000;
 const NOTIFY = "ki.notify";
 const BLOCKED = "they're blocked in this browser's settings for this site.";
 const KEEP_EVERY = 60 * 60 * 1000;
+// this browser's copies of the server's (#185): that it is signed in, the
+// team, and each chat's last screenful, by agent; a chat bigger than
+// COPY_MOST characters has none
+const SIGNED = "ki.signed";
+const TEAM_COPY = "ki.team";
+const COPY = "ki.copy.";
+const COPY_MOST = 2 ** 19;
+// the parts kept of a chat not on screen
+const COPY_PARTS = 30;
+// kept this long after the server last said something, as a page may be
+// closed with no word
+const COPY_AFTER = 2000;
 const TRAVEL = 1000;
 
 const NONE   = "No Claude or ChatGPT chats in that folder. Choose ~/.claude or ~/.codex.";
@@ -85,6 +97,7 @@ const P = {
   used  : { ws: null as WebSocket | null, on: false, at: 0, agent: "" },
   after : false,
   at    : "",
+  copy  : 0,
 };
 
 const SCROLL = {
@@ -154,14 +167,22 @@ async function boot(): Promise<void> {
   START = path === "/" && !pic;
   document.body.classList.toggle("start", START);
   setTimeout(() => document.body.classList.remove("start"), START_SHOWN);
-  if (await boot_me() === null) {
+  // signed in as the page or this browser knows, else as /api/me says
+  const stamp = document.documentElement.dataset.signed;
+  if (stamp === "out" || (stamp === undefined && localStorage.getItem(SIGNED) === null && await boot_me() === null)) {
+    copies_drop();
     solo("Sign in", View.SIGN_IN, View.sign_in_form(location.pathname + location.search));
     return;
   }
+  localStorage.setItem(SIGNED, "1");
+  copy_draw();
   chat();
   signed();
   route();
   connect();
+  if (v.team.length > 0) {
+    start(v.team);
+  }
   void notify_keep();
   for (const ev of ["keydown", "pointerdown", "pointermove", "wheel", "touchstart"]) {
     addEventListener(ev, () => in_use(), { capture: true, passive: true });
@@ -176,6 +197,8 @@ async function boot(): Promise<void> {
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {
       v.wake();
+    } else {
+      copy_keep();
     }
     if (!document.hidden && Date.now() - P.kept >= KEEP_EVERY) {
       void notify_keep();
@@ -195,24 +218,111 @@ async function boot(): Promise<void> {
   document.addEventListener("freeze", () => v.ws?.close());
   document.addEventListener("resume", () => v.wake());
   addEventListener("blur", () => in_use(true));
-  addEventListener("pagehide", () => in_use(true));
+  addEventListener("pagehide", () => {
+    in_use(true);
+    copy_keep();
+  });
 }
 
+// "Can't reach Ki" once it has failed for the grace offline has (#114)
 async function boot_me(): Promise<unknown> {
-  for (let k = 0; ; k++) {
+  const from = Date.now();
+  for (let told = false; ;) {
     const res = await me();
     const got: unknown = res?.status === 200 ? await res.json().catch(() => undefined) : res?.status === 401 ? null : undefined;
     if (got !== undefined) {
-      if (k > 0) {
+      if (told) {
         $("#toast").hidden = true;
       }
       return got;
     }
-    if (k === 0) {
+    if (!told && Date.now() - from >= View.GRACE) {
+      told = true;
       toast("Can't reach Ki. Reconnecting…", true);
     }
     await new Promise((ok) => setTimeout(ok, View.RETRY));
   }
+}
+
+// the chat drawn before its link is up: the page's first messages, else
+// this browser's copy, with the team it kept
+function copy_draw(): void {
+  const opening = document.getElementById("opening")?.textContent ?? null;
+  const team = copy_read(TEAM_COPY);
+  View.view_adopt(v, opening === null ? [] : (JSON.parse(opening) as View.Server[]));
+  if (v.team.length === 0 && Array.isArray(team)) {
+    v.team = team as View.Mate[];
+  }
+  copy_take();
+  Html.team_set(v.team);
+}
+
+// the wanted chat's copy, while the view holds none of it
+function copy_take(): void {
+  const copy = copy_read(COPY + v.agent);
+  if (v.held === "" && get(copy, "wire") === View.WIRE && Array.isArray(get(copy, "msgs"))) {
+    View.view_adopt(v, get(copy, "msgs") as View.Server[]);
+  }
+}
+
+function copy_read(key: string): unknown {
+  try {
+    return JSON.parse(localStorage.getItem(key) ?? "null");
+  } catch {
+    return null;
+  }
+}
+
+// the chat held, from its last screenful's first row (the chat on screen),
+// else its last COPY_PARTS parts; its first parts go while it is too big
+function copy_keep(): void {
+  if (v.held !== v.agent || v.parts.length === 0 || localStorage.getItem(SIGNED) === null) {
+    return;
+  }
+  const rows = $("#log").hidden || v.page !== null ? [] : [...document.querySelectorAll<HTMLElement>("#log .rows > [data-a]")];
+  const end = rows.at(-1)?.getBoundingClientRect().bottom ?? 0;
+  const top = rows.findLast((r) => r.getBoundingClientRect().top <= end - innerHeight) ?? rows.at(0);
+  let from = top === undefined ? v.parts.at(-COPY_PARTS)?.[0] ?? 0 : Number(top.dataset.a);
+  let text = "";
+  for (;;) {
+    text = JSON.stringify({ wire: View.WIRE, at: Date.now(), msgs: View.view_copy(v, from) });
+    const next = v.parts.find(([id]) => id > from);
+    if (text.length <= COPY_MOST || next === undefined) {
+      break;
+    }
+    from = next[0];
+  }
+  if (text.length > COPY_MOST) {
+    localStorage.removeItem(COPY + v.agent);
+    return;
+  }
+  copy_put(COPY + v.agent, text);
+  copy_put(TEAM_COPY, JSON.stringify(v.team));
+}
+
+// full storage makes room: the other chats' copies go, the oldest first
+function copy_put(key: string, text: string): void {
+  for (;;) {
+    try {
+      localStorage.setItem(key, text);
+      return;
+    } catch {
+      const old = copy_keys().filter((k) => k !== key).sort((a, b) => Number(get(copy_read(a), "at") ?? 0) - Number(get(copy_read(b), "at") ?? 0))[0];
+      if (old === undefined) {
+        return;
+      }
+      localStorage.removeItem(old);
+    }
+  }
+}
+
+function copy_keys(): string[] {
+  return Object.keys(localStorage).filter((k) => k.startsWith(COPY));
+}
+
+// signed out: nothing of the session stays in this browser
+function copies_drop(): void {
+  [SIGNED, TEAM_COPY, ...copy_keys()].forEach((k) => localStorage.removeItem(k));
 }
 
 
@@ -323,9 +433,17 @@ function chat(): void {
   draw(true);
 }
 
-// the footer's height, which the chat leaves room for (#180)
+// the footer's height, which the chat leaves room for (#180); and, while
+// it is at its end, the chat a whole number of pixels high, as the page
+// scrolls by whole pixels: its end stays put as rows come above it, a
+// copy's or not (#185); above the end, what is read stays put instead
 function foot(): void {
-  document.documentElement.style.setProperty("--foot", $("footer").getBoundingClientRect().height + "px");
+  const root = document.documentElement.style;
+  root.setProperty("--foot", $("footer").getBoundingClientRect().height + "px");
+  if (!$("#log").hidden && SCROLL.end) {
+    const high = $("#log").getBoundingClientRect().height - (parseFloat(root.getPropertyValue("--whole")) || 0);
+    root.setProperty("--whole", Math.ceil(high) - high + "px");
+  }
 }
 
 function signed(): void {
@@ -666,8 +784,10 @@ function heard(out: View.Answer): void {
 
 function connect(): void {
   // offline counts from the link's first try, not from the page's load
-  // (#178): a slow sign-in check on a waking phone came first
+  // (#178): a slow sign-in check on a waking phone came first; and an app
+  // opened is a phone woken, its network maybe not back yet (#185)
   v.down = Date.now();
+  v.woke = Date.now();
   View.link_open(v, {
     open : (query) => new WebSocket(location.origin.replace(/^http/, "ws") + "/ws" + query),
     post : (path, body) => fetch(path, { method: "POST", body: body as BodyInit }),
@@ -708,13 +828,16 @@ function me(): Promise<Response | null> {
   return fetch("/api/me", { signal: AbortSignal.timeout(ME_WAIT) }).catch(() => null);
 }
 
-// a sign-in that ended sends to the start; the link tries again meanwhile
+// a sign-in that ended sends to the start, with nothing of the session
+// left on screen or in the browser (#185); the link tries again meanwhile
 function lost(up: boolean): void {
   draw(true);
   setTimeout(() => draw(false), View.GRACE + 100);
   if (!up) {
     void me().then((res) => {
       if (res !== null && res.status === 401) {
+        copies_drop();
+        document.body.hidden = true;
         location.href = "/";
       }
     });
@@ -751,6 +874,7 @@ function hear(msg: View.Server): void {
   }
   if (msg.$ === "team") {
     Html.team_set(v.team);
+    copy_keys().filter((k) => !v.team.some((m) => COPY + m.id === k)).forEach((k) => localStorage.removeItem(k));
     start(v.team);
     if (location.pathname === "/" && v.agent !== home()) {
       route();
@@ -774,6 +898,8 @@ function hear(msg: View.Server): void {
   }
   void import_welcome();
   draw(true);
+  clearTimeout(P.copy);
+  P.copy = setTimeout(copy_keep, COPY_AFTER) as unknown as number;
 }
 
 // the link is shut for good: messages it holds go back to the box, before
@@ -1122,6 +1248,7 @@ function paint(): void {
   markup($("#log .tail"), View.view_tail(v).map(Html.row_html));
   Box.box_sizes($("#log .tail"));
   frames();
+  foot();
   const back = RENEW.back === null ? null : document.querySelector<HTMLElement>(`#log [data-a="${RENEW.back.a}"]`);
   if (back !== null && RENEW.back !== null) {
     P.shown = shown;
@@ -1367,9 +1494,11 @@ function chat_to(agent: string): void {
     $("#import").hidePopover();
   }
   sessionStorage.setItem(kept("draft." + v.agent), Box.box_text());
+  copy_keep();
   for (const msg of View.view_switch(v, agent)) {
     View.link_send(v, msg);
   }
+  copy_take();
   Box.box_set(sessionStorage.getItem(kept("draft." + agent)) ?? "");
   SCROLL.end = true;
   P.rows = true;
@@ -1705,6 +1834,7 @@ function mcp_draw(): void {
 async function signout(): Promise<void> {
   await notify_sub().then((sub) => sub?.unsubscribe()).catch(() => {});
   await View.post("/api/logout", {});
+  copies_drop();
   location.href = "/";
 }
 

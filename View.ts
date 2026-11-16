@@ -517,6 +517,46 @@ function view_heard(v: View, msg: Server): Client[] {
   }
 }
 
+// a copy of the chat the view holds, as the messages a link sends for it,
+// its parts from the one at from on, and the entry before them (#185)
+export function view_copy(v: View, from: number): Server[] {
+  const parts = v.parts.filter(([id, n]) => id + n > from);
+  const nodes: Record<string, Node> = {};
+  const whole: Record<string, Entry> = {};
+  const before = parts.length === 0 ? undefined : parts[0][0] - 1;
+  for (const at of [...(before === undefined ? [] : [v.firsts.get(before) ?? before]), ...parts.flatMap(([id, n]) => (n === 1 ? [v.firsts.get(id) ?? id] : []))]) {
+    const entry = v.whole.get(at);
+    if (entry !== undefined) {
+      whole[at] = entry;
+    }
+  }
+  for (const [id, n] of parts) {
+    const node = v.nodes.get(id + "+" + n);
+    if (node !== undefined) {
+      nodes[id + "+" + n] = node;
+    }
+  }
+  const { busy, wait, sums, again, importing, limit, queue, sent, pick, vendors, models, profiles, timers, mcp, talk, thinking } = v;
+  const state = { busy, wait, sums, again, importing, limit, queue, sent, pick, vendors, models, profiles, timers, mcp, talk, thinking };
+  return [{ $: "state", agent: v.agent, ...state }, { $: "know", nodes, whole }, { $: "view", parts, turn: v.turn }];
+}
+
+// a copy of the wanted chat, or a page's first messages, while the view
+// holds none of it: held as a link's chat is over a reconnect (#114), so
+// the link's own replaces it in place (#185)
+export function view_adopt(v: View, copy: Server[]): void {
+  const made = view_new(v.agent);
+  copy.forEach((msg) => view_hear(made, msg));
+  v.team = v.team.length === 0 ? made.team : v.team;
+  if (v.held !== "" || made.held !== v.agent) {
+    return;
+  }
+  for (const k of [...CHAT, "vendors", "models", "profiles", "thinking"] as const) {
+    Object.assign(v, { [k]: made[k] });
+  }
+  v.held = v.agent;
+}
+
 export function view_act(v: View, act: Act): Client[] {
   switch (act.$) {
     case "Send": {
