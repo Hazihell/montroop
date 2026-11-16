@@ -28,6 +28,8 @@ type Calling = {
   call  : Call | null;
   live  : Live[];
   calls : Map<string, Waiting>;
+  // what waits for the calls running to be logged
+  later : Array<() => void>;
   limit : Parked | null;
   fell  : string | null;
 };
@@ -61,7 +63,7 @@ type Kind<Q, M> = LoopHooks<Q, M> & InboxHooks<Q, M> & CallHooks<Q, M> & { chang
 export namespace Run {
 
   export function make<Q, M>(name: string, kind: Kind<Q, M>): Run<Q, M> {
-    return { name, kind, busy: false, going: Promise.resolve(), call: null, queue: [], wait: [], sent: [], halt: new AbortController(), live: [], calls: new Map(), limit: null, fell: null };
+    return { name, kind, busy: false, going: Promise.resolve(), call: null, queue: [], wait: [], sent: [], halt: new AbortController(), live: [], calls: new Map(), later: [], limit: null, fell: null };
   }
 
   export function take<Q, M>(run: Run<Q, M>, q: Q): Promise<string | null> {

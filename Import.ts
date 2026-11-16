@@ -1,8 +1,15 @@
 import type { Kind } from "./AskAI.ts";
-import { clip_pages, split_of, stream_lines } from "./Clip.ts";
+import { stream_lines, text_pages } from "./Clip.ts";
 import { get, list, text_of } from "./Json.ts";
 
-type Msg = { kind: Kind; text: string; date: string; more?: boolean; page?: boolean };
+// result: a tool call's message holds its result too (#188)
+type Msg = { kind: Kind; text: string; date: string; more?: boolean; page?: boolean; result?: number };
+
+// a message as a chat or a log has it, before it is paired and paged; id:
+// a tool call's, or the call's a result is for, where the log has them
+type Said = { kind: Kind; text: string; date: string; id?: string };
+
+type Slot = { m: Said; echo: Said | null; open: boolean };
 
 type Head = { kind: Kind; date: string; size: number; n: number };
 
@@ -43,7 +50,7 @@ const INJECTED = /^(<[a-z_]+[ >]|# AGENTS\.md)/;
 
 const SKIP = /^(<command-|<local-command|\[Request interrupted)/;
 
-type Block = { type?: string; text?: unknown; name?: string; input?: unknown; content?: unknown };
+type Block = { type?: string; text?: unknown; name?: string; input?: unknown; content?: unknown; id?: unknown; tool_use_id?: unknown };
 
 type GptMsg = { author?: { role?: string }; recipient?: string; content?: { content_type?: string; parts?: unknown[]; text?: unknown }; metadata?: { is_visually_hidden_from_conversation?: boolean }; create_time?: unknown };
 
@@ -57,7 +64,7 @@ type Chat = {
   name?          : string;
 };
 
-type Codex = { type?: string; role?: string; content?: { text?: string }[]; name?: string; arguments?: string; input?: unknown; action?: { command?: unknown }; output?: unknown; source?: { subagent?: unknown; internal?: unknown }; cwd?: unknown };
+type Codex = { type?: string; role?: string; content?: { text?: string }[]; name?: string; arguments?: string; input?: unknown; action?: { command?: unknown }; output?: unknown; call_id?: unknown; source?: { subagent?: unknown; internal?: unknown }; cwd?: unknown };
 
 type Line = {
   type?             : string;
@@ -87,24 +94,50 @@ export async function import_session(file: Blob, form: Form, app = "", where = "
 
 async function* import_read(s: Session): AsyncGenerator<Msg> {
   let date = "";
+  const slots: Slot[] = [];
   for await (const lines of stream_lines(s.file.stream())) {
     for (const line of lines) {
-      const msgs = line_msgs(s, line, date);
-      date = msgs.at(-1)?.date ?? date;
-      yield* msgs;
+      const said = line_msgs(s, line, date);
+      date = said.at(-1)?.date ?? date;
+      yield* said.flatMap((m) => slots_add(slots, m));
     }
   }
+  yield* slots_take(slots, true);
 }
 
-function line_log(s: Session, j: Line, last: string): Msg[] {
+// a tool call waits for its result, found by id where the log has ids,
+// else the next result; anything else ends the wait of the calls before it.
+// A call with its result goes whole: the server pages it (Memory.pages)
+function slots_add(slots: Slot[], m: Said): Msg[] {
+  const slot = m.kind === "echo" ? slots.find((x) => x.open && x.echo === null && (m.id === undefined || x.m.id === m.id)) : undefined;
+  if (slot !== undefined) {
+    slot.echo = m;
+    slot.open = false;
+  } else {
+    slots.forEach((x) => (x.open &&= m.kind === "tool" || m.kind === "echo"));
+    slots.push({ m, echo: null, open: m.kind === "tool" });
+  }
+  return slots_take(slots, false);
+}
+
+function slots_take(slots: Slot[], all: boolean): Msg[] {
+  const out: Msg[] = [];
+  while (slots.length > 0 && (all || !slots[0].open)) {
+    const { m, echo } = slots.shift() as Slot;
+    out.push(...(echo === null ? msgs_of(m.kind, m.text, m.date) : [{ kind: "tool" as const, text: m.text + "\n" + echo.text, date: m.date, result: m.text.length }]));
+  }
+  return out;
+}
+
+function line_log(s: Session, j: Line, last: string): Said[] {
   s.app ||= j.type === "session_meta" ? "ChatGPT" : "Claude";
   return s.app === "ChatGPT" ? line_codex(s, j, last) : line_claude(s, j, last);
 }
 
-function line_msgs(s: Session, line: string, last: string): Msg[] {
+function line_msgs(s: Session, line: string, last: string): Said[] {
   try {
     const j: unknown = JSON.parse(line);
-    return s.form === "msgs" ? [j as Msg] : line_log(s, j as Line, last);
+    return s.form === "msgs" ? [j as Said] : line_log(s, j as Line, last);
   } catch {
     return [];
   }
@@ -247,7 +280,7 @@ function chat_session(chat: Chat): Promise<Session | null> {
 // root (an edit or a retry leaves its old branch); a person's say,
 // ChatGPT's, what it sent a tool (recipient) as a call, a tool's output
 // as an echo; never thoughts, nor a hidden one
-function chat_openai(chat: Chat, mapping: NonNullable<Chat["mapping"]>): Msg[] {
+function chat_openai(chat: Chat, mapping: NonNullable<Chat["mapping"]>): Said[] {
   const nodes: (GptMsg | null | undefined)[] = [];
   for (let id = chat.current_node; id; id = mapping[id]?.parent) {
     nodes.unshift(mapping[id]?.message);
@@ -262,18 +295,18 @@ function chat_openai(chat: Chat, mapping: NonNullable<Chat["mapping"]>): Msg[] {
     const kind = role === "user" ? "user" : role === "assistant" ? (m.recipient === "all" ? "reply" : "tool") : role === "tool" ? "echo" : null;
     const skip = kind === null || m.metadata?.is_visually_hidden_from_conversation === true || type === "thoughts" || type === "reasoning_recap";
     date = import_date(m.create_time, date);
-    return skip ? [] : msgs_of(kind, (kind === "tool" ? String(m.recipient) + " " : "") + parts_text(m.content?.parts ?? [m.content?.text]), date);
+    return skip ? [] : said_of(kind, (kind === "tool" ? String(m.recipient) + " " : "") + parts_text(m.content?.parts ?? [m.content?.text]), date);
   });
 }
 
-function chat_claude(chat: Chat): Msg[] {
+function chat_claude(chat: Chat): Said[] {
   let date = import_date(chat.created_at, "");
   return (chat.chat_messages ?? []).flatMap((m) => {
     date = import_date(m.created_at, date);
     const kind   = m.sender === "human" ? "user" : "reply";
     const blocks: Block[] = Array.isArray(m.content) ? (m.content as Block[]) : [{ type: "text", text: text_of(m.text) }];
     const files  = [...(m.attachments ?? []), ...(m.files ?? [])].map((f) => ({ type: "text", text: "[file " + String(f.file_name) + "]" }));
-    return blocks_msgs(kind, [...blocks, ...files], date);
+    return blocks_said(kind, [...blocks, ...files], date);
   });
 }
 
@@ -322,25 +355,25 @@ function zip_sizes(dir: DataView, p: number): number[] {
   return short.map((n) => (n === 0xffffffff ? Number(dir.getBigUint64(x + 4 + 8 * k++, true)) : n));
 }
 
-function line_claude(s: Session, j: Line, last: string): Msg[] {
+function line_claude(s: Session, j: Line, last: string): Said[] {
   const date = import_date(j.timestamp, last);
   const own  = (j.type === "user" || j.type === "assistant") && !j.isMeta && !j.isSidechain && !j.isCompactSummary;
   const content = j.message?.content;
   const blocks: Block[] = !own ? [] : typeof content === "string" ? [{ type: "text", text: content }] : Array.isArray(content) ? (content as Block[]) : [];
   s.where ||= j.cwd ? "session in " + j.cwd : "";
   if (j.type === "attachment" && j.attachment?.type === "queued_command") {
-    return msgs_of("user", text_of(j.attachment.prompt), date);
+    return said_of("user", text_of(j.attachment.prompt), date);
   }
-  return blocks_msgs(j.type === "user" ? "user" : "reply", blocks, date);
+  return blocks_said(j.type === "user" ? "user" : "reply", blocks, date);
 }
 
-function blocks_msgs(kind: Kind, blocks: Block[], date: string): Msg[] {
+function blocks_said(kind: Kind, blocks: Block[], date: string): Said[] {
   const say   = blocks.filter((b) => b.type === "image" || (b.type === "text" && !SKIP.test(String(b.text))));
-  const tools = blocks.flatMap((b) => b.type === "tool_use" ? msgs_of("tool", String(b.name) + " " + JSON.stringify(b.input), date) : b.type === "tool_result" ? msgs_of("echo", parts_text(b.content), date) : []);
-  return [...msgs_of(kind, parts_text(say), date), ...tools];
+  const tools = blocks.flatMap((b) => b.type === "tool_use" ? said_of("tool", String(b.name) + " " + JSON.stringify(b.input), date, b.id) : b.type === "tool_result" ? said_of("echo", parts_text(b.content), date, b.tool_use_id) : []);
+  return [...said_of(kind, parts_text(say), date), ...tools];
 }
 
-function line_codex(s: Session, j: Line, last: string): Msg[] {
+function line_codex(s: Session, j: Line, last: string): Said[] {
   const p    = j.payload ?? {};
   const date = import_date(j.timestamp, last);
   if (j.type === "session_meta") {
@@ -349,25 +382,25 @@ function line_codex(s: Session, j: Line, last: string): Msg[] {
   return j.type === "response_item" && s.where !== "" ? item_codex(p, date) : [];
 }
 
-function item_codex(p: Codex, date: string): Msg[] {
+function item_codex(p: Codex, date: string): Said[] {
   switch (p.type) {
     case "message": {
       const kind  = p.role === "user" ? "user" : p.role === "assistant" ? "reply" : null;
       const parts = (p.content ?? []).filter((c) => !INJECTED.test(c.text ?? ""));
-      return kind === null ? [] : msgs_of(kind, parts_text(parts), date);
+      return kind === null ? [] : said_of(kind, parts_text(parts), date);
     }
     case "function_call": {
-      return msgs_of("tool", String(p.name) + " " + String(p.arguments), date);
+      return said_of("tool", String(p.name) + " " + String(p.arguments), date, p.call_id);
     }
     case "custom_tool_call": {
-      return msgs_of("tool", String(p.name) + " " + JSON.stringify({ input: p.input }), date);
+      return said_of("tool", String(p.name) + " " + JSON.stringify({ input: p.input }), date, p.call_id);
     }
     case "local_shell_call": {
-      return msgs_of("tool", "shell " + JSON.stringify({ command: p.action?.command }), date);
+      return said_of("tool", "shell " + JSON.stringify({ command: p.action?.command }), date, p.call_id);
     }
     case "function_call_output":
     case "custom_tool_call_output": {
-      return msgs_of("echo", parts_text(p.output), date);
+      return said_of("echo", parts_text(p.output), date, p.call_id);
     }
   }
   return [];
@@ -378,8 +411,12 @@ function import_date(at: unknown, last: string): string {
   return Number.isNaN(ms) ? last : new Date(ms).toISOString();
 }
 
+function said_of(kind: Kind, text: string, date: string, id?: unknown): Said[] {
+  return text.trim() === "" ? [] : [{ kind, text, date, ...(typeof id === "string" ? { id } : {}) }];
+}
+
 function msgs_of(kind: Kind, text: string, date: string): Msg[] {
-  const pages = text.trim() === "" ? [] : clip_pages(text, split_of(kind));
+  const pages = text_pages(text, kind);
   return pages.map((page, k) => ({ kind, text: page, date, more: k < pages.length - 1, ...(k > 0 ? { page: true } : {}) }));
 }
 

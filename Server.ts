@@ -6,7 +6,7 @@ import * as path from "node:path";
 import type { ServerWebSocket } from "bun";
 import type { Out as Done } from "./Agent.ts";
 import { AskAI, type Ask, type Block, type Call, type End, type Event, type Kind, type Parked, type Said, type Say, type Vendor } from "./AskAI.ts";
-import { report_read, tool_name } from "./Call.ts";
+import { call_parse, call_text, report_read, tool_name } from "./Call.ts";
 import { Sub, type How, type Role, type Row as SubRow, type Spawn } from "./Sub.ts";
 import { Disk } from "./Disk.ts";
 import { Mcp } from "./Mcp.ts";
@@ -689,16 +689,49 @@ export namespace Chat {
   }
 
   export function note(chat: Chat, text: string): void {
-    Chat.hold(chat, () => Chat.push(chat, chat.main, "note", text));
+    Chat.hold(chat, () => Chat.noted(chat, chat.main, text));
+  }
+
+  // the app's note waits for the calls running, each logged with its
+  // result first (#188)
+  export function noted(chat: Chat, run: Talk, text: string): void {
+    if (Chat.started_unlogged(run).length > 0) {
+      run.later.push(() => Chat.noted(chat, run, text));
+    } else {
+      Chat.push(chat, run, "note", text);
+    }
   }
 
   // sent: a message the run takes from its queue, shown queued till answered (Run.sent)
+  // a result is logged in its call's message (#188)
   export function push(chat: Chat, run: Talk, kind: Kind, text: string, images: string[] = [], more = false, act?: string, pair: Pair & { from?: string } = {}, sent = false): Msg {
-    Chat.flush(chat, run, kind === "echo" ? pair.of : undefined);
-    if (run !== chat.main) {
-      return Chat.sub_put(chat, run, { kind, text, of: pair.of, tool: pair.tool }, sent);
+    const call = kind === "echo" && pair.of !== undefined ? run.calls.get(pair.of) : undefined;
+    if (call !== undefined && !call.logged && !Chat.mid_message(chat, run)) {
+      call.logged = true;
+      const msg = Chat.log(chat, run, { kind: "tool", text: call.text + "\n" + text, of: pair.of, tool: pair.tool, result: call.text.length, line: Chat.line_of(call.text) }, sent);
+      Chat.later(run);
+      return msg;
     }
-    return Chat.put(chat, { kind, text, images, more, act, ...pair }, sent);
+    Chat.flush(chat, run);
+    return Chat.log(chat, run, { kind, text, images, more, act, ...pair }, sent);
+  }
+
+  export function log(chat: Chat, run: Talk, msg: Log, sent: boolean): Msg {
+    return run === chat.main ? Chat.put(chat, msg, sent) : Chat.sub_put(chat, run, msg, sent);
+  }
+
+  // a zoom's line is the call as the chat shows it: its result is what
+  // the memory holds already (#188)
+  export function line_of(text: string): string | undefined {
+    const call = call_parse(text);
+    return call.name === "zoom" ? "tool: " + call_text(call) : undefined;
+  }
+
+  // the notes that waited for the calls running, once none is (noted)
+  export function later(run: Talk): void {
+    if (Chat.started_unlogged(run).length === 0) {
+      run.later.splice(0).forEach((step) => step());
+    }
   }
 
   export function put(chat: Chat, msg: Log, sent = false): Msg {
@@ -709,9 +742,10 @@ export namespace Chat {
       Team.unread(chat.id, null);
       chat.told = true;
     }
-    const { i, kind, date, of, tool, from } = roots[0];
+    const { i, kind, date, of, tool, from, result } = roots[0];
     const pages = roots.length > 1 ? { pages: roots.length } : {};
-    Chat.all(chat, { $: "entry", id: i, kind, text: roots.map((r) => r.text).join(""), date, images: roots.flatMap((r) => r.images ?? []), of, tool, from, ...pages, ...queued });
+    const said = Memory.call_of({ text: roots.map((r) => r.text).join(""), result });
+    Chat.all(chat, { $: "entry", id: i, kind, ...said, date, images: roots.flatMap((r) => r.images ?? []), of, tool, from, ...pages, ...queued });
     if (first && Chat.real(roots[0])) {
       chat.gist = roots[0].i;
     }
@@ -720,30 +754,27 @@ export namespace Chat {
     return { id: roots[0].i, end: chat.mem.count };
   }
 
-  export function started_unlogged(run: Talk, upto?: string) {
-    const ids = [...run.calls.keys()];
-    const end = upto === undefined ? ids.length : ids.indexOf(upto) + 1 || ids.length;
-    return [...run.calls].slice(0, end).filter(([, call]) => !call.logged && call.started);
+  export function started_unlogged(run: Talk) {
+    return [...run.calls].filter(([, call]) => !call.logged && call.started);
   }
 
   export function mid_message(chat: Chat, run: Talk): boolean {
     return run === chat.main && chat.mem.open > 0;
   }
 
-  export function flush(chat: Chat, run: Talk, upto?: string): void {
-    const left = Chat.started_unlogged(run, upto);
+  // calls logged with no result: one never got it, or a message came
+  // before it did
+  export function flush(chat: Chat, run: Talk): void {
+    const left = Chat.started_unlogged(run);
     if (left.length === 0 || Chat.mid_message(chat, run)) {
       return;
     }
     for (const [of, call] of left) {
       call.logged = true;
-      if (run === chat.main) {
-        Chat.put(chat, { kind: "tool", text: call.text, of });
-      } else {
-        Chat.sub_put(chat, run, { kind: "tool", text: call.text, of }, false);
-      }
+      Chat.log(chat, run, { kind: "tool", text: call.text, of, tool: call.tool }, false);
     }
     Chat.live(chat, run, Chat.waiting(run));
+    Chat.later(run);
   }
 
   export function talked(chat: Chat, why = TALK_FULL): void {
@@ -873,7 +904,7 @@ export namespace Chat {
     }
     run.fell = now;
     const text = ev.from === null ? "Back on " + Pick.label(ev.run) + "." : Pick.label(ev.from) + " failed: " + ev.why.replace(/\.$/, "") + ". Going on with " + now + ".";
-    Chat.hold(chat, () => Chat.push(chat, run, "note", text));
+    Chat.hold(chat, () => Chat.noted(chat, run, text));
   }
 
   export function waiting(run: Talk): Live[] {
@@ -959,7 +990,7 @@ export namespace Chat {
     chat.subs.set(it, sub);
     // a job's report reaches it while it runs, else its spawner
     const report = (text: string) => (sub.run.busy && sub.why === null ? void Run.take(sub.run, { text, imgs: [] }) : Chat.report(chat, text.replace("] ", "] " + it + "'s job, "), true));
-    const seat: Seat = { mem: chat.mem, note: (text) => Chat.push(chat, sub.run, "note", text), report, timed: () => {}, message: () => Promise.resolve({ text: "A subagent messages no one.", fail: true }), subs: null, mcp };
+    const seat: Seat = { mem: chat.mem, note: (text) => Chat.noted(chat, sub.run, text), report, timed: () => {}, message: () => Promise.resolve({ text: "A subagent messages no one.", fail: true }), subs: null, mcp };
     chat.tools.seats.set(it, seat);
     if (name === null) {
       Chat.push(chat, sub.run, "note", Sub.note(role, memory, mcp));
@@ -1082,13 +1113,13 @@ export namespace Chat {
   }
 
   export function sub_put(chat: Chat, run: Talk, msg: Log, sent: boolean): Msg {
-    const { kind, text, of, tool } = msg;
-    const root = Memory.agent_push(chat.mem, run.name, kind, text, { of, tool });
+    const { kind, text, of, tool, result } = msg;
+    const root = Memory.agent_push(chat.mem, run.name, kind, text, { of, tool, result });
     const sub = chat.subs.get(run.name);
     if (sub !== undefined) {
       sub.bytes += Chat.sub_bytes(root);
     }
-    Chat.all(chat, { $: "entry", agent: run.name, id: root.i, kind, text, date: root.date, of, tool, ...(sent ? { sent } : {}) });
+    Chat.all(chat, { $: "entry", agent: run.name, id: root.i, kind, ...Memory.call_of(root), date: root.date, of, tool, ...(sent ? { sent } : {}) });
     return { id: root.i, end: root.i + 1 };
   }
 
@@ -1395,7 +1426,9 @@ export namespace Chat {
     }
     const date = Number.isNaN(Date.parse(when)) ? undefined : new Date(when).toISOString();
     const pair = (y: unknown) => (typeof y === "string" && y.length <= PAIR ? y : undefined);
-    return { kind, text, date, more: get(x, "more") === true, ...(get(x, "page") === true ? { page: true } : {}), of: pair(of), tool: pair(tool) };
+    const result = get(x, "result");
+    const call = kind === "tool" && typeof result === "number" && Number.isInteger(result) && result >= 0 ? { result } : {};
+    return { kind, text, date, more: get(x, "more") === true, ...(get(x, "page") === true ? { page: true } : {}), of: pair(of), tool: pair(tool), ...call };
   }
 
   export function made(chat: Chat, l: number, i: number): void {
@@ -1705,7 +1738,7 @@ export namespace Chat {
         const asked = typeof msg.before === "number" ? msg.before : undefined;
         const before = asked ?? log?.length ?? 0;
         const from = Math.max(0, before - SHOWN);
-        const entries = (log ?? []).slice(from, before).map(({ i, kind, text, date, of, tool }) => ({ id: i, kind, text, date, of, tool }));
+        const entries = (log ?? []).slice(from, before).map((root) => ({ id: root.i, kind: root.kind, ...Memory.call_of(root), date: root.date, of: root.of, tool: root.tool }));
         Chat.send(sock, { $: "agent", name, found: log !== null, from, before: asked, entries, done: !chat.subs.has(name), how: Chat.sub_how(chat, name, log) });
         if (asked === undefined) {
           Chat.send(sock, { $: "live", agent: name, live: chat.subs.get(name)?.run.live ?? [] });
@@ -1932,9 +1965,9 @@ export namespace Chat {
         sock.data.seen.add("whole " + a);
         const pages = Array.from({ length: b - a }, (_, k) => Memory.at(chat.mem, a + k));
         const m = pages[0];
-        const text = pages.map((p) => p.text).join("");
+        const said = Memory.call_of({ text: pages.map((p) => p.text).join(""), result: m.result });
         const images = pages.flatMap((p) => p.images ?? []);
-        Chat.send(sock, { $: "know", whole: { [a]: { kind: m.kind, text, date: m.date, images, of: m.of, tool: m.tool, from: m.from, ...(b - a > 1 ? { pages: b - a } : {}) } } });
+        Chat.send(sock, { $: "know", whole: { [a]: { kind: m.kind, ...said, date: m.date, images, of: m.of, tool: m.tool, from: m.from, ...(b - a > 1 ? { pages: b - a } : {}) } } });
       }
       Chat.know(chat, sock, id, n);
     }
@@ -2602,6 +2635,8 @@ export namespace Main {
     process.on("exit", () => {
       fs.rmSync(PID, { force: true });
       Main.chats.forEach((chat) => {
+        // a call cut by the restart is logged, with no result (#188)
+        [chat.main, ...[...chat.subs.values()].map((sub) => sub.run)].forEach((run) => Chat.flush(chat, run));
         Chat.stop(chat, null);
         Memory.stop(chat.mem);
       });

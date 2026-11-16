@@ -18,8 +18,8 @@ Your memory: the whole chat between you and the user, oldest first, inside
 Each message has a kind:
 - user: the user's words
 - reply: your replies
-- tool: your tool calls
-- echo: tool results
+- tool: your tool calls, each with its result after it
+- echo: in an older chat, a tool result, apart from its call
 - work: another agent's message to you, starting "[Name]", a scheduled
   message from the timer (your schedule tool), starting "[Timer id]", or a
   job's report, starting "[Job id]"

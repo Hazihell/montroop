@@ -45,14 +45,22 @@ export function clip_end(str: string, at: number): number {
 const SPLIT = 4000;
 const SPLIT_ECHO = CAP + 1000;
 
-export function split_of(kind: string): number {
-  return kind === "echo" ? SPLIT_ECHO : SPLIT;
+// result: a tool call's message holds its result too (#188), after the
+// newline at result: the call splits as any message, the result as tool
+// output, the call's last page and the result's first one a page together
+export function text_pages(text: string, kind: string, result?: number): string[] {
+  if (result === undefined) {
+    return clip_pages(text, kind === "echo" ? SPLIT_ECHO : SPLIT);
+  }
+  const calls = clip_pages(text.slice(0, result), SPLIT);
+  const outs = clip_pages(text.slice(result), SPLIT_ECHO);
+  return [...calls.slice(0, -1), calls[calls.length - 1] + outs[0], ...outs.slice(1)];
 }
 
 // equal pages, each cut at a line's end near its share where there is one,
 // never inside a surrogate pair: where the cap leaves no room for that, one
 // page more
-export function clip_pages(str: string, most = SPLIT): string[] {
+function clip_pages(str: string, most = SPLIT): string[] {
   for (let n = Math.max(1, Math.ceil(str.length / most)); ; n++) {
     const pages = pages_of(str, most, n);
     if (pages !== null) {

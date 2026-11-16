@@ -13,8 +13,8 @@ The agent's memory: the whole chat between it and the user, oldest first, inside
 Each message has a kind:
 - user: the user's words
 - reply: the agent's replies
-- tool: the agent's tool calls
-- echo: tool results
+- tool: the agent's tool calls, each with its result after it
+- echo: in an older chat, a tool result, apart from its call
 - work: another agent's message to the agent, starting "[Name]", a scheduled
   message from the timer (the agent's schedule tool), starting "[Timer id]", or
   a job's report, starting "[Job id]"
@@ -59,7 +59,7 @@ Use the space up to the limit, and give it by value:
 
 Avoid omissions. Name a minor item in a word or two rather than drop it: an
 absent item can never be found. Copy names, numbers, ids, paths and errors
-exactly. Tag each item with its kind ("user: ...; echo: ..."), and credit quoted
+exactly. Tag each item with its kind ("user: ...; tool: ..."), and credit quoted
 text to its real author. Never make anything look further along than it was. If
 told the line is too long, shorten it. Non-ASCII characters cost 2-4 bytes.
 

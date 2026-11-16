@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import { AskAI, type Again, type Ask, type Block, type Call, type End as Answered, type Event, type Img, type Kind, type Say } from "./AskAI.ts";
-import { clip_page, clip_pages, split_of } from "./Clip.ts";
+import { clip_page, text_pages } from "./Clip.ts";
 import * as config from "./Config.ts";
 import { Disk } from "./Disk.ts";
 import { err_code, err_why } from "./Err.ts";
@@ -18,7 +18,9 @@ export type Root = Msg & { i: number; size: number; date: string };
 // message there (a copy made before 41)
 export type Msg = { kind: Kind; text: string; date?: string; images?: string[]; imported?: boolean; line?: string; more?: boolean; page?: boolean; act?: string; from?: string; copy?: number } & Pair;
 
-export type Pair = { of?: string; tool?: string };
+// result: a tool call's message holds its result too, after the newline
+// at result in its whole text (#188)
+export type Pair = { of?: string; tool?: string; result?: number };
 
 type Part = { l: number; i: number };
 
@@ -376,6 +378,11 @@ export namespace Memory {
     return who + ": " + root.text + pics.join("");
   }
 
+  // a call's message as its call, and its result when it holds one (#188)
+  export function call_of(m: { text: string; result?: number }): { text: string; echo?: string } {
+    return m.result === undefined ? { text: m.text } : { text: m.text.slice(0, m.result), echo: m.text.slice(m.result + 1) };
+  }
+
   export function message(mem: Memory, i: number): Root | null {
     return Number.isInteger(i) && i >= 0 && i < mem.count ? Memory.read(mem, "main", i) : null;
   }
@@ -404,7 +411,7 @@ export namespace Memory {
   // a message's pages, all of its date
   export function pages(msg: Msg): Msg[] {
     const date = msg.date ?? new Date().toISOString();
-    const texts = clip_pages(msg.text, split_of(msg.kind));
+    const texts = text_pages(msg.text, msg.kind, msg.result);
     const pics = msg.images ?? [];
     const n = Math.max(texts.length, Math.ceil(pics.length / PICS));
     return Array.from({ length: n }, (_, k) => {
@@ -413,7 +420,7 @@ export namespace Memory {
       const more = k < n - 1 || msg.more === true ? true : undefined;
       const act = k === n - 1 ? msg.act : undefined;
       const page = k > 0 || msg.page === true ? true : undefined;
-      return { ...msg, date, text: texts[k - n + texts.length] ?? "", images, line: k === 0 ? msg.line : undefined, more, page, act };
+      return { ...msg, date, text: texts[k - n + texts.length] ?? "", images, line: k === 0 ? msg.line : undefined, result: k === 0 ? msg.result : undefined, more, page, act };
     });
   }
 

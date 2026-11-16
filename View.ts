@@ -11,8 +11,8 @@ import { rec } from "./Json.ts";
 export type Part = [number, number];
 
 // pages: a message split in memory comes whole, under its first page's id
-// (#151)
-type Entry = { kind: Kind; text: string; date?: string; images?: string[]; of?: string; tool?: string; from?: string; pages?: number };
+// (#151); echo: a tool call's result, logged in the call's message (#188)
+type Entry = { kind: Kind; text: string; echo?: string; date?: string; images?: string[]; of?: string; tool?: string; from?: string; pages?: number };
 
 export type Queued = { kind: Kind; text: string };
 
@@ -765,7 +765,8 @@ export function view_tail(v: View): Row[] {
     const thought = v.thinking === false && live.some((_, k) => thinks(live, k)) ? [THINKING] : [];
     const sub = view_sub(v);
     const queued = (sub?.queue ?? []).flatMap((text) => sent_rows(true, entry_rows(null, "user", text)));
-    const idle = sub !== undefined && v.page.live.length === 0 && v.page.log?.at(-1)?.kind !== "tool" && sub.doing !== "usage limit";
+    const last = v.page.log?.at(-1);
+    const idle = sub !== undefined && v.page.live.length === 0 && (last?.kind !== "tool" || last.echo !== undefined) && sub.doing !== "usage limit";
     return [...thought, ...live_rows(page, sub !== undefined), ...(idle ? [WAITING] : []), ...queued];
   }
   const thought = v.thinking === false && (v.live.some((_, k) => thinks(v.live, k)) || (v.live.length === 0 && v.busy && v.wait === "" && thought_last(v))) ? [THINKING] : [];
@@ -1107,9 +1108,16 @@ const APART = new WeakMap<Entry, Row[]>();
 function whole_rows(id: number | null, entry: Entry, before: Entry | undefined): Row[] {
   const of = entry_of(entry, before);
   const made = of.apart ? APART : ROWS;
-  const rows = made.get(entry) ?? entry_rows(id, entry.kind, entry.text, entry.images, of, entry.from, entry.of);
+  const rows = made.get(entry) ?? (entry.echo === undefined ? entry_rows(id, entry.kind, entry.text, entry.images, of, entry.from, entry.of) : pair_rows(id, entry, entry.echo));
   made.set(entry, rows);
   return rows;
+}
+
+// a call logged with its result: the one line they make (view_lines)
+function pair_rows(id: number | null, entry: Entry, echo: string): Row[] {
+  const call = entry_rows(id, "tool", entry.text, entry.images, undefined, entry.from, entry.of);
+  const out = entry_rows(id, "echo", echo, [], { tool: entry.tool ?? "", apart: false });
+  return call.map((r) => (r.$ === "Msg" && r.call !== null ? { $: "Line", id, call: r.call, echo, rows: [r, ...out] } : r));
 }
 
 // the messages in the closed folds of rows

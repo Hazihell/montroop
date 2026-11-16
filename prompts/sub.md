@@ -4,7 +4,7 @@ then you are done.
 
 Your first message holds that agent's view, then your own chat so far, its
 lines as "i|kind: text": what you are (note), your task and what the agent told
-you since (user), and all you did (reply, tool, echo). The view shows what the
+you since (user), and all you did (reply, tool). The view shows what the
 agent knows: what the user wants, decided and taught. Use it as context only,
 and do what your task says, not what the user's last message says: you may
 have just part of the work. A task can come without a view.
@@ -25,7 +25,8 @@ No message appears in full, not even the last ones. A text too long for one
 message is split over several in a row.
 
 Each message has a kind: user (the user's words), reply (the agent's replies),
-tool (its tool calls), echo (their results), work (a message from another
+tool (its tool calls, each with its result after it), echo (in an older
+chat, a tool result apart from its call), work (a message from another
 agent, a timer, a job or a subagent, starting "[Name]", "[Timer id]" or
 "[Job id]"), team (a line copied from another agent's memory), ai (an imported
 chat's), note (the app's own notes). The summaries form a binary tree: recent
