@@ -287,11 +287,19 @@ function parsed(text: string): unknown {
 
 // the chat held, or the subagent page open, from its last screenful's
 // first row (on screen, its rows drawn; all of it when that is its
-// first), else its last COPY_PARTS; its first rows go while it is too big
+// first), else its last COPY_PARTS; its first rows go while it is too big.
+// The team is kept whether the chat has a copy or not
 function copy_keep(): void {
+  if (localStorage.getItem(SIGNED) === null) {
+    return;
+  }
+  if (v.team.length > 0) {
+    const team = JSON.stringify({ wire: View.WIRE, team: v.team });
+    copy_put(TEAM_COPY, team, () => team);
+  }
   const page = v.page;
   const ids = page === null ? (v.held === v.agent ? v.parts.map(([id]) => id) : []) : (page.log ?? []).flatMap((e) => (e.id === undefined ? [] : [e.id]));
-  if (ids.length === 0 || localStorage.getItem(SIGNED) === null) {
+  if (ids.length === 0) {
     return;
   }
   const rows = $("#log").hidden || P.drawn !== shown_key() ? [] : [...document.querySelectorAll<HTMLElement>("#log .rows > [data-a]")];
@@ -315,8 +323,6 @@ function copy_keep(): void {
     return;
   }
   copy_put(key, said, () => JSON.stringify({ wire: View.WIRE, at: Date.now(), msgs }));
-  const team = JSON.stringify({ wire: View.WIRE, team: v.team });
-  copy_put(TEAM_COPY, team, () => team);
 }
 
 // what this page last kept under each key, but for when
@@ -900,6 +906,10 @@ function hear(msg: View.Server): void {
   const agent = v.agent;
   for (const out of View.view_hear(v, msg)) {
     View.link_send(v, out);
+  }
+  // a subagent the server has none of keeps no copy here
+  if (msg.$ === "agent" && !msg.found) {
+    localStorage.removeItem(COPY + v.on + "/s/" + msg.name);
   }
   if (msg.$ === "team") {
     Html.team_set(v.team);
