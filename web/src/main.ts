@@ -1230,12 +1230,16 @@ function markup(el: Element, htmls: string[], spares: Element[] | null = null): 
     const mark = (x: Element) => open_of(MARKUP.get(x) ?? "");
     const of = (o: string) => / data-of="([^"]*)"/.exec(o)?.[1];
     const bare = free.filter((x) => !mark(x).includes(" data-a=") && key_of(mark(x), false) === key_of(open, false));
-    const was = (key.startsWith("#") ? free.find((x) => key_of(mark(x)) === key) : undefined) ?? bare.find((x) => of(mark(x)) === of(open)) ?? bare.at(0);
+    const was = (key.startsWith("#") ? free.find((x) => key_of(mark(x)) === key) : undefined) ?? bare.find((x) => of(mark(x)) === of(open)) ?? bare.find((x) => of(mark(x)) === undefined);
     if (was === undefined) {
       return html_parse(html);
     }
-    free.splice(free.indexOf(was), 1);
-    return morph(was, html);
+    const now = morph(was, html);
+    // (one of another tag is made anew, the old one left to go)
+    if (now === was) {
+      free.splice(free.indexOf(was), 1);
+    }
+    return now;
   });
   for (const child of left.filter((x) => spares === null || free.includes(x))) {
     child.remove();
@@ -1289,9 +1293,11 @@ function morph(was: Element, html: string): Element {
   return was;
 }
 
-// the user's own: an opened row stays open
+// the user's own: an opened row stays open while it is the same call's;
+// a shown page keeps the height it was given on loading (frames)
 function attrs_set(was: Element, now: Element): void {
-  for (const a of [...was.attributes].filter((a) => a.name !== "open" && !now.hasAttribute(a.name))) {
+  const mine = (a: Attr) => (a.name === "open" && was.getAttribute("data-of") === now.getAttribute("data-of")) || (a.name === "style" && was.matches("iframe.page"));
+  for (const a of [...was.attributes].filter((a) => !mine(a) && !now.hasAttribute(a.name))) {
     was.removeAttribute(a.name);
   }
   for (const a of [...now.attributes].filter((a) => was.getAttribute(a.name) !== a.value)) {
@@ -1321,11 +1327,17 @@ function nodes_set(was: Element, now: Element): void {
   olds.slice(news.length).forEach((x) => x.remove());
 }
 
+// a message made by its parts has each part's markup known, so its first
+// change changes only the part that changed (#192)
 function html_parse(html: string): Element {
   const made = document.createElement("template");
   made.innerHTML = html;
   const child = must(made.content.firstElementChild, "an element in " + html.slice(0, 40));
   MARKUP.set(child, html);
+  const kids = Html.parts_of(html)?.kids;
+  if (kids !== undefined && kids.length === child.children.length) {
+    [...child.children].forEach((kid, k) => MARKUP.set(kid, kids[k]));
+  }
   return child;
 }
 
@@ -1380,14 +1392,16 @@ function paint(): void {
   if (Html.names_set(v.team, v.agent, v.page?.name ?? null)) {
     P.rows = true;
   }
+  // another chat's or page's rows are no row of this one's
+  const spares = P.drawn === shown ? [...$("#log .tail").children] : null;
   if (P.rows) {
-    markup($("#log .rows"), View.view_body(v).map(Html.row_html), [...$("#log .tail").children]);
+    markup($("#log .rows"), View.view_body(v).map(Html.row_html), spares);
     Box.box_sizes($("#log .rows"));
     P.rows = false;
     P.drawn = shown_key();
     earlier_watch();
   }
-  markup($("#log .tail"), View.view_tail(v).map(Html.row_html), []);
+  markup($("#log .tail"), View.view_tail(v).map(Html.row_html), spares === null ? null : []);
   Box.box_sizes($("#log .tail"));
   $("#log").classList.toggle("still", v.on !== v.agent);
   frames();
