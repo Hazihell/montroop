@@ -13,7 +13,7 @@ adb shell input keyevent KEYCODE_WAKEUP
 if [ "$(adb shell dumpsys package com.android.chrome | grep -m1 versionName= | cut -d= -f2 | tr -d '\r')" != "$(cat /chrome.version)" ]; then
   adb install -r /chrome.apk > /dev/null
 fi
-adb shell 'echo "_ --disable-fre --no-default-browser-check --no-first-run --disable-pull-to-refresh-effect" > /data/local/tmp/chrome-command-line'
+adb shell 'echo "_ --disable-fre --no-default-browser-check --no-first-run" > /data/local/tmp/chrome-command-line'
 adb shell am set-debug-app --persistent com.android.chrome
 adb shell pm grant com.android.chrome android.permission.POST_NOTIFICATIONS
 adb reverse tcp:8788 tcp:8788 > /dev/null

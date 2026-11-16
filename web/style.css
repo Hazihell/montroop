@@ -580,7 +580,7 @@ header > .imping { display: flex; flex-direction: column; justify-content: cente
 .profiles .pnew { margin-top: 6px; }
 @media (pointer: coarse) { .profiles :is(.grip, .out) { width: 44px; height: 44px; } }
 
-body.tree { height: 100dvh; }
+body.tree { height: 100dvh; } html:has(> body.tree) { overscroll-behavior-y: contain; }
 #tree { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 #tree .top { display: flex; align-items: center; gap: 6px; padding: 22px 20px 0; }
 #tree .top small { flex: 1; min-width: 0; margin-left: 10px; font: 12px/1.35 var(--sans); color: var(--mid); } #tree .top small b { font-weight: 600; letter-spacing: .06em; font-size: 11px; padding-left: 5px; box-shadow: inset 3px 0 var(--mid); }
