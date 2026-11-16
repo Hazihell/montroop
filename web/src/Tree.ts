@@ -362,6 +362,8 @@ const pack = () => {
   // (a scroll event coming after the end, from where it ended, is no slide)
   left = tree.scrollLeft;
   goal = null;
+  if (stay !== null && stay !== to + 1) return slide(stay);
+  stay = null;
   if (to === L) return moving || redo();
   shut(true);
   const a = anchor(), old: Old = new Map(), y0 = pane.scrollTop, t0 = performance.now(), me = ++moving, D = calm.matches ? 0 : 300;
@@ -431,10 +433,29 @@ const show = () => {
 };
 addEventListener("resize", show, { signal });
 const slide = (c: number) => {
+  stay = null;
   goal = Math.max(0, Math.min(cols.length - 1, c));
   done();
   tree.scrollTo({ left: goal * step(), behavior: calm.matches ? "instant" : "smooth" });
 };
+// a touch that went more up or down than sideways but moved the tree
+// sideways slides back to the level it started on once its fling has
+// ended (a slide during it stops between two levels): Chrome gives a
+// touch that first goes a little sideways to the sideways scroll, whose
+// fling snaps a level over
+let touch: { x: number; y: number; left: number } | null = null, stay: number | null = null;
+tree.addEventListener("touchstart", (e) => {
+  stay = null;
+  touch = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY, left: tree.scrollLeft } : null;
+}, { passive: true, signal });
+tree.addEventListener("touchend", (e) => {
+  const t = e.changedTouches[0], s = touch;
+  touch = null;
+  if (!s) return;
+  const c = Math.round(s.left / step());
+  Math.abs(s.left - c * step()) < 1 && tree.scrollLeft !== s.left && Math.abs(t.clientY - s.y) > Math.abs(t.clientX - s.x) && (stay = c);
+}, { passive: true, signal });
+tree.addEventListener("touchcancel", () => (touch = null), { passive: true, signal });
 let drag: { x: number; y: number; left: number; id: number; on: boolean } | null = null, dragged = false;
 tree.addEventListener("pointerdown", (e) => {
   dragged = false;
