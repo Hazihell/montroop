@@ -7,10 +7,14 @@ ARG CHROME=157.0.8103.50
 ARG CHROME_PAGE=/apk/google-inc/chrome/google-chrome-157-0-8103-50-release/google-chrome-157-0-8103-50-7-android-apk-download/
 ARG CHROME_SHA256=6123891934761f6dac9e562fb0c0ffc8ff3781c0fa857289d01c9313665e4541
 RUN A="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36" M=https://www.apkmirror.com \
+    && no() { echo "Chrome $CHROME from APKMirror: $1. Find Google's x86_64 APK of a current Chrome on apkmirror.com and set CHROME, CHROME_PAGE (its download page) and CHROME_SHA256 here." >&2; exit 1; } \
     && k=$(curl -fsSA "$A" "$M$CHROME_PAGE" | grep -o 'href="[^"]*/download/?key=[^"]*"' | head -1 | cut -d'"' -f2 | sed 's/&amp;/\&/g') \
+    && { [ -n "$k" ] || no "no download link on $M$CHROME_PAGE (the page is gone, or a challenge page came instead)"; } \
     && d=$(curl -fsSA "$A" "$M$k" | grep -o 'href="[^"]*download.php?[^"]*"' | head -1 | cut -d'"' -f2 | sed 's/&amp;/\&/g') \
-    && curl -fsSLA "$A" -e "$M$k" -o /chrome.apk "$M$d" \
-    && echo "$CHROME_SHA256  /chrome.apk" | sha256sum -c - >/dev/null && echo $CHROME > /chrome.version
+    && { [ -n "$d" ] || no "no file link on $M$k"; } \
+    && { curl -fsSLA "$A" -e "$M$k" -o /chrome.apk "$M$d" || no "the file did not download"; } \
+    && { echo "$CHROME_SHA256  /chrome.apk" | sha256sum -c - >/dev/null 2>&1 || no "the file it sent is not the APK of CHROME_SHA256"; } \
+    && echo $CHROME > /chrome.version
 
 FROM docker.io/library/ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
