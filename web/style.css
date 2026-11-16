@@ -593,9 +593,9 @@ body.tree { height: 100dvh; }
 #tree .bracket { --g: 30px; --w: min(22em, 65vw); overflow: auto hidden; container-type: inline-size; scroll-snap-type: x mandatory; scroll-padding: 0 var(--pad); } #tree .bracket.on { display: grid; grid-template: auto minmax(0, 1fr) / max-content; }
 #tree :is(.heads, .cols) { display: flex; gap: var(--g); width: max-content; } #tree .cols { overflow: hidden auto; outline: none; padding: 0 var(--pad); margin: 0 calc(0px - var(--pad)); }
 #tree :is(.cols, .rail) { grid-area: 2 / 1; } #tree .rail { display: none; } @media (hover: hover) { #tree .cols { scrollbar-width: none; } #tree .rail { display: block; justify-self: end; position: sticky; right: calc(0px - var(--pad)); z-index: 2; min-width: 12px; margin-right: calc(0px - var(--pad)); overflow: hidden scroll; } #tree .rail div { width: 1px; } }
-#tree .heads::after { content: ""; flex: 0 0 calc(100cqw - var(--w) - var(--g)); }
-#tree .col { flex: 0 0 var(--w); position: relative; }
-#tree .heads h3 { flex: 0 0 var(--w); scroll-snap-align: start; margin: 0; height: 3em; font: 600 .8em/3em var(--sans); letter-spacing: .06em; color: var(--mid); cursor: pointer; } @media (hover: hover) { #tree .heads h3:hover { color: var(--ink); } } @media (hover: none) { #tree .heads h3:active { color: var(--ink); } }
+#tree .heads::after { content: ""; flex: none; width: calc(100cqw - var(--w) - var(--g)); }
+#tree .col { flex: none; width: var(--w); position: relative; }
+#tree .heads h3 { flex: none; width: var(--w); scroll-snap-align: start; margin: 0; height: 3em; font: 600 .8em/3em var(--sans); letter-spacing: .06em; color: var(--mid); cursor: pointer; } @media (hover: hover) { #tree .heads h3:hover { color: var(--ink); } } @media (hover: none) { #tree .heads h3:active { color: var(--ink); } }
 #tree .s { position: absolute; left: 0; right: 0; height: var(--card); display: flex; flex-direction: column; padding: 0 14px .7em; border-radius: 10px; background: var(--block); } #tree .s h4 { flex: none; margin-top: .7em; } #tree .s pre { flex: 1; min-height: 0; overflow: hidden; }
 #tree .s.more { cursor: pointer; } #tree .s.more pre { -webkit-mask-image: linear-gradient(#000 calc(100% - 2.4em), transparent 90%); mask-image: linear-gradient(#000 calc(100% - 2.4em), transparent 90%); }
 #tree .s.big { z-index: 1; --lift-shadow: 0 0 0 1px var(--frame), var(--shadow), 0 10px 30px rgb(0 0 0 / .16); box-shadow: var(--lift-shadow); } #tree .s.big.in { box-shadow: inset 3px 0 var(--mid), var(--lift-shadow); }
