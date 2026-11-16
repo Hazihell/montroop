@@ -484,7 +484,13 @@ tree.addEventListener("click", (e) => {
   } else {
     shut();
     go(e.target as HTMLElement);
+    (e.target as HTMLElement).closest("h3") && pane.focus({ preventScroll: true });
   }
+}, { signal });
+head.addEventListener("wheel", (e) => {
+  if (e.ctrlKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+  e.preventDefault();
+  pane.scrollTop += e.deltaY * [1, em, pane.clientHeight][e.deltaMode];
 }, { signal });
 tree.addEventListener("keydown", (e) => {
   const t = e.target as HTMLElement;
