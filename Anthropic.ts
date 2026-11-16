@@ -55,10 +55,13 @@ const CALLERS = ["direct", "code_execution_20260120"];
 
 const PAGE  = 50000;
 
-const WEB   = [
-  { type: "web_search_20260318", name: "web_search", allowed_callers: CALLERS },
-  { type: "web_fetch_20260318", name: "web_fetch", allowed_callers: CALLERS, citations: { enabled: true }, max_content_tokens: PAGE },
-];
+// the pages a turn reads, at most: each of its requests replays those
+// read before it
+const PAGES = 5;
+
+const SEARCH = { type: "web_search_20260318", name: "web_search", allowed_callers: CALLERS };
+
+const FETCH = { type: "web_fetch_20260318", name: "web_fetch", allowed_callers: CALLERS, citations: { enabled: true }, max_content_tokens: PAGE };
 
 const FAST  = "fast-mode-2026-02-01";
 
@@ -79,7 +82,9 @@ export namespace Anthropic {
   export function body(ask: Ask, items: Item[], tools: Tool[], max: number): unknown {
     const defs: object[] = tools.map((t) => ({ name: t.name, description: t.info, input_schema: t.schema, eager_input_streaming: true }));
     if (ask.searches > 0) {
-      defs.push(...WEB.map((tool) => ({ ...tool, max_uses: ask.searches })));
+      // (pages read, not asked for: a call pause_turn left open needs its tool)
+      const left = PAGES - items.flatMap((item) => (item.$ === "Turn" ? item.out : [])).filter((b) => get(b, "type") === "web_fetch_tool_result").length;
+      defs.push({ ...SEARCH, max_uses: ask.searches }, ...(left > 0 ? [{ ...FETCH, max_uses: left }] : []));
     }
     const messages: Message[] = [];
     for (const item of items) {
