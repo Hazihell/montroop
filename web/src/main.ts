@@ -452,11 +452,11 @@ function chat(): void {
 // scrolls by whole pixels: its end stays put as rows come above it, a
 // copy's or not (#185); above the end, what is read stays put instead
 function foot(): void {
-  const root = document.documentElement.style;
-  root.setProperty("--foot", $("footer").getBoundingClientRect().height + "px");
-  if (!$("#log").hidden && SCROLL.end) {
-    const high = $("#log").getBoundingClientRect().height - (parseFloat(root.getPropertyValue("--whole")) || 0);
-    root.setProperty("--whole", Math.ceil(high) - high + "px");
+  document.documentElement.style.setProperty("--foot", $("footer").getBoundingClientRect().height + "px");
+  const log = $("#log");
+  if (!log.hidden && SCROLL.end) {
+    const high = log.getBoundingClientRect().height - (parseFloat(log.style.getPropertyValue("--whole")) || 0);
+    log.style.setProperty("--whole", Math.ceil(high) - high + "px");
   }
 }
 
