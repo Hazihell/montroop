@@ -22,7 +22,6 @@ const TOOL: Record<string, string> = {
   read       : "📖",
   write      : "📄",
   edit       : "📝",
-  computer   : "💻",
   schedule   : "⏰",
   schedules  : "⏰",
   unschedule : "⏰",

@@ -23,7 +23,6 @@ const READS = new Map<string, (x: Input) => Shown>([
   ["edit",     (x) => (Array.isArray(x.edits) ? { head: edits_files(x.edits), blocks: x.edits.flatMap(edit_blocks) } : input_shown(x))],
   ["zoom",     (x) => ({ head: (x.agent === undefined ? "" : text_of(x.agent, "null") + " ") + msg_show(x.id, x.n) + (x.at === undefined ? "" : " from char " + text_of(x.at, "null")), blocks: [] })],
   ["date",     (x) => ({ head: msg_show(x.id, 1), blocks: [] })],
-  ["computer", (x) => ({ head: "", blocks: text_block(x.task) })],
   ["spawn",    (x) => ({ head: tasks_show(x.tasks), blocks: list(x.tasks).flatMap(task_block) })],
   ["tell",     (x) => said_show(x.name, x.message)],
   ["stop",     (x) => ({ head: text_of(x.name), blocks: text_block(x.why) })],
