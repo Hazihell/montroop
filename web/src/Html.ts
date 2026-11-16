@@ -168,7 +168,7 @@ function line_html(row: Extract<View.Row, { $: "Line" }>): string {
   const lines = (row.echo ?? "").split("\n");
   const [adds, dels] = [lines.filter((l) => /^\+(?!\+\+)/.test(l)).length, lines.filter((l) => /^-(?!--)/.test(l)).length];
   const diff = files && row.echo !== null && fail === "" ? ` <b class="add">+${adds}</b> <b class="del">−${dels}</b>` : "";
-  const what = files ? `<span class="arg path"><bdi>${esc(c.head)}</bdi></span>` : `<span class="arg">${esc(c.head.split("\n")[0])}</span>`;
+  const what = files ? `<span class="arg path"><bdi>${esc(c.head)}</bdi></span>` : `<span class="arg">${esc(c.head.trim().replace(/\s*\n\s*/g, " "))}</span>`;
   const name = c.name === "" ? "" : `<b>${esc(c.name)}</b>`;
   const where = c.device === "" ? "" : `<span class="on">· ${esc(c.device)}</span>`;
   const head = `<summary><span class="ic">${Theme.tool_glyph(c.name)}</span>${name}${what}${diff}${fail}${where}</summary>`;
