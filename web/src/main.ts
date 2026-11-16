@@ -318,12 +318,14 @@ function copy_keep(): void {
 
 // full storage makes room: the other chats' copies go, the oldest first
 function copy_put(key: string, text: string): void {
+  let olds: string[] | null = null;
   for (;;) {
     try {
       localStorage.setItem(key, text);
       return;
     } catch {
-      const old = copy_keys().filter((k) => k !== key).sort((a, b) => Number(get(copy_read(a), "at") ?? 0) - Number(get(copy_read(b), "at") ?? 0))[0];
+      olds ??= copy_keys().filter((k) => k !== key).map((k) => ({ k, at: Number(get(copy_read(k), "at") ?? 0) })).sort((a, b) => a.at - b.at).map(({ k }) => k);
+      const old = olds.shift();
       if (old === undefined) {
         return;
       }
