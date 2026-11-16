@@ -1378,10 +1378,23 @@ export namespace Chat {
     return Chat.batch(chat, saved);
   }
 
+  // an import's messages, each joined again from its pages, a line each:
+  // memory pages it as a chat's (Memory.pages)
   export async function* reads(body: Body): AsyncGenerator<Log[]> {
+    let open: Log | null = null;
     for await (const [lines] of Chat.pieces(body, 0, (text) => text.split("\n"))) {
-      yield lines.filter((line) => line !== "").map((line) => Chat.imported(JSON.parse(line)));
+      const out: Log[] = [];
+      for (const m of lines.filter((line) => line !== "").map((line) => Chat.imported(JSON.parse(line)))) {
+        if (open !== null && m.page === true && m.kind === open.kind) {
+          open.text += m.text;
+          continue;
+        }
+        out.push(...(open === null ? [] : [open]));
+        open = { ...m, page: undefined };
+      }
+      yield out;
     }
+    yield open === null ? [] : [open];
   }
 
   export async function* fresh(body: Body, done: Import.Done): AsyncGenerator<Log[]> {

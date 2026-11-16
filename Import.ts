@@ -2,8 +2,17 @@ import type { Kind } from "./AskAI.ts";
 import { stream_lines, text_pages } from "./Clip.ts";
 import { get, list, text_of } from "./Json.ts";
 
-// result: a tool call's message holds its result too (#188)
-type Msg = { kind: Kind; text: string; date: string; more?: boolean; page?: boolean; result?: number };
+// result: a tool call's message holds its result too (#188), dated as its
+// result, as a chat logs it; call: when the call was made
+type Msg = { kind: Kind; text: string; date: string; result?: number; call?: string };
+
+// a message's page as an import sends it: the server joins a message's
+// pages again (Server.ts reads)
+type Page = { kind: Kind; text: string; date: string; page?: boolean; result?: number };
+
+// what an import sends of a message: all of it, or of a call imported
+// alone before, its result alone
+type Part = "all" | "result";
 
 // a message as a chat or a log has it, before it is paired and paged; id:
 // a tool call's, or the call's a result is for, where the log has them
@@ -11,11 +20,13 @@ type Said = { kind: Kind; text: string; date: string; id?: string };
 
 type Slot = { m: Said; echo: Said | null; open: boolean };
 
-type Head = { kind: Kind; date: string; size: number; n: number };
+// sizes: its pages', all of it and its result alone (Part)
+type Head = { kind: Kind; date: string; call?: string; sizes: Record<Part, number[]>; n: number };
 
 export type Form = "log" | "msgs";
 
-export type Session = { app: string; form: Form; where: string; start: string; file: Blob; heads: Head[] };
+// last: the date of the last message imported of it, once planned
+export type Session = { app: string; form: Form; where: string; start: string; file: Blob; heads: Head[]; last?: string };
 
 export type Done = Record<string, string>;
 
@@ -86,9 +97,10 @@ export function import_file(path: string): boolean {
 export async function import_session(file: Blob, form: Form, app = "", where = ""): Promise<Session | null> {
   const s: Session = { app, form, where, start: "", file, heads: [] };
   for await (const m of import_read(s)) {
-    s.heads.push({ kind: m.kind, date: m.date, size: import_size(m), n: s.heads.length });
+    const sizes = { all: msg_pages(m, "all").map(import_size), result: m.call === undefined ? [] : msg_pages(m, "result").map(import_size) };
+    s.heads.push({ kind: m.kind, date: m.date, ...(m.call === undefined ? {} : { call: m.call }), sizes, n: s.heads.length });
   }
-  s.start = s.heads[0]?.date ?? "";
+  s.start = s.heads[0]?.call ?? s.heads[0]?.date ?? "";
   return s.heads.length > 0 ? s : null;
 }
 
@@ -106,8 +118,7 @@ async function* import_read(s: Session): AsyncGenerator<Msg> {
 }
 
 // a tool call waits for its result, found by id where the log has ids,
-// else the next result; anything else ends the wait of the calls before it.
-// A call with its result goes whole: the server pages it (Memory.pages)
+// else the next result; anything else ends the wait of the calls before it
 function slots_add(slots: Slot[], m: Said): Msg[] {
   const slot = m.kind === "echo" ? slots.find((x) => x.open && x.echo === null && (m.id === undefined || x.m.id === m.id)) : undefined;
   if (slot !== undefined) {
@@ -124,7 +135,7 @@ function slots_take(slots: Slot[], all: boolean): Msg[] {
   const out: Msg[] = [];
   while (slots.length > 0 && (all || !slots[0].open)) {
     const { m, echo } = slots.shift() as Slot;
-    out.push(...(echo === null ? msgs_of(m.kind, m.text, m.date) : [{ kind: "tool" as const, text: m.text + "\n" + echo.text, date: m.date, result: m.text.length }]));
+    out.push(echo === null ? { kind: m.kind, text: m.text, date: m.date } : { kind: "tool", text: m.text + "\n" + echo.text, date: echo.date, result: m.text.length, call: m.date });
   }
   return out;
 }
@@ -145,9 +156,9 @@ function line_msgs(s: Session, line: string, last: string): Said[] {
 
 function import_pick(sessions: Session[], want: Want, done: Done): Session[] {
   const old  = [...sessions].sort((a, b) => a.start.localeCompare(b.start));
-  const keep = (m: Head, last?: string) => (want.tools || m.kind === "user" || m.kind === "reply") && m.date >= want.since && import_new(m, last);
-  const kept = (s: Session, last?: string) => s.heads.filter((m) => keep(m, last));
-  return old.map((s) => ({ ...s, heads: kept(s, done[import_id(s)]) })).filter((s) => s.heads.length > 0);
+  const keep = (m: Head, last?: string) => (want.tools || m.kind === "user" || m.kind === "reply") && m.date >= want.since && import_part(m, last) !== null;
+  const last = (s: Session) => done[import_id(s)] ?? s.last;
+  return old.map((s) => ({ ...s, heads: s.heads.filter((m) => keep(m, last(s))), last: last(s) })).filter((s) => s.heads.length > 0);
 }
 
 export function import_plan(sessions: Session[], want: Want, done: Done): Plan {
@@ -155,12 +166,18 @@ export function import_plan(sessions: Session[], want: Want, done: Done): Plan {
   const shown  = import_pick(all, want, {});
   const picked = shown.filter((s) => !want.off.includes(import_id(s)));
   const first  = all.map((s) => s.heads[0].date).sort()[0] ?? "";
-  const sizes  = picked.flatMap((s) => [import_size(import_note(s)), ...s.heads.map((m) => m.size)]);
+  const sizes  = picked.flatMap((s) => [import_size(import_note(s)), ...s.heads.flatMap((m) => m.sizes[import_part(m, s.last) ?? "all"])]);
   return { sessions: shown, picked, msgs: sizes.length - picked.length, first: first.slice(0, 10), sizes };
 }
 
 export function import_new(m: { date?: string }, last: string | undefined): boolean {
   return last === undefined || (m.date ?? "") > last;
+}
+
+// none of it if imported already; its result alone if the call was, alone,
+// before its result came (Part)
+function import_part(m: { date: string; call?: string }, last: string | undefined): Part | null {
+  return !import_new(m, last) ? null : m.call !== undefined && !import_new({ date: m.call }, last) ? "result" : "all";
 }
 
 function import_name(s: Session): string {
@@ -210,7 +227,8 @@ export async function* import_body(picked: Session[]): AsyncGenerator<string> {
     let n = 0;
     part += JSON.stringify(import_note(s)) + "\n";
     for await (const m of import_read(s)) {
-      part += kept.has(n++) ? JSON.stringify(m) + "\n" : "";
+      const what = kept.has(n++) ? import_part(m, s.last) : null;
+      part += what === null ? "" : msg_pages(m, what).map((page) => JSON.stringify(page) + "\n").join("");
       if (part.length >= PIECE_KEPT_AS_BLOB) {
         yield part;
         part = "";
@@ -415,9 +433,15 @@ function said_of(kind: Kind, text: string, date: string, id?: unknown): Said[] {
   return text.trim() === "" ? [] : [{ kind, text, date, ...(typeof id === "string" ? { id } : {}) }];
 }
 
-function msgs_of(kind: Kind, text: string, date: string): Msg[] {
-  const pages = text_pages(text, kind);
-  return pages.map((page, k) => ({ kind, text: page, date, more: k < pages.length - 1, ...(k > 0 ? { page: true } : {}) }));
+// its pages as the server makes them (Memory.pages), each a line of the
+// import whatever its size
+function msg_pages(m: Msg, part: Part): Page[] {
+  const alone = part === "result" && m.result !== undefined;
+  const kind = alone ? "echo" : m.kind;
+  const text = alone && m.result !== undefined ? m.text.slice(m.result + 1) : m.text;
+  const result = alone ? undefined : m.result;
+  const pages = text_pages(text, kind, result);
+  return pages.map((page, k) => ({ kind, text: page, date: m.date, ...(k > 0 ? { page: true } : {}), ...(k === 0 && result !== undefined ? { result } : {}) }));
 }
 
 function parts_text(content: unknown): string {
