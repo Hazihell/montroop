@@ -4,7 +4,7 @@ import { CASES, type Kind, type Vendor } from "./cases.ts";
 
 export type Order =
   | { what: "reply"; text: string; think?: string }
-  | { what: "tool"; calls: Array<[string, unknown]> }
+  | { what: "tool"; calls: Array<[string, unknown]>; pace?: number }
   | { what: "error"; kind: Kind; reset: number }
   | { what: "stall"; ms: number }
   | { what: "cut" };
@@ -15,7 +15,8 @@ type Seen = { n: number; at: string; vendor: string; path: string; model: string
 
 type Used = { input: number; read: number; write: number };
 
-type Sent = { blocks: Array<{ text: string } | { id: string; name: string; json: string } | { think: string }>; stall: number; cut: boolean };
+// pace: ms between one block's end and the next's start
+type Sent = { blocks: Array<{ text: string } | { id: string; name: string; json: string } | { think: string }>; stall: number; cut: boolean; pace: number };
 
 export const CONTROL = 9999;
 
@@ -192,6 +193,9 @@ function anthropic(vendor: Vendor, model: string, sent: Sent, used: Used): Respo
       out += tokens(b.json);
     }
     events.push(["content_block_stop", { type: "content_block_stop", index }]);
+    if (sent.pace > 0 && index < sent.blocks.length - 1) {
+      events.push(["pause", { ms: sent.pace }]);
+    }
   });
   const stop_reason = sent.blocks.some((b) => "id" in b) ? "tool_use" : "end_turn";
   events.push(["message_delta", { type: "message_delta", delta: { stop_reason, stop_sequence: null }, usage: { input_tokens: used.input, cache_creation_input_tokens: used.write, cache_read_input_tokens: used.read, output_tokens: out + 1 } }]);
@@ -261,6 +265,9 @@ function openai(vendor: Vendor, model: string, sent: Sent, used: Used): Response
       ev("response.output_item.done", { output_index, item: whole });
       done.push(whole);
       out += tokens(b.json);
+    }
+    if (sent.pace > 0 && output_index < sent.blocks.length - 1) {
+      events.push(["pause", { ms: sent.pace }]);
     }
   });
   const details = vendor === "openai-api" ? { cached_tokens: used.read, cache_write_tokens: used.write } : { cached_tokens: used.read };
@@ -361,7 +368,7 @@ async function model(req: Request, vendor: Vendor, url: URL): Promise<Response> 
   const blocks: Sent["blocks"] = order.what === "tool"
     ? order.calls.map(([n, input]) => ({ id: claude ? id("toolu_01") : id("call_"), name: named(n), json: JSON.stringify(input) }))
     : [...(order.what === "reply" && order.think !== undefined ? [{ think: order.think }] : []), { text: order.what === "reply" ? order.text : "ok" }];
-  const sent: Sent = { blocks, stall: order.what === "stall" ? order.ms : 0, cut: order.what === "cut" };
+  const sent: Sent = { blocks, stall: order.what === "stall" ? order.ms : 0, cut: order.what === "cut", pace: order.what === "tool" ? order.pace ?? 0 : 0 };
   const used = cache(got.segs, got.marks);
   return claude ? anthropic(vendor, name, sent, used) : openai(vendor, name, sent, used);
 }

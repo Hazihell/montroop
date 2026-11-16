@@ -4,7 +4,8 @@ import { CONTROL, type Order } from "./server.ts";
 
 const USE = `fake reply "text"              the next call streams this text
 fake reply --think "t" "text"  the same after 5 s of thinking, then its text "t" ("" for none)
-fake tool NAME 'JSON' [...]    the next call asks for these tools
+fake tool NAME 'JSON' [...]    the next call asks for these tools; --pace 2s: each after the one before
+                               by that long, as Claude Code passes each on once it is written
 fake error KIND [--reset 5m]   the next call fails: prompt-too-long, overloaded, rate-limit, usage-limit, auth-expired
 fake stall 60s | fake cut      the next stream hangs that long, or drops halfway
 fake log | fake last [--json]  what the app sent: every call, or the last one (--json: its headers and body)
@@ -36,11 +37,12 @@ function order(what: string | undefined, args: string[], reset: string | undefin
       return { what, text: args.join(" "), ...(think === undefined ? {} : { think }) };
     }
     case "tool": {
+      const pace = flag(args, "--pace");
       const calls: Array<[string, unknown]> = [];
       for (let k = 0; k < args.length; k += 2) {
         calls.push([args[k], JSON.parse(args[k + 1] ?? "{}")]);
       }
-      return { what, calls };
+      return { what, calls, ...(pace === undefined ? {} : { pace: span(pace) }) };
     }
     case "error": {
       const kind = KINDS.find((k) => k === args[0]);
