@@ -3,7 +3,8 @@ import type { Pick } from "./Pick.ts";
 import type { Live } from "./View.ts";
 import { err_stack, err_why } from "./Err.ts";
 
-type Waiting = { text: string; tool: string; logged: boolean; started: boolean };
+// answered: its result came (#193)
+type Waiting = { text: string; tool: string; logged: boolean; started: boolean; answered: boolean };
 
 export type Heard = Event | { $: "Ended" };
 

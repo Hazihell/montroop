@@ -92,7 +92,6 @@ type Doing = {
 type Turn = {
   model : string;
   asked : boolean;
-  open  : number;
   check : Check | null;
   back  : number;
   sums  : { from: number; total: number } | null;
@@ -253,7 +252,7 @@ export namespace Chat {
     });
     const pick = Pick.load(mem.pick, config.OFFER, config.PICK);
     const chat: Chat = {
-      id, who: id, mem, tools, pick, socks: new Set(), acts: new Map(), main, model: "", check: null, asked: false, open: 0,
+      id, who: id, mem, tools, pick, socks: new Set(), acts: new Map(), main, model: "", check: null, asked: false,
       eye: { parts: [], from: 0 }, after: Promise.resolve(), batch: null, writes: Promise.resolve(), held: null, back: -1, sums: null, resume: null, limits: null, bell: undefined, fresh: true, told: false, gist: -1, stopped: false, subs: new Map(), gone: new Map(), leader: null,
     };
     const seat: Seat = { mem, note: (text) => Chat.note(chat, text), report: (text) => Chat.report(chat, text, true), timed: () => Chat.timed(chat), message: (to, text) => Chat.message(chat, to, text), subs: Chat.subs_of(chat) };
@@ -533,7 +532,6 @@ export namespace Chat {
     const ask = { ...Chat.share(chat, Chat.system(chat)), searches: SEARCHES, server, blocks, imgs, talk: mem.talk !== null, no_wait: true, limits, who: chat.who, used };
     chat.model = model;
     chat.asked = true;
-    chat.open = 0;
     return ask;
   }
 
@@ -854,6 +852,10 @@ export namespace Chat {
       Chat.ran(chat, run, ev);
       return;
     }
+    const answered = ev.$ === "Entry" && ev.kind === "echo" && ev.of !== undefined ? run.calls.get(ev.of) : undefined;
+    if (answered !== undefined) {
+      answered.answered = true;
+    }
     if (run === chat.main) {
       Chat.asks(chat, ev);
     }
@@ -870,7 +872,7 @@ export namespace Chat {
       return;
     }
     if (ev.kind === "tool" && ev.of !== undefined) {
-      run.calls.set(ev.of, { text: ev.text, tool: ev.text.split(" ", 1)[0], logged: false, started: ev.queued !== true });
+      run.calls.set(ev.of, { text: ev.text, tool: ev.text.split(" ", 1)[0], logged: false, started: ev.queued !== true, answered: false });
     } else if (ev.kind === "mind") {
       Chat.all(chat, { $: "entry", agent, kind: ev.kind, text: ev.text });
     } else if (ev.kind !== "user") {
@@ -920,11 +922,10 @@ export namespace Chat {
     Chat.live(chat, run, []);
   }
 
+  // the model is asked again once each call of its answer has its result
+  // (#193)
   export function asks(chat: Chat, ev: Event): void {
-    const kind = ev.$ === "Entry" ? ev.kind : "";
-    const step = kind === "tool" ? 1 : kind === "echo" ? -1 : 0;
-    chat.open = ev.$ === "Delta" ? 0 : Math.max(0, chat.open + step);
-    const asked = kind === "echo" && chat.open === 0;
+    const asked = ev.$ === "Entry" && ev.kind === "echo" && ev.of !== undefined && [...chat.main.calls.values()].every((call) => call.answered);
     if (asked !== chat.asked) {
       chat.asked = asked;
       Chat.change(chat);
