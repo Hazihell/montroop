@@ -28,13 +28,13 @@ const NOTIFY = "ki.notify";
 const BLOCKED = "they're blocked in this browser's settings for this site.";
 const KEEP_EVERY = 60 * 60 * 1000;
 // this browser's copies of the server's (#185): that it is signed in, the
-// team, and each chat's last screenful, by agent; a chat bigger than
-// COPY_MOST characters has none
+// team, and each chat's last screenful, by agent, a subagent's page's by
+// agent/s/name; a chat bigger than COPY_MOST characters has none
 const SIGNED = "ki.signed";
 const TEAM_COPY = "ki.team";
 const COPY = "ki.copy.";
 const COPY_MOST = 2 ** 19;
-// the parts kept of a chat not on screen
+// the parts (a page's entries) kept of a chat not on screen
 const COPY_PARTS = 30;
 // kept this long after the server last said something, as a page may be
 // closed with no word
@@ -253,15 +253,20 @@ function copy_draw(): void {
   if (v.team.length === 0 && Array.isArray(team)) {
     v.team = team as View.Mate[];
   }
-  copy_take();
   Html.team_set(v.team);
 }
 
-// the wanted chat's copy, while the view holds none of it
+// the wanted chat's or subagent page's copy, while the view holds none of it
 function copy_take(): void {
-  const copy = copy_read(COPY + v.agent);
-  if (v.held === "" && get(copy, "wire") === View.WIRE && Array.isArray(get(copy, "msgs"))) {
-    View.view_adopt(v, get(copy, "msgs") as View.Server[]);
+  const copy = copy_read(COPY + shown_key());
+  const msgs = get(copy, "msgs");
+  if (get(copy, "wire") !== View.WIRE || !Array.isArray(msgs)) {
+    return;
+  }
+  if (v.page === null) {
+    View.view_adopt(v, msgs as View.Server[]);
+  } else {
+    View.view_page_adopt(v, msgs as View.Server[]);
   }
 }
 
@@ -278,30 +283,34 @@ function parsed(text: string): unknown {
   }
 }
 
-// the chat held, from its last screenful's first row (the chat on screen),
-// else its last COPY_PARTS parts; its first parts go while it is too big
+// the chat held, or the subagent page open, from its last screenful's
+// first row (on screen; all of it when that is its first), else its last
+// COPY_PARTS; its first rows go while it is too big
 function copy_keep(): void {
-  if (v.held !== v.agent || v.parts.length === 0 || localStorage.getItem(SIGNED) === null) {
+  const page = v.page;
+  const ids = page === null ? (v.held === v.agent ? v.parts.map(([id]) => id) : []) : (page.log ?? []).flatMap((e) => (e.id === undefined ? [] : [e.id]));
+  if (ids.length === 0 || localStorage.getItem(SIGNED) === null) {
     return;
   }
-  const rows = $("#log").hidden || v.page !== null ? [] : [...document.querySelectorAll<HTMLElement>("#log .rows > [data-a]")];
+  const rows = $("#log").hidden ? [] : [...document.querySelectorAll<HTMLElement>("#log .rows > [data-a]")];
   const end = rows.at(-1)?.getBoundingClientRect().bottom ?? 0;
   const top = rows.findLast((r) => r.getBoundingClientRect().top <= end - innerHeight) ?? rows.at(0);
-  let from = top === undefined ? v.parts.at(-COPY_PARTS)?.[0] ?? 0 : Number(top.dataset.a);
+  let from = top === undefined ? ids.at(-COPY_PARTS) ?? ids[0] : top === rows[0] ? ids[0] : Number(top.dataset.a);
+  const key = COPY + shown_key();
   let text = "";
   for (;;) {
-    text = JSON.stringify({ wire: View.WIRE, at: Date.now(), msgs: View.view_copy(v, from) });
-    const next = v.parts.find(([id]) => id > from);
+    text = JSON.stringify({ wire: View.WIRE, at: Date.now(), msgs: page === null ? View.view_copy(v, from) : View.view_page_copy(page, from) });
+    const next = ids.find((id) => id > from);
     if (text.length <= COPY_MOST || next === undefined) {
       break;
     }
-    from = next[0];
+    from = next;
   }
   if (text.length > COPY_MOST) {
-    localStorage.removeItem(COPY + v.agent);
+    localStorage.removeItem(key);
     return;
   }
-  copy_put(COPY + v.agent, text);
+  copy_put(key, text);
   copy_put(TEAM_COPY, JSON.stringify(v.team));
 }
 
@@ -879,7 +888,7 @@ function hear(msg: View.Server): void {
   }
   if (msg.$ === "team") {
     Html.team_set(v.team);
-    copy_keys().filter((k) => !v.team.some((m) => COPY + m.id === k)).forEach((k) => localStorage.removeItem(k));
+    copy_keys().filter((k) => !v.team.some((m) => k.slice(COPY.length).split("/")[0] === m.id)).forEach((k) => localStorage.removeItem(k));
     start(v.team);
     if (location.pathname === "/" && v.agent !== home()) {
       route();
@@ -1499,11 +1508,9 @@ function chat_to(agent: string): void {
     $("#import").hidePopover();
   }
   sessionStorage.setItem(kept("draft." + v.agent), Box.box_text());
-  copy_keep();
   for (const msg of View.view_switch(v, agent)) {
     View.link_send(v, msg);
   }
-  copy_take();
   Box.box_set(sessionStorage.getItem(kept("draft." + agent)) ?? "");
   SCROLL.end = true;
   P.rows = true;
@@ -1524,13 +1531,20 @@ function route(): void {
   if ((!chat || sub !== null) && left && SCROLL.away === null) {
     SCROLL.away = { y: scrollY, end: SCROLL.end, chat: shown_key() };
   }
-  chat_to(AGENT.exec(p)?.[1] ?? sub?.[1] ?? (tree ? new URLSearchParams(location.search).get("a") ?? home() : p === "/" ? home() : v.agent));
+  const agent = AGENT.exec(p)?.[1] ?? sub?.[1] ?? (tree ? new URLSearchParams(location.search).get("a") ?? home() : p === "/" ? home() : v.agent);
+  // the chat or subagent page left, none at the start, is kept as it was
+  // last seen
+  if (P.at !== "" && (agent !== v.agent || (sub?.[2] ?? null) !== (v.page?.name ?? null))) {
+    copy_keep();
+  }
+  chat_to(agent);
   if (chat) {
     localStorage.setItem(LAST, v.agent);
   }
   for (const out of View.view_act(v, { $: "Goto", name: sub?.[2] ?? null })) {
     View.link_send(v, out);
   }
+  copy_take();
   P.rows = true;
   document.body.classList.toggle("subpage", sub !== null);
   document.body.classList.toggle("wide", WIDE.matches);

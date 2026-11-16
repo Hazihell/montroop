@@ -406,14 +406,15 @@ export function view_hear(v: View, msg: Server): Client[] {
     v.held = msg.agent;
   }
   // a new link: the subagents' pages seen before may have missed what
-  // came while it was down, so they're asked for again; the open one now
+  // came while it was down, so they're asked for again; the open one now,
+  // shown as it was till its answer replaces it, as a chat is (#185)
   const fresh = msg.agent !== was;
   if (fresh) {
     v.pages.clear();
   }
   const again: Client[] = fresh && v.page !== null ? [{ $: "agent", name: v.page.name }] : [];
   if (fresh && v.page !== null) {
-    v.page = { ...v.page, log: null, live: [], from: 0, loading: false, done: false };
+    v.page.loading = false;
     v.pages.set(v.page.name, v.page);
   }
   return [...again, ...view_heard(v, msg)];
@@ -539,6 +540,28 @@ export function view_copy(v: View, from: number): Server[] {
   const { busy, wait, sums, again, importing, limit, queue, sent, pick, vendors, models, profiles, timers, mcp, talk, thinking } = v;
   const state = { busy, wait, sums, again, importing, limit, queue, sent, pick, vendors, models, profiles, timers, mcp, talk, thinking };
   return [{ $: "state", agent: v.agent, ...state }, { $: "know", nodes, whole }, { $: "view", parts, turn: v.turn }];
+}
+
+// a copy of the open subagent page, as the messages a link sends for it,
+// its entries from the one with id from on (#185)
+export function view_page_copy(page: Page, from: number): Server[] {
+  const log = page.log ?? [];
+  const k = Math.max(0, log.findIndex((e) => (e.id ?? Infinity) >= from));
+  return [{ $: "agent", name: page.name, found: true, from: page.from + k, entries: log.slice(k), done: page.done, how: page.how }, { $: "live", agent: page.name, live: page.live }];
+}
+
+// a copy of the open subagent page, while the view holds none of it: the
+// link's answer replaces it in place
+export function view_page_adopt(v: View, copy: Server[]): void {
+  const page = v.page;
+  if (page === null || page.log !== null) {
+    return;
+  }
+  const made = view_new(v.agent);
+  made.on = v.agent;
+  made.pages.set(page.name, { ...page });
+  copy.forEach((msg) => view_heard(made, msg));
+  Object.assign(page, made.pages.get(page.name));
 }
 
 // a copy of the wanted chat, or a page's first messages, while the view
