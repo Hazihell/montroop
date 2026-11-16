@@ -45,6 +45,7 @@
   --brand: "Avenir Next", Avenir, Futura, var(--sans);
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
   --col: 740px;
+  --side: 800px;
   --head: 57px;
   --row: 33px;
 }
@@ -200,7 +201,14 @@ body.subpage header > .title { display: block; }
   body.wide { padding-left: 33.333vw; }
   body.wide #list { position: fixed; inset: 0 auto 0 0; z-index: 3; width: 33.333vw; overflow-y: auto; border-right: 1px solid var(--hair); background: var(--paper); }
   body.wide footer { left: 33.333vw; }
-  body.wide :is(.mine, .down) { right: max(20px, (66.667vw - var(--col)) / 2); }
+  /* the chat as a messaging app shows it (#189): the agent's side at the
+     pane's left, as wide as the pane up to --side; the user's messages at
+     its right, as wide at most; the footer and its buttons the pane's */
+  body.wide #log { width: auto; margin: 0 20px; }
+  body.wide #log :is(.rows, .tail, .open) > :not(.msg.user, .open, .fold) { max-width: var(--side); }
+  body.wide #log .msg.user { max-width: min(100%, var(--side)); }
+  body.wide :is(#pick, .composer) { width: auto; }
+  body.wide :is(.mine, .down) { right: 20px; }
 }
 
 /* 1px past the screen: at a fractional pixel ratio its last row of device
