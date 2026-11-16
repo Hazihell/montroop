@@ -635,6 +635,14 @@ function hunk_parse(lines: string[], j: number, h: RegExpExecArray): [Line[] | n
   return [out, j];
 }
 
+// the texts parsed last: one that goes on from one of them, a reply being
+// written, is parsed again only from its last block that starts on a whole
+// line, the blocks before it as they were, the same objects (#192). A text
+// with link definitions, which any later line may add to, is parsed whole
+type Parsed = { src: string; said: boolean; blocks: Block[]; starts: number[]; whole: number };
+const PARSED: Parsed[] = [];
+const PARSED_KEPT = 8;
+
 export function md_parse(src: string, said = false): Block[] {
   const lines = src.replace(/\r/g, "").split("\n");
   try {
@@ -643,8 +651,16 @@ export function md_parse(src: string, said = false): Block[] {
     if (COLLECT) {
       blocks_parse(lines, 0);
       COLLECT = false;
+      return blocks_parse(lines, 0)[0];
     }
-    return blocks_parse(lines, 0)[0];
+    const was = PARSED.filter((p) => p.said === said && src.startsWith(p.src)).sort((a, b) => b.src.length - a.src.length)[0];
+    const k = was?.starts.findLastIndex((at) => at < was.whole) ?? -1;
+    const starts = was === undefined || k < 0 ? [] : was.starts.slice(0, k);
+    const kept = was === undefined || k < 0 ? [] : was.blocks.slice(0, k);
+    const blocks = [...kept, ...blocks_parse(lines, 0, k < 0 ? 0 : (was?.starts[k] ?? 0), starts)[0]];
+    PARSED.unshift({ src, said, blocks, starts, whole: lines.length - 1 });
+    PARSED.splice(PARSED_KEPT);
+    return blocks;
   } finally {
     COLLECT = false;
     SAID = false;
@@ -747,9 +763,10 @@ function title_end_lines(lines: string[], r: number, c: number, q: string): [num
   return null;
 }
 
-function blocks_parse(lines: string[], d: number): [Block[], boolean] {
+// starts: the line each block starts on, from line i on
+function blocks_parse(lines: string[], d: number, i = 0, starts: number[] = []): [Block[], boolean] {
   const out: Block[] = [];
-  let [i, gap, apart] = [0, false, false];
+  let [gap, apart] = [false, false];
   while (i < lines.length) {
     const [block, next] = block_parse(lines, i, d);
     if (block === undefined) {
@@ -758,6 +775,7 @@ function blocks_parse(lines: string[], d: number): [Block[], boolean] {
     } else {
       [apart, gap] = [apart || gap, false];
       out.push(block);
+      starts.push(i);
     }
     i = next;
   }

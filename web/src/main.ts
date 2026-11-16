@@ -613,7 +613,8 @@ function click(ev: MouseEvent): void {
     return;
   }
   el.closest<HTMLElement>(".choices")?.hidePopover();
-  const { act: a, copy: text, go: path } = el.dataset;
+  const { act: a, go: path } = el.dataset;
+  const text = el.dataset.live === undefined ? el.dataset.copy : View.view_writing(v);
   if (el.classList.contains("imp")) {
     void import_open(FORM.exec(location.pathname)?.[2] ?? v.agent, false);
     return;
@@ -1188,7 +1189,27 @@ const MARKUP = new WeakMap<Element, string>();
 // the tool rows opened, by their call
 const OPENED = new Set<string>();
 
-function markup(el: Element, htmls: string[]): void {
+// classes a row's state turns on and off, not what row it is
+const PASSING = new Set(["writing", "queued", "typing", "running"]);
+
+// a markup's opening tag, and what row it is: its message's id, or its kind
+function open_of(html: string): string {
+  return html.slice(0, html.indexOf(">") + 1);
+}
+
+function key_of(open: string, own = true): string {
+  const id = own ? / data-a="([^"]*)"/.exec(open) : null;
+  const tag = /^<([a-z0-9]+)/.exec(open)?.[1] ?? "";
+  const kind = (/ class="([^"]*)"/.exec(open)?.[1] ?? "").split(" ").filter((c) => !PASSING.has(c)).join(" ");
+  return id !== null ? "#" + id[1] : tag + "." + kind;
+}
+
+// el's children as htmls say: one whose markup is the same stays. In the
+// chat (spares not null) one that changed keeps its element, the one of its
+// message, else the next of its kind with no message yet, spares too (a row
+// moving from the live tail into the chat), and only what changed in it
+// changes, so a selection or a hovered copy button in it holds (#192)
+function markup(el: Element, htmls: string[], spares: Element[] | null = null): void {
   const had = new Map<string | undefined, Element[]>();
   for (const child of el.children) {
     const html = MARKUP.get(child);
@@ -1196,12 +1217,30 @@ function markup(el: Element, htmls: string[]): void {
     same.push(child);
     had.set(html, same);
   }
-  const kids = htmls.map((html) => had.get(html)?.shift() ?? html_parse(html));
-  for (const left of had.values()) {
-    left.forEach((child) => child.remove());
+  const kept = htmls.map((html) => had.get(html)?.shift() ?? null);
+  const left = [...had.values()].flat();
+  const free = spares === null ? [] : [...left, ...spares];
+  const kids = htmls.map((html, k) => {
+    const same = kept[k];
+    if (same !== null) {
+      return same;
+    }
+    const open = open_of(html);
+    const key = key_of(open);
+    const mark = (x: Element) => open_of(MARKUP.get(x) ?? "");
+    const of = (o: string) => / data-of="([^"]*)"/.exec(o)?.[1];
+    const bare = free.filter((x) => !mark(x).includes(" data-a=") && key_of(mark(x), false) === key_of(open, false));
+    const was = (key.startsWith("#") ? free.find((x) => key_of(mark(x)) === key) : undefined) ?? bare.find((x) => of(mark(x)) === of(open)) ?? bare.at(0);
+    if (was === undefined) {
+      return html_parse(html);
+    }
+    free.splice(free.indexOf(was), 1);
+    return morph(was, html);
+  });
+  for (const child of left.filter((x) => spares === null || free.includes(x))) {
+    child.remove();
   }
-  // a tool row the user opened stays open as its result comes in or it
-  // moves from the live tail into the chat (#121)
+  // a tool row the user opened stays open when it is made anew (#121)
   for (const kid of kids.filter((k) => !k.isConnected && OPENED.size > 0)) {
     for (const d of [kid, ...kid.querySelectorAll("details.line[data-of]")]) {
       if (d instanceof HTMLDetailsElement && d.dataset.of !== undefined && OPENED.has(d.dataset.of)) {
@@ -1214,9 +1253,72 @@ function markup(el: Element, htmls: string[]): void {
     if (kid === at) {
       at = at.nextElementSibling;
     } else {
-      el.insertBefore(kid, at);
+      put(el, kid, at);
     }
   }
+}
+
+// an element put in place; moved, a selection in it is too
+function put(el: Element, kid: Element, at: Element | null): void {
+  const sel = getSelection();
+  const kept = sel !== null && sel.rangeCount > 0 && kid.isConnected && sel.anchorNode !== null && sel.focusNode !== null && kid.contains(sel.anchorNode) && kid.contains(sel.focusNode) ? [sel.anchorNode, sel.anchorOffset, sel.focusNode, sel.focusOffset] as const : null;
+  el.insertBefore(kid, at);
+  if (kept !== null) {
+    sel?.setBaseAndExtent(...kept);
+  }
+}
+
+// the element was made as html says now, changing only what differs
+function morph(was: Element, html: string): Element {
+  const parts = Html.parts_of(html);
+  const now = html_parse(parts?.shell ?? html);
+  if (now.tagName !== was.tagName) {
+    return parts === undefined ? now : html_parse(html);
+  }
+  attrs_set(was, now);
+  if (parts === undefined) {
+    nodes_set(was, now);
+  } else {
+    markup(was, parts.kids, []);
+    // (a part that isn't one element: all of it anew)
+    if (was.children.length !== parts.kids.length) {
+      nodes_set(was, html_parse(html));
+    }
+  }
+  MARKUP.set(was, html);
+  return was;
+}
+
+// the user's own: an opened row stays open
+function attrs_set(was: Element, now: Element): void {
+  for (const a of [...was.attributes].filter((a) => a.name !== "open" && !now.hasAttribute(a.name))) {
+    was.removeAttribute(a.name);
+  }
+  for (const a of [...now.attributes].filter((a) => was.getAttribute(a.name) !== a.value)) {
+    was.setAttribute(a.name, a.value);
+  }
+}
+
+// text that goes on is added to, so a selection in it holds
+function nodes_set(was: Element, now: Element): void {
+  const [olds, news] = [[...was.childNodes], [...now.childNodes]];
+  news.forEach((y, k) => {
+    const x = olds.at(k);
+    if (x === undefined) {
+      was.append(y);
+    } else if (x instanceof Text && y instanceof Text) {
+      if (x.data !== y.data) {
+        y.data.startsWith(x.data) ? x.appendData(y.data.slice(x.data.length)) : (x.data = y.data);
+      }
+    } else if (x instanceof Element && y instanceof Element && x.tagName === y.tagName) {
+      attrs_set(x, y);
+      nodes_set(x, y);
+      MARKUP.delete(x);
+    } else {
+      x.replaceWith(y);
+    }
+  });
+  olds.slice(news.length).forEach((x) => x.remove());
 }
 
 function html_parse(html: string): Element {
@@ -1279,13 +1381,13 @@ function paint(): void {
     P.rows = true;
   }
   if (P.rows) {
-    markup($("#log .rows"), View.view_body(v).map(Html.row_html));
+    markup($("#log .rows"), View.view_body(v).map(Html.row_html), [...$("#log .tail").children]);
     Box.box_sizes($("#log .rows"));
     P.rows = false;
     P.drawn = shown_key();
     earlier_watch();
   }
-  markup($("#log .tail"), View.view_tail(v).map(Html.row_html));
+  markup($("#log .tail"), View.view_tail(v).map(Html.row_html), []);
   Box.box_sizes($("#log .tail"));
   $("#log").classList.toggle("still", v.on !== v.agent);
   frames();

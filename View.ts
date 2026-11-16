@@ -758,6 +758,11 @@ function thought_last(v: View): boolean {
   return last !== undefined && v.minds.has(last[0] + last[1] - 1);
 }
 
+// the text of the reply being written, all of it so far (#192)
+export function view_writing(v: View): string {
+  return (v.page?.live ?? v.live).findLast((l) => l.kind === "reply")?.text ?? "";
+}
+
 export function view_tail(v: View): Row[] {
   if (v.page !== null) {
     const live = v.page.live;

@@ -100,6 +100,41 @@ export function names_set(team: View.Mate[], here: string, sub: string | null): 
   return true;
 }
 
+// a message's markup by its parts, the chat changing only those that
+// changed (main.ts markup, #192): its copy button, each block, its pictures
+const PARTS = new Map<string, { shell: string; kids: string[] }>();
+const PARTS_KEPT = 64;
+
+export function parts_of(html: string): { shell: string; kids: string[] } | undefined {
+  return PARTS.get(html);
+}
+
+function parts_keep(html: string, shell: string, kids: string[]): string {
+  PARTS.delete(html);
+  PARTS.set(html, { shell, kids });
+  for (const old of PARTS.keys()) {
+    if (PARTS.size <= PARTS_KEPT) {
+      break;
+    }
+    PARTS.delete(old);
+  }
+  return html;
+}
+
+// a block's markup made once: a reply being written keeps its blocks before
+// the last, the same objects (Md.md_parse)
+const BLOCKS = new WeakMap<Md.Block, { html: string; names: string }>();
+
+function block_kept(b: Md.Block): string {
+  const made = BLOCKS.get(b);
+  if (made !== undefined && made.names === NAMES.key) {
+    return made.html;
+  }
+  const html = block_html(b);
+  BLOCKS.set(b, { html, names: NAMES.key });
+  return html;
+}
+
 export function row_html(row: View.Row): string {
   const made = MADE.get(row);
   if (made !== undefined && made.names === NAMES.key) {
@@ -127,8 +162,11 @@ function row_make(row: View.Row): string {
     case "Msg": {
       const at = row.id === null ? "" : ` data-a="${row.id}"`;
       const whole = row.call === null ? row.text : Call.call_text(row.call);
-      const copy = copy_html(whole);
-      const body = row.call === null ? row.body.map(block_html).join("") : call_html(row.call);
+      // a reply being written copies its text when pressed: in its markup,
+      // its whole text again at each piece of it would cost as much again
+      const copy = row.writing === true ? `<button class="copy" data-copy="" data-live title="Copy">${SHEETS}</button>` : copy_html(whole);
+      const blocks = row.call === null ? row.body.map(block_kept) : [];
+      const body = row.call === null ? blocks.join("") : call_html(row.call);
       const pics = images_html(row.images);
       const tall = ["user", "work"].includes(row.kind) && row.text.length + 80 * row.text.split("\n").length > TALL && !row.text.includes("](/media/");
       const fold = tall ? `<div class="clip">${body}</div><details class="more"><summary></summary></details>` : body;
@@ -140,7 +178,9 @@ function row_make(row: View.Row): string {
         const head = `<summary>${face_html(mate?.picture ?? "")}<b>${esc(mate?.name ?? row.who)}</b><span>${esc(gist)}</span></summary>`;
         return `<div class="msg ${row.kind} said${queued}"${at}><details>${head}${copy}${body}${pics}</details></div>`;
       }
-      return `<div class="msg ${row.kind}${queued}"${at}${who}>${copy}${fold}${pics}</div>`;
+      const open = `<div class="msg ${row.kind}${queued}"${at}${who}>`;
+      const html = `${open}${copy}${fold}${pics}</div>`;
+      return tall || row.call !== null ? html : parts_keep(html, open + "</div>", [copy, ...blocks, ...(pics === "" ? [] : [pics])]);
     }
     case "Cap": {
       if (row.wait === true) {
