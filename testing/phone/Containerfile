@@ -3,9 +3,9 @@
 # one, from APKMirror (Google Play needs an account; its Cloudflare lets
 # this curl through, not Ubuntu's)
 FROM quay.io/centos/centos:stream10 AS chrome
-ARG CHROME=157.0.8103.50
-ARG CHROME_PAGE=/apk/google-inc/chrome/google-chrome-157-0-8103-50-release/google-chrome-157-0-8103-50-7-android-apk-download/
-ARG CHROME_SHA256=6123891934761f6dac9e562fb0c0ffc8ff3781c0fa857289d01c9313665e4541
+ARG CHROME=157.0.8103.78
+ARG CHROME_PAGE=/apk/google-inc/chrome/google-chrome-157-0-8103-78-release/google-chrome-157-0-8103-78-7-android-apk-download/
+ARG CHROME_SHA256=44bd18c980f7d018dbc6cfb60b9f97c331667dfda441b5f7fdfba9718594b88e
 RUN A="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36" M=https://www.apkmirror.com \
     && no() { echo "Chrome $CHROME from APKMirror: $1. Find Google's x86_64 APK of a current Chrome on apkmirror.com and set CHROME, CHROME_PAGE (its download page) and CHROME_SHA256 here." >&2; exit 1; } \
     && k=$(curl -fsSA "$A" "$M$CHROME_PAGE" | grep -o 'href="[^"]*/download/?key=[^"]*"' | head -1 | cut -d'"' -f2 | sed 's/&amp;/\&/g') \
