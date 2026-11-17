@@ -693,7 +693,7 @@ export namespace Chat {
   }
 
   export function noted(chat: Chat, run: Talk, text: string): void {
-    Chat.behind(chat, run, () => Chat.log(chat, run, { kind: "note", text }, false));
+    Chat.behind(chat, run, () => Chat.log(chat, run, { kind: "note", text }, false), { kind: "note", text });
   }
 
   // a message that comes while calls written before it have no result
@@ -1250,7 +1250,7 @@ export namespace Chat {
     Chat.hold(chat, () => Chat.behind(chat, chat.main, () => {
       Chat.log(chat, chat.main, { kind: "work", text }, false);
       Chat.change(chat);
-    }));
+    }, { kind: "work", text }));
   }
 
   // a device's job report, acked once it's queued, and taken once: a device
@@ -2674,9 +2674,13 @@ export namespace Main {
     process.on("exit", () => {
       fs.rmSync(PID, { force: true });
       Main.chats.forEach((chat) => {
-        // a call cut by the restart is logged, with no result (#188)
+        // a call cut by the restart is logged, with no result, and what
+        // waited for it after it (#188)
         try {
-          [chat.main, ...[...chat.subs.values()].map((sub) => sub.run)].forEach((run) => Chat.flush(chat, run));
+          [chat.main, ...[...chat.subs.values()].map((sub) => sub.run)].forEach((run) => {
+            Chat.flush(chat, run);
+            run.later.splice(0).forEach((l) => l.step());
+          });
         } catch (err) {
           console.error("ki: " + err_stack(err));
         }
