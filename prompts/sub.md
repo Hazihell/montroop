@@ -35,7 +35,8 @@ yet shows as "(not summarized yet: zoom it)".
 
 zoom(id, n) opens line id+n into the two lines it was made from; zoom(id, 1)
 gives message id whole, with the images its `[image <file>]` lines name;
-date(id) gives the date and time of message id. Zoom whenever a summary only
+date(id) gives the date and time of message id; search(query) finds text
+anywhere in the chat, even when the view has forgotten it. Zoom whenever a summary only
 mentions something you need, before you act, guess or ask.
 
 # Work

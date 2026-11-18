@@ -6,6 +6,7 @@ import { INT, JOB, STR, TOOLS, spec, type Bg, type Job, type Skill, type Spec } 
 import { clip_page } from "./Clip.ts";
 import { Mcp, NAME_MOST, type Held, type Servers } from "./Mcp.ts";
 import { Memory } from "./Memory.ts";
+import { Search } from "./Search.ts";
 import * as Prompts from "./Prompts.ts";
 import { Team } from "./Team.ts";
 import * as Timer from "./Timer.ts";
@@ -90,6 +91,7 @@ const LOOK = 3000;
 
 const OWN: Spec[] = [
   spec("zoom", "Open the line id+n of the view into the two lines of n/2 under it; n = 1 gives the message whole. A long text comes in pages from character at, saying where to go on. With agent, a line of that agent's memory, by its name; a subagent's name gives its whole chat (id: 0).", { id: INT, n: INT, at: INT, agent: STR }, ["id"]),
+  spec("search", "Search every message in this chat for a literal, case-insensitive word or phrase (1–500 characters), however old. Returns oldest first: message id, UTC date, kind and a short matching excerpt; zoom(id, 1) opens the full message. since/until are inclusive YYYY-MM-DD dates. limit defaults to 20, at most 100. after continues after a message id. No regular expressions.", { query: STR, since: STR, until: STR, limit: INT, after: INT }, ["query"]),
   spec("date", "The date and time of message id.", { id: INT }, ["id"]),
 ];
 // built at each listing: spawn names the models offered now, which
@@ -352,6 +354,20 @@ export namespace Tools {
       }
       case "date": {
         return { text: Memory.date(mem, Number(args.id)), fail: false };
+      }
+      case "search": {
+        try {
+          const found = await Search.find(mem, text_of(args.query, ""), {
+            since: args.since === undefined ? undefined : text_of(args.since, ""),
+            until: args.until === undefined ? undefined : text_of(args.until, ""),
+            limit: args.limit === undefined ? undefined : Number(args.limit),
+            after: args.after === undefined ? undefined : Number(args.after),
+          }, signal);
+          const lines = found.hits.map((hit) => "#" + hit.id + " " + hit.date.slice(0, 10) + " " + hit.kind + ": " + hit.text);
+          return { text: lines.length === 0 ? "Nothing in this chat matches." : lines.join("\n") + (found.more ? "\n(more matched: continue with after=" + found.hits.at(-1)?.id + ", or narrow the dates.)" : ""), fail: false };
+        } catch (err) {
+          return { text: err_why(err), fail: true };
+        }
       }
       case "schedule": {
         return Tools.schedule(seat, Timer.timer_new(args, Date.now()));
