@@ -128,7 +128,7 @@ const SCRATCH_SWEEP = 24 * 3600e3;
 const AGENTS     = config.DIR + "/agents";
 // the data's layout, as release/upgrade.js writes it
 const LAYOUT     = config.DIR + "/layout";
-const LAYOUT_NOW = 42;
+const LAYOUT_NOW = 47;
 const TALK_FULL  = "Conversation mode switched itself off: it was full.";
 const TALK_SMALL = "Conversation mode switched itself off: too long for {model}.";
 const TALK_LONG  = "Conversation mode switched itself off: {model} refused the turn as too long.";

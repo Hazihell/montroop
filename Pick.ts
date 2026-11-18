@@ -23,9 +23,10 @@ export const VENDORS: Vendor[] = ["claude-api", "openai-api", "openai-sub", "cla
 
 // the windows: Claude's 1M, its models' default (Claude Code's docs:
 // Opus 4.7+, Sonnet 5+, Haiku 5.5 need no [1m]), at the API and on a
-// plan alike; OpenAI's as Codex's models cache has them for a ChatGPT
-// plan (context_window; a request can't ask for more), the API's taken
-// as the same
+// plan alike; OpenAI's as Codex's models list has them for a ChatGPT
+// plan (context_window; a request can't ask for more), the API's for
+// gpt-6.2 from OpenAI's models pages (1.05M, 922K of it input), the
+// others' taken as the plan's
 // the efforts: the vendors' models lists (Anthropic's capabilities.effort,
 // Claude Code's supportedEffortLevels, Codex's supported_reasoning_levels)
 // and what a request at each level is answered; defaults by their docs
@@ -38,14 +39,15 @@ const HAIKU : Model = { label: "haiku-5.5",  id: "claude-haiku-5-5",  speeds: ["
 const GPT  = ["low", "medium", "high", "xhigh", "max"];
 const NONE = ["none", ...GPT];
 const OPENAI: Model[] = [
-  { label: "gpt-6-astra",   id: "gpt-6-astra",   speeds: ["slow", "fast", "ultrafast"], efforts: GPT, effort: "medium", window: 272e3 },
-  { label: "gpt-6.1-sol",   id: "gpt-6.1-sol",   speeds: ["slow", "fast"], efforts: GPT, effort: "medium", window: 500e3 },
+  { label: "gpt-6.2-astra", id: "gpt-6.2-astra", speeds: ["slow", "fast", "ultrafast"], efforts: GPT, effort: "medium", window: 1.05e6 },
+  { label: "gpt-6.2-sol",   id: "gpt-6.2-sol",   speeds: ["slow", "fast", "ultrafast"], efforts: GPT, effort: "medium", window: 1.05e6 },
   { label: "gpt-6.1-terra", id: "gpt-6.1-terra", speeds: ["slow", "fast"], efforts: NONE, effort: "medium", window: 500e3 },
   { label: "gpt-6-luna",    id: "gpt-6-luna",    speeds: ["slow", "fast"], efforts: NONE, effort: "medium", window: 272e3 },
 ];
 
 // a ChatGPT plan's (ChatGPT.ts): fast is its priority tier, no ultrafast
-const PLAN: Model[] = OPENAI.map((m) => ({ ...m, speeds: m.speeds.filter((s) => s !== "ultrafast") }));
+const PLAN_WINDOWS: Record<string, number> = { "gpt-6.2-astra": 272e3, "gpt-6.2-sol": 500e3 };
+const PLAN: Model[] = OPENAI.map((m) => ({ ...m, speeds: m.speeds.filter((s) => s !== "ultrafast"), window: PLAN_WINDOWS[m.label] ?? m.window }));
 
 const MODELS: Record<Vendor, Model[]> = {
   "claude-api": [FABLE, OPUS, SONNET, HAIKU],

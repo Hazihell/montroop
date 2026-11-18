@@ -64,9 +64,9 @@ const USABLE: Record<Vendor, string> = {
 };
 const DEFAULT_MODEL: Record<Vendor, string> = {
   "claude-sub" : "sonnet-5.5",
-  "openai-sub" : "gpt-6.1-sol",
+  "openai-sub" : "gpt-6.2-sol",
   "claude-api" : "sonnet-5.5",
-  "openai-api" : "gpt-6.1-sol",
+  "openai-api" : "gpt-6.2-sol",
 };
 
 const NONE     = "Not signed in and no API key: sign in with `ki serve claude login` (or `ki serve chatgpt login`) on the server, or set a key in Settings";

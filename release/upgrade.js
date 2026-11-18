@@ -19,13 +19,19 @@
 // several is in each of theirs (hard links, else copies); one named by no
 // agent stays where it is. (A link to another agent's file, /media/<id>/<name>,
 // finds it in the store of the agent whose memory has the link.)
+//
+// 47: gpt-6.2-astra and gpt-6.2-sol replace gpt-6-astra and gpt-6.1-sol
+// (#200): config.json's models, pick, compactor and profiles, each agent's
+// pick, and each subagent's pick and the model its spawn named (its log's
+// first line, which a subagent going on after a restart runs on) name the
+// new ones.
 import fs from "node:fs";
 import path from "node:path";
 import { Database } from "bun:sqlite";
 const args = process.argv.slice(2);
 const checking = args[0] === "check";
 const dir = checking ? args[1] : args[0];
-const LAYOUT = 42;
+const LAYOUT = 47;
 const OLD_ABOUT = "Executive assistant: automatically keeps track of the whole team.";
 const NEW_ABOUT = "The user's assistant and first point of contact.";
 const say = (s) => console.log("  " + s);
@@ -96,7 +102,7 @@ if (layout < 41 && lead !== undefined) {
 if (layout < 41 && has) db.query("update agents set about = ? where about = ?").run(NEW_ABOUT, OLD_ABOUT);
 
 // 42: each file in the stores of the agents that name it, and only there
-if (rows.length > 0) {
+if (layout < 42 && rows.length > 0) {
   const NAME = /[0-9a-f]{16}\.[a-z0-9]{1,10}/g;
   const named = new Map(rows.map((a) => [a.id, new Set()]));
   const scan = (id, text) => {
@@ -150,6 +156,75 @@ if (rows.length > 0) {
   if (moved + shared > 0) say("Each agent's pictures and files are in its own store now: " + moved + " moved to the one agent that names them, " + shared + " shared by the agents that name them (each has its own), " + stayed + stay + ".");
 }
 db.close();
+
+// 47: the models gpt-6.2 replaced
+if (layout < 47) {
+  const NEW = { "gpt-6-astra": "gpt-6.2-astra", "gpt-6.1-sol": "gpt-6.2-sol" };
+  const renamed = (label) => NEW[label] ?? label;
+  // vendor:model[:effort[:speed]]
+  const spec = (s) => typeof s === "string" ? s.split(":").map((part, k) => k === 1 ? renamed(part) : part).join(":") : s;
+  const json = (p) => { const text = read(p); if (text === null) return null; try { return JSON.parse(text); } catch { return undefined; } };
+  const save = (p, text) => {
+    fs.writeFileSync(p + ".new", text, { mode: fs.statSync(p).mode & 0o777 });
+    fs.renameSync(p + ".new", p);
+  };
+  const object = (x) => x !== null && typeof x === "object" && !Array.isArray(x);
+  const changed = [];
+  const file = path.join(dir, "config.json");
+  const conf = json(file);
+  if (object(conf)) {
+    const was = JSON.stringify(conf);
+    if (typeof conf.models === "string") conf.models = [...new Set(conf.models.split(",").map((m) => renamed(m.trim())))].join(",");
+    for (const key of ["pick", "compactor"]) if (typeof conf[key] === "string") conf[key] = spec(conf[key]);
+    if (object(conf.profiles)) {
+      for (const [name, list] of Object.entries(conf.profiles)) if (Array.isArray(list)) conf.profiles[name] = list.map(spec);
+    }
+    if (JSON.stringify(conf) !== was) {
+      save(file, JSON.stringify(conf, null, 2) + "\n");
+      changed.push("config.json");
+    }
+  } else if (conf === undefined && Object.keys(NEW).some((m) => (read(file) ?? "").includes(m))) {
+    say(file + " isn't plain JSON, so it still names gpt-6-astra or gpt-6.1-sol, which this ki doesn't offer: change them to gpt-6.2-astra and gpt-6.2-sol.");
+  }
+  let picks = 0;
+  const subs = new Set();
+  for (const a of rows) {
+    const view = path.join(agents, a.id, "view.json");
+    const v = json(view);
+    if (object(v) && object(v.pick) && NEW[v.pick.model] !== undefined) {
+      v.pick.model = NEW[v.pick.model];
+      save(view, JSON.stringify(v));
+      picks += 1;
+    }
+    const own = path.join(agents, a.id, "docs", "agent");
+    for (const p of files(own)) {
+      const name = path.basename(p);
+      if (name.endsWith(".pick.json")) {
+        const pick = json(p);
+        if (object(pick) && NEW[pick.model] !== undefined) {
+          pick.model = NEW[pick.model];
+          save(p, JSON.stringify(pick) + "\n");
+          subs.add(p.slice(0, -".pick.json".length));
+        }
+      } else if (name.endsWith(".jsonl")) {
+        const text = read(p);
+        const end = text.indexOf("\n");
+        let first = null;
+        try { first = JSON.parse(end < 0 ? text : text.slice(0, end)); } catch {}
+        const on = object(first) && first.kind === "note" && typeof first.text === "string" ? /^(subagent on )(\S+)/.exec(first.text) : null;
+        if (on !== null && NEW[on[2]] !== undefined) {
+          const note = first.text.replace(on[0], on[1] + NEW[on[2]]);
+          const line = JSON.stringify({ ...first, text: note, size: first.size + Buffer.byteLength(note) - Buffer.byteLength(first.text) });
+          save(p, line + (end < 0 ? "\n" : text.slice(end)));
+          subs.add(p.slice(0, -".jsonl".length));
+        }
+      }
+    }
+  }
+  if (picks > 0) changed.push(picks + " agent" + (picks === 1 ? "" : "s"));
+  if (subs.size > 0) changed.push(subs.size + " subagent" + (subs.size === 1 ? "" : "s"));
+  if (changed.length > 0) say("gpt-6-astra and gpt-6.1-sol are gpt-6.2-astra and gpt-6.2-sol now, in " + changed.join(", ") + ".");
+}
 
 fs.writeFileSync(path.join(dir, "layout.new"), LAYOUT + "\n");
 fs.renameSync(path.join(dir, "layout.new"), path.join(dir, "layout"));
