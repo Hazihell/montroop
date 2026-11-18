@@ -25,6 +25,8 @@ const WEB = ["WebSearch"];
 
 const MORE = ["Task", "DesignSync"];
 
+const CONNECTORS = ["mcp__claude_ai_Slack", "mcp__claude_ai_Linear", "mcp__claude_ai_Gmail", "mcp__claude_ai_Google_Calendar"];
+
 // what turns off what Claude Code does beyond calling the model; its
 // prompt cache pinned to an hour (CLAUDE_CODE_PROMPT_CACHE_TTL comes
 // before its own choice, which is an hour on a plan but 5 minutes under
@@ -245,11 +247,11 @@ export namespace ClaudeSub {
       thinking               : { type: "adaptive", display: "summarized" },
       systemPrompt           : [ask.system, boundary, ...(ask.own === undefined || ask.own === "" ? [] : [ask.own])],
       tools,
-      allowedTools           : [...tools, "mcp__" + MCP],
+      allowedTools           : [...tools, "mcp__" + MCP, ...CONNECTORS],
       disallowedTools        : deny,
       permissionMode         : "dontAsk",
       mcpServers             : {},
-      strictMcpConfig        : true,
+      strictMcpConfig        : false,
       settingSources         : [],
       plugins                : [],
       skills                 : [],
@@ -259,7 +261,7 @@ export namespace ClaudeSub {
         disableBundledSkills      : true,
         disableWorkflows          : true,
         disableRemoteControl      : true,
-        disableClaudeAiConnectors : true,
+        disableClaudeAiConnectors : false,
         enableArtifact            : false,
         permissions               : { deny },
       },
