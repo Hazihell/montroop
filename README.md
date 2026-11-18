@@ -33,7 +33,7 @@ Windows (PowerShell, no admin needed):
 
 `irm https://github.com/arteeh/ki/releases/latest/download/install.ps1 | iex`
 
-Either way you get one `ki` program (in `~/.local/bin`, or `%LOCALAPPDATA%\Programs\ki` on Windows). `ki update` installs the newest release and restarts the background services on it.
+Either way you get one `ki` program (in `~/.local/bin`, or `%LOCALAPPDATA%\Programs\ki` on Windows). `ki update` checks upstream and the Agent SDK for news and where it touches your changes; `ki update apply` merges or bumps it in a worktree, tests it, installs it and restarts the background services on it; `ki update rollback` puts the previous program back (`ki update help`).
 
 Set up
 ------

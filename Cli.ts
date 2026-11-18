@@ -1,6 +1,5 @@
 #!/usr/bin/env bun
 
-import * as child from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -59,66 +58,6 @@ function fail(why: string): never {
 
 const WIN  = process.platform === "win32";
 const BUN  = /^bun(\.exe)?$/i.test(path.basename(process.execPath));
-
-async function update(): Promise<void> {
-  if (BUN) {
-    fail("this ki runs from source (bun): update it with git.");
-  }
-  if (Update.RC) {
-    fail("ki " + Update.VERSION + " is a release candidate: `ki update` doesn't move from it. Install another release by its own install line (https://github.com/arteeh/ki/releases).");
-  }
-  const name = WIN ? "install.ps1" : "install.sh";
-  const url = Update.BASE + "/" + name;
-  console.error("ki: getting " + url + " and its signature");
-  const [script, sig] = await Promise.all([get(url), get(url + ".sig")]).catch((err: unknown) => fail("could not download the installer (" + err_why(err) + "); nothing changed."));
-  const why = Update.unsigned(script, Buffer.from(sig).toString(), name);
-  if (why !== null) {
-    fail(url + " is not signed by ki's release key (" + why + "): it was not run, and nothing changed.");
-  }
-  const ver = Update.installs(Buffer.from(script).toString());
-  const no = ver === null ? "it names no version" : Update.refused(ver);
-  if (no !== null) {
-    fail(url + " was not run (" + no + "), and nothing changed.");
-  }
-  let dir: string;
-  try {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), "ki-update-"));
-  } catch (err) {
-    fail("could not make a folder for the installer in " + os.tmpdir() + " (" + err_why(err) + "); nothing changed. Set TMPDIR (TEMP on Windows) to a folder you can write to.");
-  }
-  const file = path.join(dir, name);
-  const gone = (): void => fs.rmSync(dir, { recursive: true, force: true });
-  const stop = (sig: NodeJS.Signals): void => {
-    gone();
-    process.kill(process.pid, sig);
-  };
-  process.once("SIGINT", stop).once("SIGTERM", stop);
-  try {
-    fs.writeFileSync(file, script);
-    const run = WIN ? powershell_exiting_as_installer("iex ([IO.File]::ReadAllText('" + file.replaceAll("'", "''") + "'))") : ["sh", file];
-    process.exitCode = child.spawnSync(run[0], run.slice(1), { stdio: "inherit", env: updater_env() }).status ?? 1;
-  } finally {
-    gone();
-  }
-}
-
-async function get(url: string): Promise<Uint8Array> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
-  if (!res.ok) {
-    throw new Error(url + ": HTTP " + res.status);
-  }
-  return new Uint8Array(await res.arrayBuffer());
-}
-
-const FAILED_TILL_INSTALLER_EXITS = "$global:LASTEXITCODE = 1; ";
-
-function powershell_exiting_as_installer(cmd: string): string[] {
-  return [Bun.which("pwsh") ?? "powershell.exe", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop'; " + FAILED_TILL_INSTALLER_EXITS + cmd + "; exit $LASTEXITCODE"];
-}
-
-function updater_env(): Record<string, string | undefined> {
-  return { ...process.env, KI_UPDATER: String(process.pid), KI_BIN: process.execPath };
-}
 
 function unmark_from_parent_shell(): void {
   for (const k of ["KI_RUN", "KI_AGENT", "INVOCATION_ID"]) {
@@ -206,7 +145,7 @@ const TREE: Cmd = { use: "ki", about: "Ki: open your server's address in a brows
     plan("claude", "your Claude plan (claude-sub)"),
     plan("chatgpt", "your ChatGPT plan (openai-sub)"),
   ] },
-  { use: "update", about: "install the newest release", run: update },
+  { use: "update", about: "check for updates, update safely (`ki update help`)" },
   { use: "version", about: "this ki's version", run: () => console.log("ki " + Update.VERSION) },
   { use: "help", about: "this" },
 ] };
@@ -254,7 +193,9 @@ const fits =
   [...FLAG].every((f) => (f === "-d" && daemon !== undefined) || (f === "-f" && cmd.follow === true) || (f === "--service" && service_run !== null)) &&
   (SETS.length === 0 || service_run !== null);
 
-if (help || !fits) {
+if (REST[0] === "update" && !help) {
+  process.exit(await (await import("./Fork.ts")).update(ARGS.slice(ARGS.indexOf("update") + 1)));
+} else if (help || !fits) {
   const head = trail.length === 1 ? TREE.use : [...trail.slice(0, -1), cmd.use].join(" ");
   const all = rows(cmd, head, 0);
   const width = Math.max(31, ...all.map(([use]) => use.length + 2));
