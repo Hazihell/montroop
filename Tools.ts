@@ -92,7 +92,9 @@ const OWN: Spec[] = [
   spec("zoom", "Open the line id+n of the view into the two lines of n/2 under it; n = 1 gives the message whole. A long text comes in pages from character at, saying where to go on. With agent, a line of that agent's memory, by its name; a subagent's name gives its whole chat (id: 0).", { id: INT, n: INT, at: INT, agent: STR }, ["id"]),
   spec("date", "The date and time of message id.", { id: INT }, ["id"]),
 ];
-const BOSS: Spec[] = [
+// built at each listing: spawn names the models offered now, which
+// Settings change while Ki runs
+const boss = (): Spec[] => [
   spec("schedule", "Schedule a message to yourself: at its time it reaches you as a new message from the timer, starting \"[Timer id]\", and starts a turn as a report does, whether or not the user is online. Give `at` to send it once, or `cron` to send it again and again, and the time zone both are read in (the user's). Write the message as the task to do then, whole: by then this turn is far back in the view.", {
     message : STR,
     at      : { type: "string", description: "Once: YYYY-MM-DD HH:MM, in zone." },
@@ -299,7 +301,7 @@ export namespace Tools {
   // the same for every agent, so one cached copy serves them all, and the
   // same for every subagent
   export function list(sub = false): Spec[] {
-    return sub ? [...OWN, ...KIT, SKILL] : [...OWN, ...BOSS, ...KIT, SKILL];
+    return sub ? [...OWN, ...KIT, SKILL] : [...OWN, ...boss(), ...KIT, SKILL];
   }
 
   export function off(tools: Tools): string[] {
