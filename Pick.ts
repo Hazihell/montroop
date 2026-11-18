@@ -58,12 +58,20 @@ const MODELS: Record<Vendor, Model[]> = {
 
 const SPEEDS = ["slow", "fast", "ultrafast"];
 
+// the models Ki dropped, each with the one in its place (#200): a setting
+// that still names one is refused with that name, never moved onto it
+const REPLACED: Record<string, string> = { "gpt-6-astra": "gpt-6.2-astra", "gpt-6.1-sol": "gpt-6.2-sol" };
+
 export const LABELS = [...new Set(Object.values(MODELS).flat().map((m) => m.label))];
 
 export namespace Pick {
 
   export function model(vendor: Vendor, label: string): Model | undefined {
     return MODELS[vendor].find((m) => m.label === label);
+  }
+
+  export function replaced(label: string): string | undefined {
+    return Object.hasOwn(REPLACED, label) ? REPLACED[label] : undefined;
   }
 
   export function on(pick: Pick, vendor: Vendor, model: Model): Pick {

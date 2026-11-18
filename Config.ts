@@ -286,6 +286,7 @@ export function config_make(file: Record<string, unknown>): Made {
     vendors : config_vendors(config_value(file, "vendors")),
     models  : config_value(file, "models").split(",").map((m) => m.trim()),
   };
+  offer.models.forEach((m) => config_replaced("models", m));
   offer.profiles = config_profiles(file, offer);
   return {
     offer,
@@ -335,6 +336,7 @@ function config_run(key: string, text: string, offer: Offer): Pick {
   const [vendor, model, effort, speed] = text.split(":");
   const pick = Pick.read({ vendor, model, effort, speed }, offer);
   if (pick === null) {
+    config_replaced(key, model ?? "");
     const why = Pick.refused({ vendor, model, effort }, offer);
     throw new Error("config: " + key + (why === null ? " is no vendor:model:effort:speed or profile offered here: " + text : ": " + why));
   }
@@ -361,12 +363,24 @@ function config_fall(name: string, f: string, offer: Offer): Fall {
   const model = offer.vendors.includes(vendor) && offer.models.includes(label) ? Pick.model(vendor, label) : undefined;
   const bad = parts.length > 4 || (speed !== undefined && !model?.speeds.includes(speed));
   if (model === undefined || bad) {
+    config_replaced("profiles", label, "profile " + JSON.stringify(name));
     throw new Error("config: profile " + JSON.stringify(name) + " has no vendor:model[:effort[:speed]] offered here: " + f);
   }
   if (effort !== undefined && !Pick.offers(model, effort)) {
     throw new Error("config: profile " + JSON.stringify(name) + ": " + Pick.no_effort(model, effort));
   }
   return { vendor, model, effort, speed };
+}
+
+// a model Ki replaced, named where an environment variable or config.json
+// sets key: refused, with the model to name there instead
+function config_replaced(key: string, label: string, what = key): void {
+  const now = Pick.replaced(label);
+  if (now !== undefined) {
+    const env = "KI_" + key.toUpperCase();
+    const where = process.env[env] === undefined ? path.basename(FILE_PATH) + "'s " + what : what === key ? env : env + "'s " + what;
+    throw new Error("config: " + where + " names " + label + ", which " + now + " replaced: name " + now + " there instead");
+  }
 }
 
 function config_vendors(text: string): Vendor[] {
