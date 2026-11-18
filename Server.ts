@@ -126,9 +126,6 @@ const SEQ        = { n: 0 };
 const SCRATCH_KEPT  = 30 * 24 * 3600e3;
 const SCRATCH_SWEEP = 24 * 3600e3;
 const AGENTS     = config.DIR + "/agents";
-// the data's layout, as release/upgrade.js writes it
-const LAYOUT     = config.DIR + "/layout";
-const LAYOUT_NOW = 47;
 const TALK_FULL  = "Conversation mode switched itself off: it was full.";
 const TALK_SMALL = "Conversation mode switched itself off: too long for {model}.";
 const TALK_LONG  = "Conversation mode switched itself off: {model} refused the turn as too long.";
@@ -2590,15 +2587,12 @@ export namespace Main {
   export async function start(port: number): Promise<void> {
     Reap.start();
     await Main.lock();
-    const old = fs.existsSync(config.DIR + "/users") || fs.existsSync(config.DIR + "/chat");
-    const agents = fs.existsSync(AGENTS);
-    const layout = Number((fs.existsSync(LAYOUT) ? fs.readFileSync(LAYOUT, "utf8") : "").trim()) || 0;
-    if ((old && !agents) || (agents && layout < LAYOUT_NOW) || fs.existsSync(config.DIR + "/.migrating")) {
-      const installer = install_cmd(WIN);
-      throw new Error(config.DIR + " holds an older ki's data, not yet (or not all) moved to this version's layout: run the installer (" + installer + ") with no ki server running, then start again");
+    const older = config.config_older();
+    if (older !== null) {
+      throw new Error(older);
     }
-    if (!agents) {
-      fs.writeFileSync(LAYOUT, LAYOUT_NOW + "\n");
+    if (!fs.existsSync(AGENTS)) {
+      fs.writeFileSync(config.LAYOUT, config.LAYOUT_NOW + "\n");
     }
     fs.writeFileSync(PID, String(process.pid));
     Owner.open();

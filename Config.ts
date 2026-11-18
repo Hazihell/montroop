@@ -6,6 +6,7 @@ import type { Vendor } from "./AskAI.ts";
 import { err_code, err_why } from "./Err.ts";
 import { get, list as items, rec, text_of } from "./Json.ts";
 import { LABELS, VENDORS, Pick, type Fall, type Offer } from "./Pick.ts";
+import { install_cmd } from "./Update.ts";
 import { write_whole } from "./Write.ts";
 
 type ServerOnly = "runs a command";
@@ -40,6 +41,10 @@ export type McpServer = {
 export const DIR = config_path(process.env.KI_DIR ?? "~/.ki");
 
 export const FILE_PATH = DIR + "/config.json";
+
+// the data's layout, as release/upgrade.js writes it
+export const LAYOUT     = DIR + "/layout";
+export const LAYOUT_NOW = 47;
 
 // the fixed prompts' files, which the installer writes
 export const SHARE = process.platform === "win32" ? (process.env.LOCALAPPDATA ?? os.homedir() + "\\AppData\\Local") + "\\ki" : (process.env.XDG_DATA_HOME || os.homedir() + "/.local/share") + "/ki";
@@ -93,7 +98,7 @@ let KEPT: string[] = [];
 
 export const RELOADED = new Set<() => void>();
 
-const MADE = config_make(FILE);
+const MADE = config_start();
 
 export const OFFER: Offer = MADE.offer;
 
@@ -279,6 +284,26 @@ function config_json(file: string, text: string): unknown {
     const why = file === KEYS_PATH ? "" : " (" + err_why(err) + ")";
     throw new Error("config: " + path.basename(file) + " is no JSON" + why);
   }
+}
+
+// a config an older ki wrote fails here, before ki serve can tell that the
+// installer hasn't brought DIR to this version: the failure says so
+function config_start(): Made {
+  try {
+    return config_make(FILE);
+  } catch (err) {
+    const older = config_older();
+    throw older === null ? err : new Error(err_why(err) + ". " + older);
+  }
+}
+
+// why ki can't use the data in DIR before the installer runs, if so
+export function config_older(): string | null {
+  const old = fs.existsSync(DIR + "/users") || fs.existsSync(DIR + "/chat");
+  const agents = fs.existsSync(DIR + "/agents");
+  const layout = Number((fs.existsSync(LAYOUT) ? fs.readFileSync(LAYOUT, "utf8") : "").trim()) || 0;
+  const due = (old && !agents) || (agents && layout < LAYOUT_NOW) || fs.existsSync(DIR + "/.migrating");
+  return due ? DIR + " holds an older ki's data, not yet (or not all) moved to this version's layout: run the installer (" + install_cmd(process.platform === "win32") + ") with no ki server running, then start again" : null;
 }
 
 export function config_make(file: Record<string, unknown>): Made {
