@@ -9,7 +9,7 @@ import { Memory } from "./Memory.ts";
 import * as Prompts from "./Prompts.ts";
 import { Team } from "./Team.ts";
 import * as Timer from "./Timer.ts";
-import { PING } from "./View.ts";
+import { PING, type BgJob } from "./View.ts";
 import { Sub, type Spawn } from "./Sub.ts";
 import { err_why } from "./Err.ts";
 import { get, list as items, rec, text_of } from "./Json.ts";
@@ -488,7 +488,13 @@ export namespace Tools {
     const d = tools.devices.get(device);
     if (d !== undefined) {
       d.bg = { term, jobs: items(jobs).map((j) => ({ id: text_of(get(j, "id")), agent: text_of(get(j, "agent")), command: text_of(get(j, "command")), since: Number(get(j, "since")) })) };
+      tools.hub.change();
     }
+  }
+
+  // the jobs of the agents mine names that run on their devices now
+  export function bg(tools: Tools, mine: (agent: string) => boolean): BgJob[] {
+    return [...tools.devices].flatMap(([device, d]) => d.bg.jobs.filter((j) => mine(j.agent)).map((j) => ({ device, id: j.id })));
   }
 
   export function detach_unless_back(tools: Tools, term: string, device: string, link: Link): void {

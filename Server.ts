@@ -1663,7 +1663,8 @@ export namespace Chat {
     const run = chat.main;
     const queue: Queued[] = run.queue.map(({ q }) => ({ kind: q.kind, text: shown(q.text) }));
     const sent = run.sent.flatMap(({ m }) => Array.from({ length: m.end - m.id }, (_, k) => m.id + k));
-    return { $: "state", agent: chat.id, busy: run.busy, wait: Chat.waits(chat), pick: chat.pick, ...config.OFFER, importing, limit: run.limit, queue, sent, sums: Chat.sums(chat), again: chat.mem.again, timers, mcp, talk, build: BUILD, thinking: config.THINKING };
+    const bg = Tools.bg(chat.tools, (agent) => agent === chat.who || chat.subs.has(agent) || chat.gone.has(agent));
+    return { $: "state", agent: chat.id, busy: run.busy, wait: Chat.waits(chat), pick: chat.pick, ...config.OFFER, importing, limit: run.limit, queue, sent, sums: Chat.sums(chat), again: chat.mem.again, timers, mcp, talk, bg, build: BUILD, thinking: config.THINKING };
   }
 
   export function sums(chat: Chat): Sums | null {

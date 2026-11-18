@@ -77,6 +77,7 @@ type ChatSet = {
   timers    : Timer[];
   mcp       : Plug[];
   talk      : Talk | null;
+  bg        : BgJob[];
 };
 
 type ServerSays = {
@@ -91,8 +92,16 @@ export type Talk = { from: number; used: number; tokens: number; window: number;
 
 export type Plug = { name: string; on: boolean };
 
+// a shell call's command that outlasted its call and still runs on its
+// device, as job id (#198)
+export type BgJob = { device: string; id: string };
+
+// its call's result says so (Machine.ts)
+export const MOVED = "(moved to the background after ";
+const MOVED_AS = new RegExp("\\" + MOVED + "\\d+ s as job (\\w+), pid ", "g");
+
 // what the view holds of one agent's chat
-const CHAT = ["busy", "wait", "importing", "limit", "queue", "sent", "sums", "again", "timers", "talk", "pick", "mcp", "parts", "turn", "nodes", "whole", "firsts", "open", "live", "minds"] as const;
+const CHAT = ["busy", "wait", "importing", "limit", "queue", "sent", "sums", "again", "timers", "talk", "bg", "pick", "mcp", "parts", "turn", "nodes", "whole", "firsts", "open", "live", "minds"] as const;
 type Chat = { [K in (typeof CHAT)[number]]: View[K] };
 
 // agent: the agent whose chat is wanted; on: whose chat the server sends
@@ -318,6 +327,7 @@ export function view_new(agent: string): View {
     timers    : [],
     mcp       : [],
     talk      : null,
+    bg        : [],
     held      : "",
     kept      : null,
     pages     : new Map(),
@@ -538,8 +548,8 @@ export function view_copy(v: View, from: number): Server[] {
       nodes[id + "+" + n] = node;
     }
   }
-  const { busy, wait, sums, again, importing, limit, queue, sent, pick, vendors, models, profiles, timers, mcp, talk, thinking } = v;
-  const state = { busy, wait, sums, again, importing, limit, queue, sent, pick, vendors, models, profiles, timers, mcp, talk, thinking };
+  const { busy, wait, sums, again, importing, limit, queue, sent, pick, vendors, models, profiles, timers, mcp, talk, bg, thinking } = v;
+  const state = { busy, wait, sums, again, importing, limit, queue, sent, pick, vendors, models, profiles, timers, mcp, talk, bg, thinking };
   return [{ $: "state", agent: v.agent, ...state }, { $: "know", nodes, whole }, { $: "view", parts, turn: v.turn }, { $: "live", live: v.live }];
 }
 
@@ -668,10 +678,10 @@ export function view_body(v: View): Row[] {
   if (v.page !== null) {
     const sub = view_sub(v);
     const rows = page_rows(v.page, v.thinking !== false, sub);
-    return sub === undefined ? rows : running(rows, 0);
+    return backgrounded(sub === undefined ? rows : running(rows, 0), v.bg);
   }
   const rows = view_lines(view_rows(v, v.parts).flat());
-  return v.busy ? running(rows, v.turn) : rows;
+  return backgrounded(v.busy ? running(rows, v.turn) : rows, v.bg);
 }
 
 // a subagent's page shown near its top: its earlier entries (#143)
@@ -753,6 +763,21 @@ function live_rows(live: Live[], writing: boolean): Row[] {
 // a tool call of the turn going on with no result yet runs
 function running(rows: Row[], from: number): Row[] {
   return rows.map((r) => (r.$ === "Line" && r.echo === null && r.id !== null && r.id >= from ? { ...r, phase: "running" } : r));
+}
+
+// a shell call whose command still runs in the background runs too, the
+// agent busy or not (#198)
+function backgrounded(rows: Row[], bg: BgJob[]): Row[] {
+  if (bg.length === 0) {
+    return rows;
+  }
+  return rows.map((r) => {
+    if (r.$ === "Box") {
+      return { ...r, rows: backgrounded(r.rows, bg) };
+    }
+    const id = r.$ === "Line" && r.call.name === "shell" && r.echo !== null ? [...r.echo.matchAll(MOVED_AS)].at(-1)?.[1] : undefined;
+    return r.$ === "Line" && id !== undefined && bg.some((j) => j.device === r.call.device && j.id === id) ? { ...r, phase: "running" } : r;
+  });
 }
 
 // hidden thinking that just ended (#163) stays "Thinking" until what the

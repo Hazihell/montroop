@@ -5,7 +5,7 @@ import type { Out } from "./Agent.ts";
 import { CAP, clip, clip_end } from "./Clip.ts";
 import { err_code, err_why } from "./Err.ts";
 import { get, list as listed, text_of } from "./Json.ts";
-import { FIT, HEAD, IMAGE, image_kind, PIXELS } from "./View.ts";
+import { FIT, HEAD, IMAGE, image_kind, MOVED, PIXELS } from "./View.ts";
 
 export type Job = { name: string; input: Record<string, unknown>; cwd: string };
 
@@ -235,7 +235,7 @@ export namespace Machine {
         }
         JOBS.ended(job, Machine.exit(proc) + " in " + Math.round(took()) + " s, " + where() + Machine.fenced(shown()));
       });
-      return { text: shown() + "(moved to the background after " + Math.round(took()) + " s as job " + job.id + ", pid " + proc.pid + ", " + where() + "; it reports back when it ends)", fail: false };
+      return { text: shown() + MOVED + Math.round(took()) + " s as job " + job.id + ", pid " + proc.pid + ", " + where() + "; it reports back when it ends)", fail: false };
     }
     fs.rm(log.file, { force: true }, () => {});
     await proc.exited;
