@@ -47,7 +47,7 @@ const SCENES = `
   <div class="scene"><p>Your entire life.</p><p>One single chat.</p></div>
   <div class="scene"><i class="mark"></i><h1>Ki</h1></div>`;
 
-const WIDE = matchMedia("(min-width: 900px)");
+const WIDE = matchMedia("(min-width: 640px)");
 
 const TOUCH = matchMedia("(pointer: coarse)");
 

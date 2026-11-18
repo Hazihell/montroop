@@ -44,8 +44,7 @@
   --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --brand: "Avenir Next", Avenir, Futura, var(--sans);
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
-  --col: 740px;
-  --side: 800px;
+  --col: 800px;
   --head: 57px;
   --row: 33px;
 }
@@ -197,18 +196,28 @@ body.subpage header > .title { display: block; }
 .msg.tool.line > .full p + p { margin-top: .85em; }
 .msg.tool.line > .full > .call { padding-bottom: 6px; border-bottom: 1px solid var(--hair); margin-bottom: 6px; }
 .pill { flex: none; min-width: 22px; height: 22px; padding: 0 7px; border-radius: 11px; background: var(--ink); color: var(--paper); font: 600 12px/22px var(--sans); text-align: center; }
-@media (min-width: 900px) {
-  body.wide { padding-left: 33.333vw; }
-  body.wide #list { position: fixed; inset: 0 auto 0 0; z-index: 3; width: 33.333vw; overflow-y: auto; border-right: 1px solid var(--hair); background: var(--paper); }
-  body.wide footer { left: 33.333vw; }
-  /* the chat as a messaging app shows it (#189): the agent's side at the
-     pane's left, as wide as the pane up to --side; the user's messages at
-     its right, as wide at most; the footer and its buttons the pane's */
-  body.wide #log { width: auto; margin: 0 20px; }
-  body.wide #log :is(.rows, .tail, .open) > :not(.msg.user, .open, .fold) { max-width: var(--side); }
-  body.wide #log .msg.user { max-width: min(100%, var(--side)); }
-  body.wide :is(#pick, .composer) { width: auto; }
-  body.wide :is(.mine, .down) { right: 20px; }
+/* two panes, after the GNOME HIG (#199): a sidebar of the chats, each pane
+   its own header of the same height, its title centred, and the chat one
+   column centred in its pane, the jump buttons on the column's edge */
+@media (min-width: 640px) {
+  body.wide { --list: clamp(220px, 25vw, 400px); padding-left: var(--list); }
+  body.wide #list { position: fixed; inset: 0 auto 0 0; z-index: 3; width: var(--list); overflow-y: auto; border-right: 1px solid var(--hair); background: color-mix(in srgb, var(--block) 50%, var(--paper)); }
+  body.wide #list .head { gap: 0; padding: 0 9px; background: inherit; }
+  body.wide #list .head .new { order: -1; }
+  body.wide #list .brand { flex: 1; justify-content: center; margin: 0; }
+  body.wide #list .rows { padding: 8px 8px 40px; }
+  body.wide .mate { padding: 9px 12px; border-radius: 10px; }
+  body.wide .mate.kid { padding-left: 38px; }
+  body.wide .mate[aria-current] { background: var(--hover); }
+  body.wide header > :is(.who, .title) { position: absolute; inset-inline: 0; width: fit-content; max-width: 50%; margin: 0 auto; }
+  body.wide header > .who { padding-right: 4px; }
+  body.wide header > .title { padding: 0; }
+  body.wide header { justify-content: flex-end; }
+  body.wide header > .back { margin-right: auto; }
+  body.wide :is(#log, #account) { width: min(var(--col), 100% - 48px); }
+  body.wide footer { left: var(--list); padding-left: 24px; padding-right: 24px; }
+  body.wide .mine { right: max(24px, (100% - var(--list) - var(--col)) / 2); }
+  body.wide .down { right: max(24px, (100% - var(--col)) / 2); }
 }
 
 /* 1px past the screen: at a fractional pixel ratio its last row of device
@@ -227,7 +236,7 @@ body:is(.account, .tree) footer > :not(#toast) { display: none; }
 #pick > :is(button, .knob) { padding: 0 6px; border-radius: 6px; }
 #pick > button:has(+ :popover-open) { background: var(--block); color: var(--ink); } @media (hover: hover) { #pick > button:hover { background: var(--block); color: var(--ink); } } @media (hover: none) { #pick > button:active { background: var(--block); color: var(--ink); } }
 #pick .dot { color: var(--soft); }
-@media (max-width: 600px) {
+@media (width < 640px) {
   #pick { flex-wrap: wrap; white-space: nowrap; gap: 2px; }
   #pick > :is(button, .knob) { padding: 0 4px; }
 }
@@ -381,7 +390,7 @@ header > .imping { display: flex; flex-direction: column; justify-content: cente
 .msg blockquote { padding-left: 1.2em; font: italic 16.5px/1.6 var(--serif); }
 .msg table { border-collapse: collapse; font: 15px/1.45 var(--sans); }
 .msg td, .msg th { text-align: left; padding: 6px 14px 6px 0; border-bottom: 1px solid var(--hair); }
-.msg.user { margin-left: auto; width: fit-content; max-width: min(82%, 560px); padding: 10px 17px; border: 1.25px solid var(--edge); border-radius: 20px 20px 6px 20px; font: 16px/1.55 var(--sans); }
+.msg.user { margin-left: auto; width: fit-content; max-width: min(600px, 100% - 48px); padding: 10px 17px; border: 1.25px solid var(--edge); border-radius: 20px 20px 6px 20px; font: 16px/1.55 var(--sans); }
 .msg.user { scroll-margin-top: calc(var(--head) + 66px); }
 .msg.work { padding: 14px 20px; border: 1.25px solid var(--edge); border-radius: 14px; font: 16px/1.55 var(--sans); }
 .msg.queued { border-style: dotted; }
@@ -432,7 +441,7 @@ header > .imping { display: flex; flex-direction: column; justify-content: cente
 /* a touch browser zooms the page into a field whose font is under 16px */
 @media (hover: none) { input, select { font-size: 16px; } }
 @media (pointer: coarse) {
-  :is(header > :is(button, a), #pick > button, #tree .tab) { position: relative; }
+  :where(header > :is(button, a), #pick > button, #tree .tab) { position: relative; }
   :is(header > :is(button, a), #pick > button, #tree .tab, .mine, .down, .copy)::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%); }
   .chip { height: 44px; }
   [popover] > button { min-height: 44px; }
@@ -450,7 +459,7 @@ header > .imping { display: flex; flex-direction: column; justify-content: cente
 .msg .media + br { display: none; }
 /* a page in a bubble as wide as a bubble may be (as wide as its text, a
    frame would be a frame's default 300px) */
-.msg.user:has(iframe.page) { width: min(82%, 560px); }
+.msg.user:has(iframe.page) { width: min(600px, 100% - 48px); }
 .msg iframe.page { width: 100%; height: 0; max-height: 70vh; border: 1px solid var(--hair); border-radius: 8px; background: var(--paper); color-scheme: light dark; }
 
 .pics { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
@@ -481,7 +490,7 @@ header > .imping { display: flex; flex-direction: column; justify-content: cente
 @media (hover: none) { #viewer :is(.prev, .next) { display: none; } }
 @media (prefers-reduced-motion: reduce) { #viewer.ease .stage img { transition: none; } }
 
-@media (max-width: 600px) {
+@media (width < 640px) {
   :root { --head: 51px; }
   header { padding: 0 14px; }
   .mine, .down { right: 14px; }
@@ -576,7 +585,7 @@ header > .imping { display: flex; flex-direction: column; justify-content: cente
 .settings .go { min-width: 96px; background: var(--ink); color: var(--paper); }
 @media (hover: hover) { .settings .go:hover { background: var(--mid); } } @media (hover: none) { .settings .go:active { background: var(--mid); } }
 .settings .go:disabled { opacity: .4; }
-@media (max-width: 600px) { .set .four { grid-template-columns: 1fr 1fr; } }
+@media (width < 640px) { .set .four { grid-template-columns: 1fr 1fr; } }
 .profiles .prof { padding: 10px 0; }
 .profiles .prof:first-child { padding-top: 0; }
 .profiles .prof + .prof { border-top: 1px solid var(--hair); }
@@ -623,7 +632,7 @@ body.tree { height: 100dvh; } html:has(> body.tree) { overscroll-behavior-y: con
 #tree .s.one pre { -webkit-mask-image: linear-gradient(#000 calc(100% - 2.4em), transparent 90%); mask-image: linear-gradient(#000 calc(100% - 2.4em), transparent 90%); }
 #tree .bracket.drag { scroll-snap-type: none; user-select: none; cursor: grabbing; }
 @media (prefers-reduced-motion: reduce) { #tree .s.ease { transition: none; } }
-@media (max-width: 600px) { #tree section { --pad: 14px; } #tree .top { padding: 16px 14px 0; } #tree .top .tab { height: 30px; padding: 0 10px; font-size: 13px; } }
+@media (width < 640px) { #tree section { --pad: 14px; } #tree .top { padding: 16px 14px 0; } #tree .top .tab { height: 30px; padding: 0 10px; font-size: 13px; } }
 body.account header > :is(.who, .brain, .timers, .imping) { display: none !important; }
 ::view-transition-group(root) { animation-duration: 150ms; animation-timing-function: ease-out; }
 ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 150ms; animation-timing-function: ease-out; }
