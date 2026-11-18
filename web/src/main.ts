@@ -1918,6 +1918,23 @@ async function agent_save_now(form: HTMLFormElement, a: Html.Agent | null, at: E
   $("header .title").textContent = body.name;
 }
 
+// the Settings page's pins, each with its Unpin button; unpin: the id to
+// unpin first
+async function pins_draw(unpin: number | null = null): Promise<void> {
+  const init = unpin === null ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ unpin }) };
+  const got = await fetch("/api/pins", init).catch(() => null);
+  const pins = got !== null && got.ok ? ((await got.json().catch(() => null)) as Parameters<typeof Html.pins_html>[0]) : null;
+  const box = document.querySelector("#account .pins");
+  if (box === null) {
+    return;
+  }
+  box.innerHTML = Html.pins_html(pins);
+  box.querySelectorAll<HTMLButtonElement>(".unpin").forEach((b) => (b.onclick = () => {
+    b.disabled = true;
+    void pins_draw(Number(b.dataset.id));
+  }));
+}
+
 function archived_draw(): void {
   const box = document.querySelector<HTMLElement>("#account .archived");
   if (box === null) {
@@ -1961,6 +1978,7 @@ async function account(): Promise<void> {
     }
   };
   mcp_draw();
+  void pins_draw();
   el.querySelectorAll<HTMLButtonElement>(".retry").forEach((retry) => (retry.onclick = () => void account()));
   $("#account .out").onclick = () => void signout();
   const button = document.querySelector<HTMLButtonElement>("#account .notify");

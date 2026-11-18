@@ -1,6 +1,7 @@
 import type { Vendor } from "../../AskAI.ts";
 import * as Call from "../../Call.ts";
 import * as Md from "../../Md.ts";
+import type { Pin } from "../../Pins.ts";
 import { LABELS, Pick, VENDORS } from "../../Pick.ts";
 import type { Key, Page, Row } from "../../Settings.ts";
 import * as Theme from "../../Theme.ts";
@@ -341,7 +342,19 @@ export function account_html(notify: Notify | null = null): string {
     ...(notify === null ? [] : [notify_html(notify)]),
   ];
   const mcp     = section_html("MCP servers", `<div class="mcp"></div>`);
-  return section_html("This browser", acts.join("")) + `<div class="archived"></div>` + mcp + `<div class="owned"></div>`;
+  const pins    = section_html("Pins", `<p class="sub">What your agents learned about you and keep outside the memory's compression, for every agent. pins.json in Ki's folder.</p><div class="pins"></div>`);
+  return pins + section_html("This browser", acts.join("")) + `<div class="archived"></div>` + mcp + `<div class="owned"></div>`;
+}
+
+export function pins_html(pins: Pin[] | null): string {
+  if (pins === null) {
+    return `<p class="sub">Could not read the pins.</p>`;
+  }
+  if (pins.length === 0) {
+    return `<p class="sub">None yet.</p>`;
+  }
+  const note = (pin: Pin) => [pin.from === null ? "" : "#" + pin.from, pin.until === null ? "" : "until " + pin.until, "used " + pin.used].filter((s) => s !== "").join(" · ");
+  return pins.map((pin) => `<div class="item"><p>${esc(pin.text)}<small>${esc(note(pin))}</small></p><button class="chip unpin" data-id="${pin.id}">Unpin</button></div>`).join("");
 }
 
 function notify_html(notify: Notify): string {

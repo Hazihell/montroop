@@ -27,6 +27,7 @@ import { LIMIT, Limit } from "./Limit.ts";
 import { Run, type Heard } from "./Run.ts";
 import * as Service from "./Service.ts";
 import * as Timer from "./Timer.ts";
+import * as Pins from "./Pins.ts";
 import { SEARCHES, Tools, type Seat, type Subs } from "./Tools.ts";
 import { JOB } from "./Machine.ts";
 import { HEADS } from "./Heads.ts";
@@ -125,6 +126,7 @@ const SEQ        = { n: 0 };
 // last line, then dropped on each device, looked for about this often (#147)
 const SCRATCH_KEPT  = 30 * 24 * 3600e3;
 const SCRATCH_SWEEP = 24 * 3600e3;
+const PIN_SWEEP     = 3600e3;
 const AGENTS     = config.DIR + "/agents";
 const TALK_FULL  = "Conversation mode switched itself off: it was full.";
 const TALK_SMALL = "Conversation mode switched itself off: too long for {model}.";
@@ -521,7 +523,7 @@ export namespace Chat {
     const server = Tools.at(chat.tools, chat.who);
     chat.eye = Chat.eye(mem, from);
     chat.socks.forEach((sock) => Chat.show(chat, sock));
-    const blocks = [...view, Tools.devices(chat.tools, chat.id, chat.mem.dir), Tools.skills(chat.tools), Tools.at_work(chat.tools, chat.who), ...Chat.leader_block(chat.leader), { text: Prompts.prompt("turn") + "\n\n" + text, mark: true }];
+    const blocks = [...view, Pins.block(true), Tools.devices(chat.tools, chat.id, chat.mem.dir), Tools.skills(chat.tools), Tools.at_work(chat.tools, chat.who), ...Chat.leader_block(chat.leader), { text: Prompts.prompt("turn") + "\n\n" + text, mark: true }];
     const model = chat.pick.model;
     const used = (tokens: number) => {
       if (chat.pick.model === model) {
@@ -826,7 +828,7 @@ export namespace Chat {
 
   export function guess(chat: Chat): number {
     const mem = chat.mem;
-    const blocks = [...Memory.view(mem, mem.count, mem.view.parts, mem.talk), Tools.devices(chat.tools, chat.id, chat.mem.dir), Tools.skills(chat.tools), Tools.at_work(chat.tools, chat.who), ...Chat.leader_block(Chat.leader(chat))];
+    const blocks = [...Memory.view(mem, mem.count, mem.view.parts, mem.talk), Pins.block(true), Tools.devices(chat.tools, chat.id, chat.mem.dir), Tools.skills(chat.tools), Tools.at_work(chat.tools, chat.who), ...Chat.leader_block(Chat.leader(chat))];
     const texts = [...Object.values(Chat.system(chat)), JSON.stringify(Tools.list()), ...blocks.map((b) => b.text)];
     return Math.ceil(texts.reduce((n, text) => n + Memory.bytes(text), 0) / TOKEN);
   }
@@ -1131,7 +1133,7 @@ export namespace Chat {
     const log = { text: Prompts.prompt("sub-folder", { Name: sub.name }) + "\n\n" + Memory.agent_show(chat.mem, sub.name) + "\n\n", mark: true };
     const agent = Team.get(chat.id);
     const own = agent === null ? "" : Prompts.prompt("sub-prompt", { prompt: Team.prompt(agent) });
-    const blocks = [...sub.view, Tools.devices(chat.tools, chat.id, chat.mem.dir), Tools.skills(chat.tools), Tools.at_work(chat.tools, sub.name), log];
+    const blocks = [...sub.view, Pins.block(false), Tools.devices(chat.tools, chat.id, chat.mem.dir), Tools.skills(chat.tools), Tools.at_work(chat.tools, sub.name), log];
     const used = (tokens: number) => {
       [sub.used, sub.used_at] = [tokens, sub.bytes];
       Main.team_soon();
@@ -2034,6 +2036,23 @@ export namespace Main {
   export let server: Bun.Server<Sock["data"]>;
 
   // where what has no agent of its own goes: the oldest active agent's chat
+  // the pins whose time is up leave quietly, a note each in the first
+  // agent's chat, no push
+  export function pin_sweep(): void {
+    Pins.sweep().forEach(({ pin, why }) => Chat.note(Main.first(), "📌 unpinned (" + why + "): " + Pins.line(pin)));
+  }
+
+  // the Settings page's list of pins: read them, or unpin one ({ unpin: id })
+  export async function pins(req: Request): Promise<Response> {
+    if (req.method === "POST") {
+      const pin = Pins.unpin(Number(get(await req.json().catch(() => null), "unpin")));
+      if (pin !== null) {
+        Chat.note(Main.first(), "📌 unpinned by the user: " + Pins.line(pin));
+      }
+    }
+    return Response.json(Pins.read());
+  }
+
   export function first(): Chat {
     return Main.chats.get(Team.first().id) as Chat;
   }
@@ -2449,6 +2468,9 @@ export namespace Main {
       case "/api/settings": {
         return await Main.settings(req);
       }
+      case "/api/pins": {
+        return await Main.pins(req);
+      }
       case "/api/media": {
         if (req.method !== "POST" || req.body === null) {
           return new Response("a file is posted", { status: 405 });
@@ -2612,6 +2634,8 @@ export namespace Main {
     Chat.copies();
     Main.watch();
     setInterval(() => void Main.scratch_sweep(null), SCRATCH_SWEEP).unref();
+    Main.pin_sweep();
+    setInterval(() => Main.pin_sweep(), PIN_SWEEP).unref();
     process.on("unhandledRejection", Main.unowned);
     Main.server = Bun.serve<Sock["data"]>({
       port               : port,
