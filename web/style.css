@@ -63,7 +63,7 @@ body { text-wrap: balance; }
 .msg:not(.note) { text-wrap: pretty; }
 textarea { text-wrap: wrap; }
 
-body.guest :is(.net, .attach, .mic, #pick, #list, header > :not(.net)) { display: none !important; }
+body.guest :is(.attach, .mic, #pick, #list, header > *) { display: none !important; }
 body.solo main { width: min(420px, 100% - 48px); margin: 18vh auto; text-align: center; }
 body.solo h1 { margin: 0; font: 400 46px/1.05 var(--serif); letter-spacing: -.015em; }
 body.solo form { display: flex; gap: 8px; justify-content: center; margin: 22px 0 0; }
@@ -73,23 +73,22 @@ body.solo .err { margin: 18px 0 0; color: var(--red); font-size: 14.5px; }
 .sub { margin: 18px 0 0; color: var(--mid); font-size: 14.5px; }
 
 header { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 6px; height: var(--head); padding: 0 max(20px, env(safe-area-inset-right)) 0 max(20px, env(safe-area-inset-left)); background: var(--paper); border-bottom: 1px solid var(--hair); }
-header > :is(button, a) { height: 32px; padding: 0 12px; border-radius: 8px; background: var(--block); font-size: 13.5px; font-weight: 500; }
-@media (hover: hover) { header > :is(button, a):hover { background: var(--hover); } } @media (hover: none) { header > :is(button, a):active { background: var(--hover); } }
-header > .brand { margin-right: auto; display: flex; align-items: center; gap: 10px; height: auto; padding: 0; background: none; font: 600 20px/1 var(--brand); letter-spacing: -.01em; }
-@media (hover: hover) { header > .brand:hover { background: none; } }
+header :is(button, a) { height: 32px; padding: 0 12px; border-radius: 8px; background: var(--block); font-size: 13.5px; font-weight: 500; }
+@media (hover: hover) { header :is(button, a):hover { background: var(--hover); } } @media (hover: none) { header :is(button, a):active { background: var(--hover); } }
 .mark { display: block; width: 26px; height: 26px; background: var(--ink); -webkit-mask: url(/mark.svg) center / contain no-repeat; }
 header .net { font-size: 13px; color: var(--mid); }
-header > :is(.back, .brain) { display: grid; place-items: center; width: 36px; padding: 0; background: none; }
-@media (hover: hover) { header > :is(.back, .brain):hover { background: var(--hover); } } @media (hover: none) { header > :is(.back, .brain):active { background: var(--hover); } }
-header > .back { margin-left: -10px; }
+header :is(.back, .brain) { display: grid; place-items: center; width: 36px; padding: 0; background: none; }
+@media (hover: hover) { header :is(.back, .brain):hover { background: var(--hover); } } @media (hover: none) { header :is(.back, .brain):active { background: var(--hover); } }
+header > .back { flex: none; margin-left: -10px; }
 header svg { width: 20px; height: 20px; }
+header > .end { flex: none; display: flex; align-items: center; gap: 6px; margin-left: auto; }
 header > .who { margin-right: auto; display: flex; align-items: center; gap: 10px; min-width: 0; height: auto; padding: 4px 8px 4px 4px; background: none; font: 600 17px/1.2 var(--sans); }
 header > .who .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 header > .title { display: none; margin: 0 auto 0 0; min-width: 0; padding-left: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 17px/1.2 var(--sans); }
 body.account header > .title { display: block; }
 header .pic { width: 34px; height: 34px; }
 body.wide:not(.tree):not(.account) header > .back { display: none; }
-body.tree header > .brain { display: none; }
+body.tree header .brain { display: none; }
 
 .pic { flex: none; display: block; width: 46px; height: 46px; border-radius: 50%; object-fit: cover; background: var(--block); }
 .pic.logo { display: grid; place-items: center; background: var(--ink); }
@@ -125,7 +124,7 @@ body.list footer > :not(#toast) { display: none; }
 .mate.kid .text > small { font-size: 12px; }
 body.subpage footer > :is(.mine, .composer) { display: none; }
 body.subpage header > .who { display: none; }
-body.subpage header > :is(.brain, .timers) { display: none !important; }
+body.subpage header :is(.brain, .timers) { display: none !important; }
 body.subpage header > .title { display: block; }
 .cap.earlier { min-height: 1px; text-align: center; }
 .msg.work.said { padding: 0; border: 0; }
@@ -209,11 +208,12 @@ body.subpage header > .title { display: block; }
   body.wide .mate { padding: 9px 12px; border-radius: 10px; }
   body.wide .mate.kid { padding-left: 38px; }
   body.wide .mate[aria-current] { background: var(--hover); }
-  body.wide header > :is(.who, .title) { position: absolute; inset-inline: 0; width: fit-content; max-width: 50%; margin: 0 auto; }
+  body.wide header { display: grid; grid-template-columns: minmax(max-content, 1fr) minmax(0, auto) minmax(max-content, 1fr); }
+  body.wide header > .back { grid-column: 1; justify-self: start; }
+  body.wide header > :is(.who, .title) { grid-area: 1 / 2; max-width: 100%; margin: 0; }
   body.wide header > .who { padding-right: 4px; }
   body.wide header > .title { padding: 0; }
-  body.wide header { justify-content: flex-end; }
-  body.wide header > .back { margin-right: auto; }
+  body.wide header > .end { grid-column: 3; justify-self: end; }
   body.wide :is(#log, #account) { width: min(var(--col), 100% - 48px); }
   body.wide footer { left: var(--list); padding-left: 24px; padding-right: 24px; }
   body.wide .mine { right: max(24px, (100% - var(--list) - var(--col)) / 2); }
@@ -344,7 +344,7 @@ progress { --track: var(--block); --bar: var(--ink); display: block; width: 100%
 progress::-webkit-progress-bar { background: var(--track); }
 progress::-webkit-progress-value { background: var(--bar); transition: width .4s; }
 progress::-moz-progress-bar { background: var(--bar); }
-header > .imping { display: flex; flex-direction: column; justify-content: center; gap: 4px; min-width: 112px; font: 500 12.5px var(--sans); }
+header .imping { display: flex; flex-direction: column; justify-content: center; gap: 4px; min-width: 112px; font: 500 12.5px var(--sans); }
 .imping progress { --track: rgb(0 0 0 / .14); height: 3px; margin: 0; }
 .imping.why progress { --bar: var(--mid); }
 @media (pointer: fine) { #import .phone { display: none; } }
@@ -441,8 +441,8 @@ header > .imping { display: flex; flex-direction: column; justify-content: cente
 /* a touch browser zooms the page into a field whose font is under 16px */
 @media (hover: none) { input, select { font-size: 16px; } }
 @media (pointer: coarse) {
-  :where(header > :is(button, a), #pick > button, #tree .tab) { position: relative; }
-  :is(header > :is(button, a), #pick > button, #tree .tab, .mine, .down, .copy)::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%); }
+  :where(header :is(button, a), #pick > button, #tree .tab) { position: relative; }
+  :is(header :is(button, a), #pick > button, #tree .tab, .mine, .down, .copy)::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%); }
   .chip { height: 44px; }
   [popover] > button { min-height: 44px; }
   [popover] > a { padding: 11px 4px; }
@@ -496,7 +496,7 @@ header > .imping { display: flex; flex-direction: column; justify-content: cente
   .mine, .down { right: 14px; }
   .down { bottom: calc(100% - 4px); }
   .brand span { display: none; }
-  header > :is(button, a) { height: 30px; padding: 0 10px; font-size: 13px; }
+  header :is(button, a) { height: 30px; padding: 0 10px; font-size: 13px; }
   #log { width: calc(100% - 28px); }
   footer { padding: 9px 14px calc(max(8px, env(safe-area-inset-bottom)) + 1px); }
   .composer { padding: 5px 5px 5px 16px; }
@@ -633,7 +633,7 @@ body.tree { height: 100dvh; } html:has(> body.tree) { overscroll-behavior-y: con
 #tree .bracket.drag { scroll-snap-type: none; user-select: none; cursor: grabbing; }
 @media (prefers-reduced-motion: reduce) { #tree .s.ease { transition: none; } }
 @media (width < 640px) { #tree section { --pad: 14px; } #tree .top { padding: 16px 14px 0; } #tree .top .tab { height: 30px; padding: 0 10px; font-size: 13px; } }
-body.account header > :is(.who, .brain, .timers, .imping) { display: none !important; }
+body.account header :is(.who, .brain, .timers, .imping) { display: none !important; }
 ::view-transition-group(root) { animation-duration: 150ms; animation-timing-function: ease-out; }
 ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 150ms; animation-timing-function: ease-out; }
 html[data-move=in]::view-transition-new(root) { animation-name: move-in; }
