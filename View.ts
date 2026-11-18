@@ -6,6 +6,7 @@ import { GLYPH, WHO } from "./Theme.ts";
 import type { Timer } from "./Timer.ts";
 import type { Bg, Job } from "./Machine.ts";
 import type { How, Row as SubRow } from "./Sub.ts";
+import type { Asked } from "./Gate.ts";
 import { rec } from "./Json.ts";
 
 export type Part = [number, number];
@@ -78,6 +79,7 @@ type ChatSet = {
   mcp       : Plug[];
   talk      : Talk | null;
   bg        : BgJob[];
+  asks      : Asked[];
 };
 
 type ServerSays = {
@@ -206,6 +208,7 @@ export type Row =
   | { $: "Msg"; id: number | null; kind: Kind; who: string; text: string; body: Md.Block[]; call: Call.Call | null; images: string[]; queued?: boolean; from?: string; of?: string; writing?: true }
   | { $: "Line"; id: number | null; call: Call.Call; echo: string | null; rows: Row[]; phase?: Phase }
   | { $: "Cap"; text: string; think?: true; earlier?: true; wait?: true }
+  | { $: "Ask"; ask: Asked; call: Call.Call }
 
 // a tool call while it's written, then while it runs (#129)
 type Phase = "typing" | "running";
@@ -231,6 +234,8 @@ export const USE_PING = 20000;
 export const FRAME = 2 ** 22;
 
 export const HINT = "Message Ki";
+
+export const ASKS = "Asks first";
 
 // a browser's sign-in, on the app's page and the server's own
 export const SIGN_IN = "This Ki server is private. On the computer it runs on, run <code>ki serve login</code> and type the code it prints here.";
@@ -327,6 +332,7 @@ export function view_new(agent: string): View {
     timers    : [],
     mcp       : [],
     talk      : null,
+    asks      : [],
     bg        : [],
     held      : "",
     kept      : null,
@@ -548,8 +554,8 @@ export function view_copy(v: View, from: number): Server[] {
       nodes[id + "+" + n] = node;
     }
   }
-  const { busy, wait, sums, again, importing, limit, queue, sent, pick, vendors, models, profiles, timers, mcp, talk, bg, thinking } = v;
-  const state = { busy, wait, sums, again, importing, limit, queue, sent, pick, vendors, models, profiles, timers, mcp, talk, bg, thinking };
+  const { busy, wait, sums, again, importing, limit, queue, sent, pick, vendors, models, profiles, timers, mcp, talk, bg, asks, thinking } = v;
+  const state = { busy, wait, sums, again, importing, limit, queue, sent, pick, vendors, models, profiles, timers, mcp, talk, bg, asks, thinking };
   return [{ $: "state", agent: v.agent, ...state }, { $: "know", nodes, whole }, { $: "view", parts, turn: v.turn }, { $: "live", live: v.live }];
 }
 
@@ -813,7 +819,7 @@ export function view_tail(v: View): Row[] {
     const queued = (sub?.queue ?? []).flatMap((text) => waits("user", text, true));
     const last = v.page.log?.at(-1);
     const idle = sub !== undefined && v.page.live.length === 0 && (last?.kind !== "tool" || last.echo !== undefined) && sub.doing !== "usage limit";
-    return [...thought, ...live_rows(page, sub !== undefined), ...(idle ? [WAITING] : []), ...queued];
+    return [...thought, ...live_rows(page, sub !== undefined), ...(idle ? [WAITING] : []), ...view_asks(v, v.page.name), ...queued];
   }
   const thought = v.thinking === false && (v.live.some((_, k) => thinks(v.live, k)) || (v.live.length === 0 && v.busy && v.wait === "" && thought_last(v))) ? [THINKING] : [];
   const rows = [...thought, ...live_rows(v.live.filter((l) => v.thinking !== false || l.kind !== "mind"), v.busy && v.wait === "")];
@@ -821,7 +827,7 @@ export function view_tail(v: View): Row[] {
   const said = !v.up ? v.out.flatMap((p) => waits("user", p.said, false)) : [];
   const kept = said.length > 0 ? [...said, Cap(UNSENT)] : [];
   const queued = v.queue.flatMap((q) => waits(q.kind, q.text, true));
-  const after = [...queued, ...kept, ...load];
+  const after = [...view_asks(v, ""), ...queued, ...kept, ...load];
   if (v.limit !== null) {
     return [...rows, Cap(limit_show(v.limit)), ...after];
   }
@@ -829,6 +835,12 @@ export function view_tail(v: View): Row[] {
     return [...rows, ...(rows.length > 0 ? [] : [Cap(sums_show(v.sums, v.again))]), ...after];
   }
   return [...rows, ...(v.busy && v.wait !== "" ? [WAITING] : []), ...after];
+}
+
+// the calls waiting for the owner's yes (Gate) made by who: "" for the
+// agent itself, else a subagent's name
+function view_asks(v: View, who: string): Row[] {
+  return v.asks.filter((a) => a.who === who).map((ask) => ({ $: "Ask", ask, call: Call.call_parse(ask.tool + " " + ask.input) }));
 }
 
 function sums_show(sums: Sums | null, again: Again | null, now = Date.now()): string {

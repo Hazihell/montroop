@@ -67,6 +67,12 @@ export namespace Owner {
     return Owner.open().query("select 1 from sessions where hash = ?").get(Owner.hash(Owner.token(req))) !== null;
   }
 
+  // a browser's session: only one answers a risky call (Gate), not a
+  // device, whose sign-in an agent may read on its computer
+  export function browser(req: Request): boolean {
+    return Owner.open().query("select 1 from sessions where hash = ? and what = 'a browser'").get(Owner.hash(Owner.token(req))) !== null;
+  }
+
   export function random(): string {
     return Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64url");
   }

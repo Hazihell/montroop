@@ -1,6 +1,8 @@
 import type { Block } from "./AskAI.ts";
 import type { Out } from "./Agent.ts";
 import * as config from "./Config.ts";
+import { Gate, type Asked } from "./Gate.ts";
+import { Rules } from "./Rules.ts";
 import { Limit } from "./Limit.ts";
 import { INT, JOB, STR, TOOLS, spec, type Bg, type Job, type Skill, type Spec } from "./Machine.ts";
 import { clip_page } from "./Clip.ts";
@@ -59,6 +61,7 @@ type Hub = {
   note   : (text: string) => void;
   change : () => void;
   off    : () => string[];
+  asked  : (a: Asked) => void;
 };
 
 export type Tools = {
@@ -74,6 +77,7 @@ export type Tools = {
   owner   : (who: string) => Seat | undefined;
   // the tools last left out of an agent's list for their names' length
   short   : Map<string, string>;
+  gate    : Gate;
 };
 
 export const SEARCHES = 10;
@@ -141,7 +145,8 @@ export namespace Tools {
     const url = Tools.base() + key + "/";
     const run = (device: string, job: Job, signal: AbortSignal) => Tools.job(tools, device, job, signal, crypto.randomUUID());
     const mcp = Mcp.servers((text) => hub.note(text), run, (device) => Tools.live(tools.devices.get(device)), () => hub.off());
-    const tools: Tools = { devices: new Map(), seats: new Map(), mcp, held: new Map(), left: false, key, url, hub, owner: () => undefined, short: new Map() };
+    const gate = Gate.open(config.DIR + "/asks.json", () => hub.change());
+    const tools: Tools = { devices: new Map(), seats: new Map(), mcp, held: new Map(), left: false, key, url, hub, owner: () => undefined, short: new Map(), gate };
     CHATS.set(key, tools);
     return tools;
   }
@@ -274,12 +279,76 @@ export namespace Tools {
         const mcp = has || tools.seats.get(who)?.mcp === false ? null : Mcp.find(Tools.held(tools, who), name);
         Mcp.used(tools.mcp);
         const no: Out = { text: "No tool " + name + ".", fail: true };
-        const out = has ? await Tools.call(tools, who, name, args, signal, id) : mcp !== null ? await Mcp.call(tools.mcp, mcp, name, args, signal) : no;
+        const run = () => (has ? Tools.call(tools, who, name, args, signal, id) : mcp !== null ? Mcp.call(tools.mcp, mcp, name, args, signal) : Promise.resolve(no));
+        const out = has || mcp !== null ? await Tools.gated(tools, who, name, args, mcp?.conf.device ?? null, signal, run) : no;
         const imgs = (out.imgs ?? []).map((img) => ({ type: "image", data: img.data, mimeType: img.type }));
         return { content: [{ type: "text", text: out.text }, ...imgs], isError: out.fail };
       }
       case "ping": {
         return {};
+      }
+    }
+    return null;
+  }
+
+  // the chat a caller's cards show in: an agent's own, or its spawner's
+  // for a subagent (who: its name there)
+  export function asker(tools: Tools, who: string): { agent: string; who: string } | null {
+    const seat = tools.seats.get(who);
+    if (seat === undefined) {
+      return null;
+    }
+    if (seat.subs !== null) {
+      return { agent: who, who: "" };
+    }
+    const boss = tools.owner(who);
+    const agent = [...tools.seats].find(([, s]) => s === boss)?.[0];
+    return agent === undefined ? null : { agent, who };
+  }
+
+  // a call a rule names runs once the owner approves it
+  export async function gated(tools: Tools, who: string, name: string, args: Record<string, unknown>, device: string | null, signal: AbortSignal, run: () => Promise<Out>): Promise<Out> {
+    const on = device ?? (typeof args.device === "string" ? args.device : null);
+    const link = on === null ? undefined : [...(tools.devices.get(on)?.terms.values() ?? [])][0];
+    const rule = name === "search" ? null : Rules.match(config.ASK, name, args, link?.scratch ?? null);
+    if (rule === null) {
+      return await run();
+    }
+    const at = Tools.asker(tools, who);
+    if (at === null) {
+      return { text: "No agent " + who + ".", fail: true };
+    }
+    const said = await Gate.wait(tools.gate, at.agent, at.who, name, args, rule.what, signal, (a) => tools.hub.asked(a));
+    if (said === null) {
+      return { text: "Stopped.", fail: true };
+    }
+    const note = said.note === "" ? "" : ": “" + said.note + "”";
+    if (!said.ok) {
+      return { text: "The user denied this (" + rule.what.toLowerCase() + ")" + (note || ".") + " Don't do it another way; if it's still needed, ask them.", fail: true };
+    }
+    const ran = await run();
+    return note === "" ? ran : { ...ran, text: ran.text + "\n\n(The user approved this with a note" + note + ")" };
+  }
+
+  // the owner's answer to a call that asked, from a browser: a note in the
+  // asking agent's or subagent's chat, and, with no call waiting, a
+  // message to it
+  export async function decide(tools: Tools, id: string, ok: boolean, note: string): Promise<string | null> {
+    const said = Gate.decide(tools.gate, id, { ok, note });
+    if (said === null) {
+      return "This was already answered, or its call was stopped.";
+    }
+    const { agent, who, tool, what } = said.held;
+    const text = (ok ? "Approved" : "Denied") + " by the user: " + what.toLowerCase() + " (" + Gate.line(said.held) + ")." + (note === "" ? "" : " Note: “" + note + "”");
+    const boss = tools.seats.get(agent);
+    const seat = (who === "" ? undefined : tools.seats.get(who)) ?? boss;
+    seat?.note(text);
+    if (!said.waited) {
+      const msg = "[Approval " + id + "] " + text + (ok ? " No call was waiting for it (the server restarted): call " + tool + " again with the same arguments to do it." : " Don't do it another way.");
+      const subs = boss?.subs ?? null;
+      const told = who === "" || subs === null ? null : await subs.tell(who, msg);
+      if (told === null || told.fail) {
+        boss?.report(msg);
       }
     }
     return null;

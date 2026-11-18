@@ -2,6 +2,7 @@ import { err_why } from "../../Err.ts";
 import * as Import from "../../Import.ts";
 import { name_face } from "../../Names.ts";
 import { get, text_of } from "../../Json.ts";
+import { Rules, type Rule } from "../../Rules.ts";
 import type { Page, Row } from "../../Settings.ts";
 import { theme_css } from "../../Theme.ts";
 import * as View from "../../View.ts";
@@ -592,9 +593,22 @@ function act(a: View.Act): void {
   draw(a.$ === "Send");
 }
 
+// the owner's Approve or Deny on a risky call's card, with its note
+async function answer(button: HTMLElement): Promise<void> {
+  const card = must(button.closest<HTMLElement>(".ask"), "the answer's card");
+  const note = card.querySelector<HTMLInputElement>(".note")?.value.trim() ?? "";
+  const buttons = [...card.querySelectorAll<HTMLButtonElement>("button")];
+  buttons.forEach((b) => (b.disabled = true));
+  const out = await View.post("/api/approve", { id: button.dataset.ask, ok: button.dataset.ok === "true", note });
+  if (!out.ok) {
+    buttons.forEach((b) => (b.disabled = false));
+    toast(text_of(out.error, "Could not send the answer."));
+  }
+}
+
 function click(ev: MouseEvent): void {
   const target = ev.target as HTMLElement;
-  const el = target.closest<HTMLElement>("[data-act], [data-copy], [data-go], [data-knob], .choices > button, .imp");
+  const el = target.closest<HTMLElement>("[data-act], [data-copy], [data-go], [data-knob], [data-ask], .choices > button, .imp");
   const sel = getSelection();
   const pic = Viewer.viewer_pic(target);
   if (pic !== null && !(ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.altKey) && (sel === null || sel.isCollapsed)) {
@@ -610,6 +624,10 @@ function click(ev: MouseEvent): void {
   }
   if (el.dataset.knob !== undefined) {
     place(el);
+    return;
+  }
+  if (el.dataset.ask !== undefined) {
+    void answer(el);
     return;
   }
   el.closest<HTMLElement>(".choices")?.hidePopover();
@@ -2125,7 +2143,7 @@ const SET = { page: null as Page | null, queued: 0, chain: Promise.resolve(), ru
 
 // the fields the user may have changed and not saved yet, and a profile
 // still being made, kept over a redraw
-type Keep = { fields: Map<string, string>; profs: Array<[string, string[]]> | null };
+type Keep = { fields: Map<string, string>; profs: Array<[string, string[]]> | null; rules: Rule[] | null };
 
 function settings_soon(): void {
   SET.queued++;
@@ -2284,7 +2302,42 @@ function settings_draw(page: Page, keep: Keep | null = null): void {
     ev.preventDefault();
     settings_soon();
   };
-  SET.run = () => settings_save(form, unset, listed, profs);
+  const rules = keep?.rules ?? page.ask.map((r) => ({ ...r }));
+  const rbox = form.querySelector<HTMLElement>(".rules .field");
+  const rules_draw = (focus?: string) => {
+    if (rbox !== null) {
+      rbox.innerHTML = Html.rules_html(rules, JSON.stringify(rules) === JSON.stringify(page.built));
+      (focus === undefined ? null : rbox.querySelector<HTMLElement>(focus) ?? rbox.querySelector<HTMLElement>(".rnew"))?.focus();
+    }
+  };
+  rbox?.addEventListener("click", (ev) => {
+    const b = (ev.target as HTMLElement).closest<HTMLButtonElement>("button");
+    if (b?.classList.contains("rnew")) {
+      rules.push({ what: "", tools: "", args: "" });
+      rules_draw(`.rwhat[data-i="${rules.length - 1}"]`);
+    } else if (b?.classList.contains("rdel")) {
+      rules.splice(Number(b.dataset.i), 1);
+      rules_draw(".rnew");
+    } else if (b?.classList.contains("rback")) {
+      rules.splice(0, rules.length, ...page.built.map((r) => ({ ...r })));
+      rules_draw(".rnew");
+    } else {
+      return;
+    }
+    must(rbox.closest(".set")?.querySelector(".err"), "the rules' err").textContent = "";
+    RENEW.dirty.add(form);
+    settings_soon();
+  });
+  rbox?.addEventListener("input", (ev) => {
+    const el = ev.target as HTMLInputElement;
+    const r = rules[Number(el.dataset.i)] as Record<string, string> | undefined;
+    const field = el.classList[0]?.replace(/^r/, "") ?? "";
+    if (r !== undefined && field in r) {
+      r[field] = el.value;
+    }
+  });
+  rules_draw();
+  SET.run = () => settings_save(form, unset, listed, profs, rules);
   const profs_draw = (focus?: string) => {
     if (box !== null) {
       box.innerHTML = Html.profiles_html(profs, Html.offered(listed("vendors"), listed("models")));
@@ -2383,7 +2436,7 @@ function settings_draw(page: Page, keep: Keep | null = null): void {
   picks();
 }
 
-async function settings_save(form: HTMLFormElement, unset: Set<string>, listed: (key: string) => string[], profs: Array<[string, string[]]>): Promise<void> {
+async function settings_save(form: HTMLFormElement, unset: Set<string>, listed: (key: string) => string[], profs: Array<[string, string[]]>, rules: Rule[]): Promise<void> {
   const page = SET.page;
   if (page === null || !form.isConnected) {
     return;
@@ -2435,7 +2488,16 @@ async function settings_save(form: HTMLFormElement, unset: Set<string>, listed: 
     profiles = making || twice || JSON.stringify(Object.fromEntries(now)) === was ? undefined : Object.fromEntries(now);
     held = making || twice;
   }
-  const many = Object.keys(set).length + Object.keys(keys).length + (profiles === undefined ? 0 : 1);
+  // a rule still being made (no name or no tools yet) waits too
+  const drafting = rules.some((r) => r.what.trim() === "" || r.tools.trim() === "");
+  const read = drafting ? null : Rules.read(rules);
+  if (typeof read === "string") {
+    must(find(form, ".rules", HTMLElement).querySelector(".err"), "the rules' err").textContent = read + ".";
+  }
+  const ask = read === null || typeof read === "string" || JSON.stringify(read) === JSON.stringify(page.ask) ? undefined : JSON.stringify(read) === JSON.stringify(page.built) ? null : read;
+  const ruled = drafting || typeof read === "string";
+  held = held || ruled;
+  const many = Object.keys(set).length + Object.keys(keys).length + (profiles === undefined ? 0 : 1) + (ask === undefined ? 0 : 1);
   if (many === 0) {
     if (SET.queued === 0 && SET.bad.size === 0 && !held) {
       RENEW.dirty.delete(form);
@@ -2443,7 +2505,7 @@ async function settings_save(form: HTMLFormElement, unset: Set<string>, listed: 
     return;
   }
   RENEW.saving++;
-  const out = await View.post("/api/settings", { version: page.version, set, keys, ...(profiles === undefined ? {} : { profiles }) }).finally(() => RENEW.saving--);
+  const out = await View.post("/api/settings", { version: page.version, set, keys, ...(profiles === undefined ? {} : { profiles }), ...(ask === undefined ? {} : { ask }) }).finally(() => RENEW.saving--);
   // the user went to another page meanwhile: nothing here to draw
   if (!form.isConnected) {
     return;
@@ -2475,7 +2537,7 @@ async function settings_save(form: HTMLFormElement, unset: Set<string>, listed: 
     if (SET.bad.size === 0 && !held) {
       RENEW.dirty.delete(form);
     }
-    settings_redraw(done, { fields, profs: held ? profs : null });
+    settings_redraw(done, { fields, profs: held ? profs : null, rules: ruled ? rules : null });
   }
   draw(false);
 }

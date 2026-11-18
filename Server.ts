@@ -28,10 +28,11 @@ import { Run, type Heard } from "./Run.ts";
 import * as Service from "./Service.ts";
 import * as Timer from "./Timer.ts";
 import * as Pins from "./Pins.ts";
+import { Gate, type Asked } from "./Gate.ts";
 import { SEARCHES, Tools, type Seat, type Subs } from "./Tools.ts";
 import { JOB } from "./Machine.ts";
 import { HEADS } from "./Heads.ts";
-import { ACTIVE, FRAME, IDLE, IMAGES, limit_note, LINES, LINES_MOST, live_push, MEDIA, PING, QUIT, SUMMARIES, TICK, TURN, WIRE, type Answer, type Live, type Part, type Pending, type Queued, type Server as Out, type Sums, type Talk as Meter, TOKEN, type Wait, type Mate } from "./View.ts";
+import { ACTIVE, ASKS, FRAME, IDLE, IMAGES, limit_note, LINES, LINES_MOST, live_push, MEDIA, PING, QUIT, SUMMARIES, TICK, TURN, WIRE, type Answer, type Live, type Part, type Pending, type Queued, type Server as Out, type Sums, type Talk as Meter, TOKEN, type Wait, type Mate } from "./View.ts";
 import * as config from "./Config.ts";
 import { err_code, err_stack, err_why } from "./Err.ts";
 import { get, rec, text_of } from "./Json.ts";
@@ -127,6 +128,7 @@ const SEQ        = { n: 0 };
 const SCRATCH_KEPT  = 30 * 24 * 3600e3;
 const SCRATCH_SWEEP = 24 * 3600e3;
 const PIN_SWEEP     = 3600e3;
+const NOTE          = 2000;
 const AGENTS     = config.DIR + "/agents";
 const TALK_FULL  = "Conversation mode switched itself off: it was full.";
 const TALK_SMALL = "Conversation mode switched itself off: too long for {model}.";
@@ -1663,7 +1665,7 @@ export namespace Chat {
     const queue: Queued[] = run.queue.map(({ q }) => ({ kind: q.kind, text: shown(q.text) }));
     const sent = run.sent.flatMap(({ m }) => Array.from({ length: m.end - m.id }, (_, k) => m.id + k));
     const bg = Tools.bg(chat.tools, (agent) => agent === chat.who || chat.subs.has(agent) || chat.gone.has(agent));
-    return { $: "state", agent: chat.id, busy: run.busy, wait: Chat.waits(chat), pick: chat.pick, ...config.OFFER, importing, limit: run.limit, queue, sent, sums: Chat.sums(chat), again: chat.mem.again, timers, mcp, talk, bg, build: BUILD, thinking: config.THINKING };
+    return { $: "state", agent: chat.id, busy: run.busy, wait: Chat.waits(chat), pick: chat.pick, ...config.OFFER, importing, limit: run.limit, queue, sent, sums: Chat.sums(chat), again: chat.mem.again, timers, mcp, talk, bg, asks: Gate.shown(chat.tools.gate, chat.id), build: BUILD, thinking: config.THINKING };
   }
 
   export function sums(chat: Chat): Sums | null {
@@ -2036,6 +2038,30 @@ export namespace Main {
   export let server: Bun.Server<Sock["data"]>;
 
   // where what has no agent of its own goes: the oldest active agent's chat
+  // a risky call waiting for the owner's yes, pushed to every browser with
+  // notifications on, its agent's chat in view or not
+  export function asked(a: Asked): void {
+    const agent = Team.get(a.agent);
+    const by = a.who === "" ? agent?.name ?? "" : a.who;
+    Push.notify(Owner.open(), ASKS + ": " + a.what.toLowerCase() + ": " + Gate.line(a), { title: by, url: "/a/" + a.agent, tag: "ask-" + a.id });
+  }
+
+  export async function approve(req: Request): Promise<Response> {
+    if (req.method !== "POST") {
+      return new Response("an answer is a POST", { status: 405 });
+    }
+    if (!Owner.browser(req)) {
+      return Response.json({ error: "Approve or deny in the web app: a device can't." }, { status: 403 });
+    }
+    const body: unknown = await req.json().catch(() => null);
+    const [id, ok, note] = [get(body, "id"), get(body, "ok"), get(body, "note") ?? ""];
+    if (typeof id !== "string" || typeof ok !== "boolean" || typeof note !== "string") {
+      return Response.json({ error: "An answer is { id, ok, note }." }, { status: 400 });
+    }
+    const why = await Tools.decide(Main.tools, id, ok, note.trim().slice(0, NOTE));
+    return Response.json(why === null ? {} : { error: why }, { status: why === null ? 200 : 409 });
+  }
+
   // the pins whose time is up leave quietly, a note each in the first
   // agent's chat, no push
   export function pin_sweep(): void {
@@ -2471,6 +2497,9 @@ export namespace Main {
       case "/api/pins": {
         return await Main.pins(req);
       }
+      case "/api/approve": {
+        return await Main.approve(req);
+      }
       case "/api/media": {
         if (req.method !== "POST" || req.body === null) {
           return new Response("a file is posted", { status: 405 });
@@ -2624,6 +2653,7 @@ export namespace Main {
       note   : (text) => Chat.note(Main.first(), text),
       change : () => Main.chats.forEach((chat) => Chat.change(chat)),
       off    : () => config.MCP_OFF,
+      asked  : (a) => Main.asked(a),
     });
     Main.tools.owner = (who) => {
       const chat = [...Main.chats.values()].find((c) => c.subs.has(who) || Memory.agent(c.mem, who) !== null);
