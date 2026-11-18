@@ -992,6 +992,12 @@ export namespace Chat {
   }
 
   export async function spawn(chat: Chat, tasks: Spawn[]): Promise<Done> {
+    for (const [k, t] of tasks.entries()) {
+      const why = Sub.no_effort(chat.pick, t.role);
+      if (why !== null) {
+        return { text: Sub.refused(k, t.task, why), fail: true };
+      }
+    }
     const view = tasks.some((t) => t.memory) ? await Chat.sub_view(chat) : [];
     if (typeof view === "string") {
       return { text: view + " Nothing started.", fail: true };
@@ -1855,7 +1861,7 @@ export namespace Chat {
       case "pick": {
         const pick = Pick.read(msg.to, config.OFFER);
         if (pick === null) {
-          return { error: "No pick " + JSON.stringify(msg.to) + "." };
+          return { error: (Pick.refused(msg.to, config.OFFER) ?? "No pick " + JSON.stringify(msg.to)) + "." };
         }
         if (pick.model !== chat.pick.model) {
           chat.mem.used = null;

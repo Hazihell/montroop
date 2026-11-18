@@ -241,7 +241,7 @@ export namespace ClaudeSub {
       env                    : { ...ClaudeSub.env(), ...Object.fromEntries(MODEL_SLOTS.map((slot) => [slot, ask.model])) },
       cwd                    : DIR,
       model                  : ask.model,
-      effort                 : ask.effort as Options["effort"],
+      effort                 : ask.effort === "" ? undefined : ask.effort as Options["effort"],
       thinking               : { type: "adaptive", display: "summarized" },
       systemPrompt           : [ask.system, boundary, ...(ask.own === undefined || ask.own === "" ? [] : [ask.own])],
       tools,

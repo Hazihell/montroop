@@ -2,7 +2,7 @@ import type { Block, End, Say } from "./AskAI.ts";
 import * as config from "./Config.ts";
 import { list as items, rec, text_of } from "./Json.ts";
 import * as Names from "./Names.ts";
-import { EFFORTS, Pick } from "./Pick.ts";
+import { Pick } from "./Pick.ts";
 import type { Run } from "./Run.ts";
 import type { Talk } from "./View.ts";
 
@@ -70,13 +70,34 @@ export namespace Sub {
       const task = typeof x.task === "string" ? x.task.trim() : "";
       const model = x.model === undefined ? null : text_of(x.model, "null");
       const effort = x.effort === undefined ? null : text_of(x.effort, "null");
-      const bad = task === "" ? "no task text" : model !== null && !models.includes(model) ? "no model " + model + "; one of " + models.join(", ") : effort !== null && !EFFORTS.includes(effort) ? "no effort " + effort + "; one of " + EFFORTS.join(", ") : null;
+      const bad = task === "" ? "no task text" : model !== null && !models.includes(model) ? "no model " + model + "; one of " + models.join(", ") : null;
       if (bad !== null) {
-        return "Task " + (k + 1) + (task === "" ? "" : " (" + JSON.stringify(task.length > 60 ? task.slice(0, 60) + "…" : task) + ")") + ": " + bad + ". Nothing started.";
+        return Sub.refused(k, task, bad);
       }
       out.push({ task, role: { model, effort }, memory: x.memory !== false, mcp: x.mcp !== false });
     }
     return out.length === 0 ? "No tasks. Nothing started." : out;
+  }
+
+  export function refused(k: number, task: string, why: string): string {
+    return "Task " + (k + 1) + (task === "" ? "" : " (" + JSON.stringify(task.length > 60 ? task.slice(0, 60) + "…" : task) + ")") + ": " + why + ". Nothing started.";
+  }
+
+  // each offered model's efforts, for spawn's description
+  export function efforts(): string {
+    const by = new Map<string, string[]>();
+    for (const [, m] of Pick.models(config.OFFER.vendors, config.OFFER.models)) {
+      const levels = m.efforts.length === 0 ? "none to set" : m.efforts.join(", ");
+      by.set(levels, [...new Set([...by.get(levels) ?? [], m.label])]);
+    }
+    return [...by].map(([levels, labels]) => labels.join(", ") + ": " + levels).join("; ");
+  }
+
+  // why the spawner can't start a task at its effort
+  export function no_effort(base: Pick, role: Role): string | null {
+    const given = role.model === null ? base : Pick.to_model(base, role.model, config.OFFER.vendors, config.OFFER);
+    const model = given === null ? undefined : Pick.model(given.vendor, given.model);
+    return role.effort === null || model === undefined || Pick.offers(model, role.effort) ? null : Pick.no_effort(model, role.effort);
   }
 
   // its log's first line, which says how it runs
@@ -89,13 +110,15 @@ export namespace Sub {
     return m === null ? null : { role: { model: m[1] ?? null, effort: m[2] ?? null }, memory: m[3] === undefined, mcp: m[4] === undefined };
   }
 
-  // the spawner's pick, with the task's model and effort
+  // the spawner's pick, with the task's model and effort; an effort its
+  // model no longer has, its model's default
   export function pick(base: Pick, role: Role, name: string): Pick {
     const given = role.model === null ? base : Pick.to_model(base, role.model, config.OFFER.vendors, config.OFFER);
     if (given === null) {
       throw new Error(name + "'s model " + role.model + " is no longer offered; spawn another subagent.");
     }
-    return { ...given, effort: role.effort ?? given.effort };
+    const model = Pick.model(given.vendor, given.model);
+    return role.effort === null || model === undefined ? given : Pick.on({ ...given, effort: role.effort }, given.vendor, model);
   }
 
   // what its report gets from a call: its text, or why it failed, a prompt

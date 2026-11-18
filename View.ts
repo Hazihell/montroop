@@ -183,7 +183,7 @@ export type Link = {
 
 export type Act =
   | ({ $: "Send" } & Sent)
-  | { $: "Move"; move: Move; to?: string }
+  | { $: "Move"; move: Move; to: string }
   | { $: "Open"; id: number; n: number }
   | { $: "Shut"; id: number; n: number }
   | { $: "Unschedule"; id: string }
@@ -616,9 +616,13 @@ export function view_act(v: View, act: Act): Client[] {
         v.notes.push(from.model + " has no fast.");
         return [];
       }
+      if (act.move === "effort" && Pick.options(from, "effort", v).length === 0) {
+        v.notes.push(from.model + " has no effort to set.");
+        return [];
+      }
       if (to === null) {
         const parts = Pick.options(from, act.move, v).map(([part]) => part);
-        v.notes.push("No " + [act.move, act.to].join(" ").trim() + "; one of: " + [...new Set(parts)].join(", ") + ".");
+        v.notes.push("No " + act.move + " " + act.to + (act.move === "effort" ? " on " + from.model : "") + "; one of: " + [...new Set(parts)].join(", ") + ".");
         return [];
       }
       return [{ $: "pick", to }];
@@ -857,7 +861,7 @@ function view_knobs(v: View, pick: Pick, menus: boolean): Knob[] {
   const choices = (move: Move) => (menus ? view_choices(pick, move, v) : []);
   return [
     { text: profile ?? model, move: "model", hint: profile === undefined ? model + whose : profile + ": " + ranks, choices: choices("model") },
-    { text: effort, move: "effort", hint: effort + " effort", choices: choices("effort") },
+    ...(effort === "" ? [] : [{ text: effort, move: "effort" as const, hint: effort + " effort", choices: choices("effort") }]),
     { text: speed, move: "speed", hint: speed, choices: choices("speed") },
   ];
 }

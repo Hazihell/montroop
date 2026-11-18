@@ -11,7 +11,6 @@ import { Team } from "./Team.ts";
 import * as Timer from "./Timer.ts";
 import { PING } from "./View.ts";
 import { Sub, type Spawn } from "./Sub.ts";
-import { EFFORTS } from "./Pick.ts";
 import { err_why } from "./Err.ts";
 import { get, list as items, rec, text_of } from "./Json.ts";
 
@@ -106,7 +105,7 @@ const BOSS: Spec[] = [
   spec("spawn", "Start one subagent per task, in parallel, and return their names at once. Each one's report reaches you when it finishes, as a new message from it, starting \"[Name]\"; then it is done, and zoom with its name as agent reads its whole chat. One that hits an AI service's usage limit waits for the reset and goes on. A subagent starts with your view (memory: false: with only its task) and knows what you want only from its task. Each task names its own model and effort, if any.", { tasks: { type: "array", items: { type: "object", properties: {
     task   : STR,
     model  : { type: "string", description: "Its model, one offered here; by default, yours. Set it only when the user asks for that model or vendor, since another vendor may cost more." },
-    effort : { type: "string", enum: EFFORTS, description: "How hard it thinks; by default, as hard as you." },
+    effort : { type: "string", description: "How hard it thinks, one of its model's own levels (" + Sub.efforts() + "); by default, as hard as you, or its model's default level if it has no level of that name." },
     memory : { type: "boolean", description: "Whether it starts with your view; default true." },
     mcp    : { type: "boolean", description: "Whether it gets the devices' MCP tools; default true." },
   }, required: ["task"] } } }, ["tasks"]),

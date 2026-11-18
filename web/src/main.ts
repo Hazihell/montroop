@@ -2228,7 +2228,8 @@ function settings_draw(page: Page, keep: Keep | null = null): void {
     must(el.querySelector(".err"), "the setting's err").textContent = "";
     const value = el.querySelector<HTMLInputElement>("input[type=hidden]");
     if (value !== null) {
-      value.value = Html.pick_mend([...el.querySelectorAll("select")].map((s) => s.value), listed("models"), names());
+      const part = (name: string) => el.querySelector<HTMLSelectElement>(`select[name$=".${name}"]`)?.value ?? "";
+      value.value = Html.pick_mend(["vendor", "model", "effort", "speed"].map(part), listed("models"), names());
     }
     picks();
     if (keys.includes("vendors") || keys.includes("models")) {

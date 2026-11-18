@@ -9,9 +9,11 @@ export type Pick = {
   profile? : string;
 };
 
-export type Move = "next" | "prev" | "model" | "up" | "down" | "effort" | "speed";
+export type Move = "model" | "effort" | "speed";
 
-export type Model = { label: string; id: string; speeds: string[]; window: number };
+// efforts: its own levels, as its vendor names them, in its order; effort:
+// the one its vendor uses when a request names none
+export type Model = { label: string; id: string; speeds: string[]; efforts: string[]; effort: string; window: number };
 
 export type Offer = { vendors: Vendor[]; models: string[]; profiles?: Record<string, Fall[]> };
 
@@ -24,16 +26,22 @@ export const VENDORS: Vendor[] = ["claude-api", "openai-api", "openai-sub", "cla
 // plan alike; OpenAI's as Codex's models cache has them for a ChatGPT
 // plan (context_window; a request can't ask for more), the API's taken
 // as the same
+// the efforts: the vendors' models lists (Anthropic's capabilities.effort,
+// Claude Code's supportedEffortLevels, Codex's supported_reasoning_levels)
+// and what a request at each level is answered; defaults by their docs
 // each vendor's models from large to small, as the picker shows them
-const FABLE : Model = { label: "fable-5.2",  id: "claude-fable-5-2",  speeds: ["slow"], window: 1e6 };
-const OPUS  : Model = { label: "opus-5.5",   id: "claude-opus-5-5",   speeds: ["slow", "fast"], window: 1e6 };
-const SONNET: Model = { label: "sonnet-5.5", id: "claude-sonnet-5-5", speeds: ["slow"], window: 1e6 };
-const HAIKU : Model = { label: "haiku-5.5",  id: "claude-haiku-5-5",  speeds: ["slow"], window: 1e6 };
+const CLAUDE = ["low", "medium", "high", "xhigh", "max"];
+const FABLE : Model = { label: "fable-5.2",  id: "claude-fable-5-2",  speeds: ["slow"], efforts: CLAUDE, effort: "high", window: 1e6 };
+const OPUS  : Model = { label: "opus-5.5",   id: "claude-opus-5-5",   speeds: ["slow", "fast"], efforts: CLAUDE, effort: "medium", window: 1e6 };
+const SONNET: Model = { label: "sonnet-5.5", id: "claude-sonnet-5-5", speeds: ["slow"], efforts: CLAUDE, effort: "high", window: 1e6 };
+const HAIKU : Model = { label: "haiku-5.5",  id: "claude-haiku-5-5",  speeds: ["slow"], efforts: CLAUDE, effort: "medium", window: 1e6 };
+const GPT  = ["low", "medium", "high", "xhigh", "max"];
+const NONE = ["none", ...GPT];
 const OPENAI: Model[] = [
-  { label: "gpt-6-astra",   id: "gpt-6-astra",   speeds: ["slow", "fast", "ultrafast"], window: 272e3 },
-  { label: "gpt-6.1-sol",   id: "gpt-6.1-sol",   speeds: ["slow", "fast"], window: 500e3 },
-  { label: "gpt-6.1-terra", id: "gpt-6.1-terra", speeds: ["slow", "fast"], window: 500e3 },
-  { label: "gpt-6-luna",    id: "gpt-6-luna",    speeds: ["slow", "fast"], window: 272e3 },
+  { label: "gpt-6-astra",   id: "gpt-6-astra",   speeds: ["slow", "fast", "ultrafast"], efforts: GPT, effort: "medium", window: 272e3 },
+  { label: "gpt-6.1-sol",   id: "gpt-6.1-sol",   speeds: ["slow", "fast"], efforts: GPT, effort: "medium", window: 500e3 },
+  { label: "gpt-6.1-terra", id: "gpt-6.1-terra", speeds: ["slow", "fast"], efforts: NONE, effort: "medium", window: 500e3 },
+  { label: "gpt-6-luna",    id: "gpt-6-luna",    speeds: ["slow", "fast"], efforts: NONE, effort: "medium", window: 272e3 },
 ];
 
 // a ChatGPT plan's (ChatGPT.ts): fast is its priority tier, no ultrafast
@@ -45,8 +53,6 @@ const MODELS: Record<Vendor, Model[]> = {
   "openai-sub": PLAN,
   "claude-sub": [FABLE, { ...OPUS, speeds: ["slow"] }, SONNET, HAIKU],
 };
-
-export const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 
 const SPEEDS = ["slow", "fast", "ultrafast"];
 
@@ -61,7 +67,17 @@ export namespace Pick {
   export function on(pick: Pick, vendor: Vendor, model: Model): Pick {
     const below = SPEEDS.slice(0, SPEEDS.indexOf(pick.speed) + 1);
     const speed = below.filter((s) => model.speeds.includes(s)).pop() ?? "slow";
-    return { ...pick, vendor, model: model.label, speed };
+    const effort = Pick.offers(model, pick.effort) ? pick.effort : model.effort;
+    return { ...pick, vendor, model: model.label, effort, speed };
+  }
+
+  // a model without effort control has none: its effort is ""
+  export function offers(model: Model, effort: string): boolean {
+    return model.efforts.length === 0 ? effort === "" : model.efforts.includes(effort);
+  }
+
+  export function no_effort(model: Model, effort: string): string {
+    return model.label + " has no effort " + effort + (model.efforts.length === 0 ? ", nor any other" : "; one of " + model.efforts.join(", "));
   }
 
   export function models(vendors: Vendor[], labels: string[]): Array<[Vendor, Model]> {
@@ -69,7 +85,7 @@ export namespace Pick {
   }
 
   export function options(pick: Pick, move: Move, offer: Offer): Array<[string, Pick]> {
-    const speeds = Pick.model(pick.vendor, pick.model)?.speeds ?? [];
+    const model = Pick.model(pick.vendor, pick.model);
     const { profile: _, ...plain } = pick;
     const all = Pick.models(offer.vendors, offer.models).map(([v, m]): [string, Pick] => [m.label, Pick.on(plain, v, m)]);
     const profiles = Object.keys(offer.profiles ?? {}).flatMap((name): [string, Pick][] => {
@@ -77,34 +93,25 @@ export namespace Pick {
       return on === null ? [] : [[name, on]];
     });
     switch (move) {
-      case "next":
-      case "prev":
       case "model": {
         return [...profiles, ...all];
       }
-      case "up":
-      case "down":
       case "effort": {
-        return EFFORTS.map((effort) => [effort, { ...pick, effort }]);
+        return (model?.efforts ?? []).map((effort) => [effort, { ...pick, effort }]);
       }
       case "speed": {
-        return speeds.map((speed) => [speed, { ...pick, speed }]);
+        return (model?.speeds ?? []).map((speed) => [speed, { ...pick, speed }]);
       }
     }
   }
 
-  export function move(pick: Pick, move: Move, offer: Offer, to?: string): Pick | null {
+  export function move(pick: Pick, move: Move, offer: Offer, to: string): Pick | null {
     const list = Pick.options(pick, move, offer);
-    const n    = list.length;
-    const at   = list.findIndex(([, p]) => Pick.label(p) === Pick.label(pick) && p.profile === pick.profile);
-    const d    = move === "prev" || move === "down" ? -1 : 1;
-    const ends = move === "up" || move === "down";
-    const next = ends ? Math.max(0, Math.min(n - 1, at + d)) : (at + d + n) % n;
     const mine = ([, p]: [string, Pick]) => p.profile === undefined && p.vendor === pick.vendor;
     const same = list.filter(([part, p]) => part === to || (p.profile === undefined && p.vendor + ":" + part === to));
-    const like = list.filter(([part]) => part.toLowerCase().includes(String(to).toLowerCase()));
+    const like = list.filter(([part]) => part.toLowerCase().includes(to.toLowerCase()));
     const one  = like.length === 1 ? like[0] : like.filter(mine).length === 1 ? like.find(mine) : undefined;
-    const hit  = to === undefined ? list[next] : same.find(mine) ?? same[0] ?? one;
+    const hit  = same.find(mine) ?? same[0] ?? one;
     return hit === undefined ? null : hit[1];
   }
 
@@ -142,26 +149,26 @@ export namespace Pick {
   }
 
   export function profile(name: string, offer: Offer, effort: string, speed: string): Pick | null {
-    const profiles = offer.profiles ?? {};
-    const first = Object.hasOwn(profiles, name) ? profiles[name][0] : undefined;
+    const first = Pick.first(name, offer);
     if (first === undefined) {
       return null;
     }
     const on = Pick.on({ vendor: first.vendor, model: first.model.label, effort, speed }, first.vendor, first.model);
-    return { ...on, effort: first.effort ?? effort, speed: first.speed ?? on.speed, profile: name };
+    return { ...on, effort: first.effort ?? on.effort, speed: first.speed ?? on.speed, profile: name };
   }
 
   export function read(x: unknown, offer: Offer): Pick | null {
     const [profile, effort, speed, label] = [get(x, "profile"), get(x, "effort"), get(x, "speed"), get(x, "model")];
     if (profile !== undefined) {
-      return typeof profile === "string" && typeof effort === "string" && EFFORTS.includes(effort) ? Pick.profile(profile, offer, effort, String(speed)) : null;
+      const first = typeof profile === "string" ? Pick.first(profile, offer) : undefined;
+      return typeof profile === "string" && first !== undefined && typeof effort === "string" && Pick.offers(first.model, effort) ? Pick.profile(profile, offer, effort, String(speed)) : null;
     }
     const vendor = offer.vendors.find((v) => v === get(x, "vendor"));
     if (vendor === undefined || typeof label !== "string" || !offer.models.includes(label)) {
       return null;
     }
     const model = Pick.model(vendor, label);
-    if (model === undefined || typeof effort !== "string" || !EFFORTS.includes(effort) || typeof speed !== "string" || !model.speeds.includes(speed)) {
+    if (model === undefined || typeof effort !== "string" || !Pick.offers(model, effort) || typeof speed !== "string" || !model.speeds.includes(speed)) {
       return null;
     }
     return { vendor, model: label, effort, speed };
@@ -173,8 +180,34 @@ export namespace Pick {
     return Math.min(...models.map((m) => m?.window ?? 272e3));
   }
 
+  export function first(profile: string, offer: Offer): Fall | undefined {
+    const profiles = offer.profiles ?? {};
+    return Object.hasOwn(profiles, profile) ? profiles[profile][0] : undefined;
+  }
+
+  // the offered model a pick names
+  export function named_model(x: unknown, offer: Offer): Model | undefined {
+    const [profile, label] = [get(x, "profile"), get(x, "model")];
+    const vendor = offer.vendors.find((v) => v === get(x, "vendor"));
+    if (profile !== undefined) {
+      return typeof profile === "string" ? Pick.first(profile, offer)?.model : undefined;
+    }
+    return vendor === undefined || typeof label !== "string" || !offer.models.includes(label) ? undefined : Pick.model(vendor, label);
+  }
+
+  // why read refuses a pick, when for its effort
+  export function refused(x: unknown, offer: Offer): string | null {
+    const model = Pick.named_model(x, offer);
+    const effort = get(x, "effort");
+    return model !== undefined && typeof effort === "string" && !Pick.offers(model, effort) ? Pick.no_effort(model, effort) : null;
+  }
+
+  // one saved by an older Ki at an effort its model doesn't have loads at
+  // the model's default
   export function load(saved: object | null, offer: Offer, def: Pick): Pick {
-    return Pick.read(saved ?? def, offer) ?? def;
+    const x = saved ?? def;
+    const model = Pick.named_model(x, offer);
+    return Pick.read(x, offer) ?? (model === undefined ? null : Pick.read({ ...x, effort: model.effort }, offer)) ?? def;
   }
 
 }

@@ -103,7 +103,7 @@ export namespace Anthropic {
       stream        : true,
       system        : [{ type: "text", text: ask.system, cache_control: HOUR }, ...(ask.own === undefined || ask.own === "" ? [] : [{ type: "text", text: ask.own }])],
       thinking      : { type: "adaptive", display: "summarized" },
-      output_config : { effort: ask.effort },
+      output_config : ask.effort === "" ? undefined : { effort: ask.effort },
       cache_control : cache,
       tools         : defs.length > 0 ? defs : undefined,
       speed         : ask.speed === "fast" ? "fast" : undefined,

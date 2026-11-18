@@ -5,7 +5,7 @@ import * as path from "node:path";
 import type { Vendor } from "./AskAI.ts";
 import { err_code, err_why } from "./Err.ts";
 import { get, list as items, rec, text_of } from "./Json.ts";
-import { EFFORTS, LABELS, VENDORS, Pick, type Fall, type Offer } from "./Pick.ts";
+import { LABELS, VENDORS, Pick, type Fall, type Offer } from "./Pick.ts";
 import { write_whole } from "./Write.ts";
 
 type ServerOnly = "runs a command";
@@ -328,10 +328,15 @@ function config_context(text: string): number {
 }
 
 function config_run(key: string, text: string, offer: Offer): Pick {
+  const profile = Pick.profile(text, offer, "medium", "slow");
+  if (profile !== null) {
+    return profile;
+  }
   const [vendor, model, effort, speed] = text.split(":");
-  const pick = Pick.read(Object.hasOwn(offer.profiles ?? {}, text) ? { profile: text, effort: "medium", speed: "slow" } : { vendor, model, effort, speed }, offer);
+  const pick = Pick.read({ vendor, model, effort, speed }, offer);
   if (pick === null) {
-    throw new Error("config: " + key + " is no vendor:model:effort:speed or profile offered here: " + text);
+    const why = Pick.refused({ vendor, model, effort }, offer);
+    throw new Error("config: " + key + (why === null ? " is no vendor:model:effort:speed or profile offered here: " + text : ": " + why));
   }
   return pick;
 }
@@ -354,9 +359,12 @@ function config_fall(name: string, f: string, offer: Offer): Fall {
   const parts = f.split(":");
   const [vendor, label, effort, speed] = parts as [Vendor, string, string?, string?];
   const model = offer.vendors.includes(vendor) && offer.models.includes(label) ? Pick.model(vendor, label) : undefined;
-  const bad = parts.length > 4 || (effort !== undefined && !EFFORTS.includes(effort)) || (speed !== undefined && !model?.speeds.includes(speed));
+  const bad = parts.length > 4 || (speed !== undefined && !model?.speeds.includes(speed));
   if (model === undefined || bad) {
     throw new Error("config: profile " + JSON.stringify(name) + " has no vendor:model[:effort[:speed]] offered here: " + f);
+  }
+  if (effort !== undefined && !Pick.offers(model, effort)) {
+    throw new Error("config: profile " + JSON.stringify(name) + ": " + Pick.no_effort(model, effort));
   }
   return { vendor, model, effort, speed };
 }

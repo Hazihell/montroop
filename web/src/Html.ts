@@ -1,7 +1,7 @@
 import type { Vendor } from "../../AskAI.ts";
 import * as Call from "../../Call.ts";
 import * as Md from "../../Md.ts";
-import { EFFORTS, LABELS, Pick, VENDORS } from "../../Pick.ts";
+import { LABELS, Pick, VENDORS } from "../../Pick.ts";
 import type { Key, Page, Row } from "../../Settings.ts";
 import * as Theme from "../../Theme.ts";
 import * as Timer from "../../Timer.ts";
@@ -500,13 +500,14 @@ export function picks_html(key: string, vendors: string[], models: string[], val
   const offered = (VENDORS as string[]).filter((v) => vendors.includes(v));
   const labels = known ? Pick.models([vendor as Vendor], models).map(([, m]) => m.label) : [];
   const speeds = known ? Pick.model(vendor as Vendor, model)?.speeds ?? [] : [];
+  const efforts = known ? Pick.model(vendor as Vendor, model)?.efforts ?? [] : [];
   const select = (part: string, name: string, all: string[], on: string, first: string | null) => {
     const opts: Array<[string, string]> = [...(first === null ? [] : [["", first] as [string, string]]), ...(all.includes(on) || (on === "" && first !== null) ? [] : [[on, on + " (not offered)"] as [string, string]]), ...all.map((x): [string, string] => [x, x])];
     const items = opts.map(([v, text]) => `<option value="${esc(v)}"${v === on ? " selected" : ""}>${esc(text)}</option>`).join("");
     return `<select id="set-${key}-${part}" name="${key}.${part}" aria-label="${name}">${items}</select>`;
   };
   const head = select("vendor", "Vendor", [...offered, ...profiles], vendor, none);
-  return vendor === "" || profiles.includes(vendor) ? head : head + select("model", "Model", labels, model, null) + select("effort", "Effort", EFFORTS, effort, null) + select("speed", "Speed", speeds, speed, null);
+  return vendor === "" || profiles.includes(vendor) ? head : head + select("model", "Model", labels, model, null) + (efforts.length === 0 ? "" : select("effort", "Effort", efforts, effort, null)) + select("speed", "Speed", speeds, speed, null);
 }
 
 export function pick_mend(parts: string[], models: string[], profiles: string[] = []): string {
@@ -521,7 +522,7 @@ export function pick_mend(parts: string[], models: string[], profiles: string[] 
   if (m === undefined) {
     return parts.join(":");
   }
-  return [vendor, m.label, effort || "medium", m.speeds.includes(speed) ? speed : m.speeds[0]].join(":");
+  return [vendor, m.label, Pick.offers(m, effort) ? effort : m.effort, m.speeds.includes(speed) ? speed : m.speeds[0]].join(":");
 }
 
 function section_html(title: string, body: string): string {
