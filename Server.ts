@@ -258,7 +258,7 @@ export namespace Chat {
       id, who: id, mem, tools, pick, socks: new Set(), acts: new Map(), main, model: "", check: null, asked: false,
       eye: { parts: [], from: 0 }, after: Promise.resolve(), batch: null, writes: Promise.resolve(), held: null, back: -1, sums: null, resume: null, limits: null, bell: undefined, fresh: true, told: false, gist: -1, stopped: false, subs: new Map(), gone: new Map(), leader: null,
     };
-    const seat: Seat = { mem, note: (text) => Chat.note(chat, text), report: (text) => Chat.report(chat, text, true), timed: () => Chat.timed(chat), message: (to, text) => Chat.message(chat, to, text), subs: Chat.subs_of(chat) };
+    const seat: Seat = { mem, note: (text) => Chat.note(chat, text), report: (text) => Chat.report(chat, text, true), timed: () => Chat.timed(chat), message: (to, text) => Chat.message(chat, to, text), subs: Chat.subs_of(chat) , agents: { on: () => Main.manages(chat), run: (args) => Main.agents_tool(chat, args) } };
     tools.seats.set(id, seat);
     Main.chats.set(id, chat);
     Main.keep_picks();
@@ -2226,6 +2226,10 @@ export namespace Main {
     const made = Team.add(fields);
     const chat = Chat.open(made.id, Main.tools);
     Main.lead_set(chat, knobs);
+    if (get(x, "manage") === true) {
+      chat.mem.manage = true;
+      Memory.save(chat.mem);
+    }
     const agent = Team.set(made.id, { ...fields, picture: Main.own_picture(chat, fields.picture) }) ?? made;
     Main.team_soon();
     return { agent };
@@ -2258,7 +2262,8 @@ export namespace Main {
     }
     const agents = Team.all().map((a) => {
       const mem = Main.chats.get(a.id)?.mem;
-      return { ...a, prompt: Team.prompt(a), own: a.prompt !== null, template: Main.template(), leader: mem?.leader ?? false, lines: mem?.lines ?? LINES };
+      const chat = Main.chats.get(a.id);
+      return { ...a, prompt: Team.prompt(a), own: a.prompt !== null, template: Main.template(), leader: mem?.leader ?? false, lines: mem?.lines ?? LINES, manage: chat === undefined ? false : Main.manages(chat) };
     });
     return Response.json({ agents, template: Main.template() });
   }
@@ -2296,11 +2301,60 @@ export namespace Main {
     }
     Team.set(id, { ...fields, picture: Main.own_picture(chat, fields.picture) });
     Main.lead_set(chat, knobs);
+    const manage = get(x, "manage");
+    if (typeof manage === "boolean" && manage !== Main.manages(chat)) {
+      chat.mem.manage = manage;
+      Memory.save(chat.mem);
+    }
     Main.chats.forEach((c) => Chat.change(c));
     return out({});
   }
 
   // an agent's default prompt, its name left as {Name}
+  // whether an agent may create, archive and restore agents: by its own
+  // setting, else only the first agent
+  export function manages(chat: Chat): boolean {
+    return chat.mem.manage ?? chat.id === Team.first().id;
+  }
+
+  // the agents tool (Tools.ts AGENTS): no agent is deleted through it
+  export function agents_tool(chat: Chat, args: Record<string, unknown>): Done {
+    const action = text_of(args.action, "");
+    const name = text_of(args.name, "").trim();
+    const line = (a: Agent) => a.name + (a.archived === 0 ? "" : " (archived)") + ": " + a.about;
+    if (action === "list") {
+      return { text: Team.all().map(line).join("\n"), fail: false };
+    }
+    if (action === "create") {
+      const prompt = text_of(args.prompt, "").trim();
+      const out = Main.made({ name, about: text_of(args.about, ""), picture: "", prompt: prompt === "" ? Team.default_prompt(name) : prompt });
+      return out.agent === undefined ? { text: out.error ?? "Not made.", fail: true } : { text: "Made " + line(out.agent) + ". Message it to brief it.", fail: false };
+    }
+    if (action !== "archive" && action !== "restore") {
+      return { text: "action is list, create, archive or restore.", fail: true };
+    }
+    const them = Team.by_name(name);
+    const there = them === null ? undefined : Main.chats.get(them.id);
+    if (them === null || there === undefined) {
+      return { text: "No agent " + name + ".", fail: true };
+    }
+    if (action === "archive") {
+      if (them.archived !== 0) {
+        return { text: them.name + " is archived already.", fail: true };
+      }
+      if (them.id === chat.id) {
+        return { text: "You can't archive yourself.", fail: true };
+      }
+      if (Team.active().every((a) => a.id === them.id)) {
+        return { text: them.name + " is the last active agent, so it can't be archived.", fail: true };
+      }
+    } else if (them.archived === 0) {
+      return { text: them.name + " isn't archived.", fail: true };
+    }
+    const out = Main.shelve(there, action === "archive");
+    return out.error === undefined ? { text: (action === "archive" ? "Archived " : "Restored ") + them.name + ".", fail: false } : { text: out.error, fail: true };
+  }
+
   export function template(): string {
     return Prompts.prompt("agent");
   }

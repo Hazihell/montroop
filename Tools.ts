@@ -43,6 +43,8 @@ export type Seat = {
   timed  : () => void;
   message: (to: string, text: string) => Promise<Out>;
   subs   : Subs | null;
+  // the agents tool, for an agent whose Manage agents setting is on
+  agents?: { on: () => boolean; run: (args: Record<string, unknown>) => Out };
   mcp?   : boolean;
 };
 
@@ -130,6 +132,12 @@ const boss = (): Spec[] => [
   }, ["action"]),
   spec("resume", "Wake every call on this server waiting for an AI service's usage limit (other turns, summaries), when the user says a limit was reset early. Each asks again once; one still limited waits again.", {}, []),
 ];
+const AGENTS = spec("agents", "Manage the team's agents: list them (archived ones too), create one (name, about: one line for the chat list and the other agents, prompt: its system prompt, by default the standard one), archive one by name (its chat and memory stay, and Settings or restore brings it back) or restore an archived one. No agent is ever deleted here. Act only when the user asked for it, or agreed to what you proposed; to brief a new agent, message it after creating it.", {
+  action : { type: "string", enum: ["list", "create", "archive", "restore"] },
+  name   : STR,
+  about  : STR,
+  prompt : STR,
+}, ["action"]);
 const DEVICE = { device: { type: "string", description: "The name of the device to run on, one listed under Devices." } };
 const KIT: Spec[] = TOOLS.map((t) => {
   const schema = t.schema as { properties: object; required: string[] };
@@ -265,7 +273,7 @@ export namespace Tools {
         const bare = tools.seats.get(who)?.mcp === false;
         const all = bare ? [] : await Mcp.list(tools.mcp, Tools.held(tools, who));
         const theirs = all.filter((t) => t.name.length <= NAME_MOST - prefix.length);
-        const list = [...Tools.list(tools.seats.get(who)?.subs === null), ...theirs].map((t) => ({ name: t.name, description: t.info, inputSchema: t.schema }));
+        const list = [...Tools.listed(tools, who), ...theirs].map((t) => ({ name: t.name, description: t.info, inputSchema: t.schema }));
         if (params.notes !== true || bare) {
           return { tools: list };
         }
@@ -275,7 +283,7 @@ export namespace Tools {
       case "tools/call": {
         const name = String(params.name);
         const args = rec(params.arguments) ? params.arguments : {};
-        const has = Tools.list(tools.seats.get(who)?.subs === null).some((t) => t.name === name);
+        const has = Tools.listed(tools, who).some((t) => t.name === name);
         const mcp = has || tools.seats.get(who)?.mcp === false ? null : Mcp.find(Tools.held(tools, who), name);
         Mcp.used(tools.mcp);
         const no: Out = { text: "No tool " + name + ".", fail: true };
@@ -380,8 +388,13 @@ export namespace Tools {
 
   // the same for every agent, so one cached copy serves them all, and the
   // same for every subagent
-  export function list(sub = false): Spec[] {
-    return sub ? [...OWN, ...KIT, SKILL] : [...OWN, ...boss(), ...KIT, SKILL];
+  export function list(sub = false, manage = false): Spec[] {
+    return sub ? [...OWN, ...KIT, SKILL] : [...OWN, ...boss(), ...(manage ? [AGENTS] : []), ...KIT, SKILL];
+  }
+
+  export function listed(tools: Tools, who: string): Spec[] {
+    const seat = tools.seats.get(who);
+    return Tools.list(seat?.subs === null, seat?.agents?.on() === true);
   }
 
   export function off(tools: Tools): string[] {
@@ -452,6 +465,9 @@ export namespace Tools {
       }
       case "pin": {
         return Pins.tool(args);
+      }
+      case "agents": {
+        return seat.agents?.on() === true ? seat.agents.run(args) : { text: "Your Manage agents setting is off.", fail: true };
       }
       case "schedules": {
         const lines = mem.timers.map(Timer.timer_line);

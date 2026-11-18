@@ -1914,7 +1914,7 @@ async function agent_save_now(form: HTMLFormElement, a: Html.Agent | null, at: E
   }
   const data = new FormData(form);
   const text = (k: string) => text_of(data.get(k));
-  const body = { name: text("name"), about: text("about"), picture: text("picture"), prompt: text("prompt"), lines: text("lines"), leader: data.get("leader") === "on" };
+  const body = { name: text("name"), about: text("about"), picture: text("picture"), prompt: text("prompt"), lines: text("lines"), leader: data.get("leader") === "on", manage: data.get("manage") === "on" };
   const why = at.closest(".set")?.querySelector(".err") ?? form.querySelector(".save .why") ?? form.querySelector(".up .why");
   form.querySelectorAll(".err").forEach((e) => (e.textContent = ""));
   RENEW.saving++;
