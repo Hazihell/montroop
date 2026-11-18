@@ -3,7 +3,7 @@ import { copyFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { Database } from 'bun:sqlite';
 
-const profile = process.env.UNII_BROWSER_PROFILE ?? `${homedir()}/.local/share/unii-browser/profile/Default`;
+const profile = process.env.KI_BROWSER_PROFILE ?? `${homedir()}/.local/share/unii-browser/profile/Default`;
 
 export function saved(origin, username) {
   const found = [];

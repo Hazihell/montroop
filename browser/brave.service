@@ -1,5 +1,5 @@
 [Unit]
-Description=UniiChat dedicated Brave browser
+Description=Ki dedicated Brave browser
 StartLimitIntervalSec=0
 
 [Service]
