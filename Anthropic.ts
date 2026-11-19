@@ -88,7 +88,7 @@ export namespace Anthropic {
     }
     const messages: Message[] = [];
     for (const item of items) {
-      const msg = Anthropic.message(item, ask.talk === true && item === items[0]);
+      const msg = Anthropic.message(item, ask.blocks.at(-1));
       const top = messages[messages.length - 1];
       if (top?.role === msg.role) {
         top.content.push(...msg.content);
@@ -112,12 +112,11 @@ export namespace Anthropic {
     };
   }
 
-  export function message(item: Item, talk = false): Message {
+  // tail: the call's last block, which the request's own mark covers
+  export function message(item: Item, tail?: Block): Message {
     switch (item.$) {
       case "User": {
-        const last = item.parts.length - 1;
-        const marked = (p: Block, k: number) => (talk ? (p.mark && k < last) || p.back === true : p.mark);
-        const texts = item.parts.map((p, k) => ({ type: "text", text: p.text, cache_control: marked(p, k) ? HOUR : undefined }));
+        const texts = item.parts.map((p) => ({ type: "text", text: p.text, cache_control: p.mark && p !== tail ? HOUR : undefined }));
         return { role: "user", content: [...texts, ...item.imgs.map(Anthropic.image)] };
       }
       case "Turn": {

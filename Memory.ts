@@ -1065,12 +1065,12 @@ export namespace Memory {
     return parts.slice(k);
   }
 
-  export function view(mem: Memory, end = mem.count, parts = mem.view.parts, talk: number | null = null, back = -1): Block[] {
+  export function view(mem: Memory, end = mem.count, parts = mem.view.parts, talk: number | null = null): Block[] {
     const lines = talk === null ? Memory.before(parts, end).filter((part) => Memory.built(mem, part.l, part.i)).map((part) => Memory.line(part, Memory.text(mem, part)) + "\n") : Memory.talking(mem, end, parts, talk);
     const whole = Math.floor(lines.length / BLOCK);
     const blocks: Block[] = [{ text: "<chat>\n", mark: whole === 0 }];
     for (let k = 0; k < whole; k++) {
-      blocks.push({ text: lines.slice(k * BLOCK, (k + 1) * BLOCK).join(""), ...Memory.cache_marks(k, whole, back) });
+      blocks.push({ text: lines.slice(k * BLOCK, (k + 1) * BLOCK).join(""), mark: k === whole - 1 });
     }
     blocks.push({ text: lines.slice(whole * BLOCK).join("") + "</chat>\n", mark: false });
     return blocks;
@@ -1105,11 +1105,6 @@ export namespace Memory {
     const root = Memory.at(mem, i);
     const part = { l: 0, i };
     return Memory.said(root) ? Memory.ref(part) + "|" + Memory.show(root).replace(/<\/chat>/gi, "<\\/chat>") : Memory.line(part, Memory.node(mem, part) ?? Prompts.prompt("not-summarized"));
-  }
-
-  export function cache_marks(k: number, whole: number, back: number): { mark: boolean; back?: true } {
-    const last = k === whole - 1;
-    return { mark: last, ...(k === back && !last ? { back: true } : {}) };
   }
 
   export function talk_room(window: number): number {

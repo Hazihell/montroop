@@ -85,8 +85,10 @@ function said(vendor: Vendor, body: unknown): { system: string; said: Said[]; se
 }
 
 // a prompt cache by prefix: each mark caches the request up to it; a later
-// request reads its longest cached prefix, and writes from there to its last mark
-function cache(segs: string[], marks: number[]): Used {
+// request reads its longest cached prefix, and writes from there to its last
+// mark. Anthropic looks for a cached prefix only within 20 blocks before each
+// of the request's marks
+function cache(segs: string[], marks: number[], lookback = Infinity): Used {
   const at: number[] = [];
   const keys: string[] = [];
   let h = "";
@@ -98,7 +100,7 @@ function cache(segs: string[], marks: number[]): Used {
     at.push(Math.ceil(chars / 4));
   }
   const total = at.at(-1) ?? 0;
-  const read = Math.max(0, ...keys.map((k, i) => (CACHED.has(k) ? at[i] : 0)));
+  const read = Math.max(0, ...keys.map((k, i) => (CACHED.has(k) && marks.some((m) => m >= i && m - i < lookback) ? at[i] : 0)));
   const last = marks.at(-1);
   const write = last === undefined || CACHED.has(keys[last]) ? 0 : at[last] - read;
   marks.forEach((m) => CACHED.add(keys[m]));
@@ -369,7 +371,7 @@ async function model(req: Request, vendor: Vendor, url: URL): Promise<Response> 
     ? order.calls.map(([n, input]) => ({ id: claude ? id("toolu_01") : id("call_"), name: named(n), json: JSON.stringify(input) }))
     : [...(order.what === "reply" && order.think !== undefined ? [{ think: order.think }] : []), { text: order.what === "reply" ? order.text : "ok" }];
   const sent: Sent = { blocks, stall: order.what === "stall" ? order.ms : 0, cut: order.what === "cut", pace: order.what === "tool" ? order.pace ?? 0 : 0 };
-  const used = cache(got.segs, got.marks);
+  const used = cache(got.segs, got.marks, claude ? 20 : Infinity);
   return claude ? anthropic(vendor, name, sent, used) : openai(vendor, name, sent, used);
 }
 

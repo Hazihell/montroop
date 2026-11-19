@@ -21,7 +21,7 @@ export type Say = { text: string; imgs: Img[] };
 // a message with who sent it, as the prompts name them (prompts/prompt.md)
 export type Said = Say & { from: string };
 
-export type Block = { text: string; mark: boolean; back?: boolean };
+export type Block = { text: string; mark: boolean };
 
 // system: the part every agent shares, which ends a cache entry; own:
 // the agent's own part after it
@@ -38,7 +38,6 @@ export type Ask = Pick & {
   agent?    : boolean;
   fallback? : boolean;
   no_wait?  : boolean;
-  talk?     : boolean;
   repick?   : () => Pick;
   used?     : (tokens: number) => void;
   steer?    : Steer;
@@ -108,6 +107,12 @@ const TTL: Record<Vendor, number> = {
 };
 
 const PREFIXES = new Map<string, Prefix>();
+
+// the view ends Claude calls marked, with when their cache entry expires
+const VIEWS = new Map<string, number>();
+
+// how many blocks back from a mark Anthropic looks for a cached prefix
+const REACH = 20;
 
 const UNLED: Flight = { begun: () => {}, end: () => {} };
 
@@ -257,6 +262,9 @@ export namespace AskAI {
 
   export function start(ask: Ask, on: (ev: Event) => void): Try {
     try {
+      if (ask.vendor.startsWith("claude")) {
+        ask = { ...ask, blocks: AskAI.view_blocks(ask) };
+      }
       return ask.vendor === "claude-sub" ? ClaudeSub.ask(ask, on) : Agent.ask(ask, on);
     } catch (err) {
       return { wake: () => {}, stop: () => {}, done: Promise.resolve(AskAI.end(err_why(err))) };
@@ -298,12 +306,33 @@ export namespace AskAI {
     return ask.blocks.slice(0, last + 1).map((b) => String((key = Bun.hash(b.text, key))));
   }
 
+  // the view's mark moved back to REACH - 1 blocks past the last view end a
+  // call marked, when it's further: the call reads that one's cache and
+  // writes up to its mark, and a later call reaches the rest
+  export function view_blocks(ask: Ask): Block[] {
+    const keys = AskAI.prefix_keys(ask);
+    const now = Date.now();
+    for (const [key, until] of VIEWS) {
+      if (until <= now) {
+        VIEWS.delete(key);
+      }
+    }
+    const last = keys.length - 1;
+    const back = keys.findLastIndex((key) => VIEWS.has(key));
+    const mark = back < 0 ? last : Math.min(last, back + REACH - 1);
+    if (mark >= 0) {
+      VIEWS.set(keys[mark], now + TTL[ask.vendor]);
+    }
+    return mark === last ? ask.blocks : ask.blocks.map((b, k) => (k === mark || k === last ? { ...b, mark: k === mark } : b));
+  }
+
   export async function single_flight(ask: Ask): Promise<Flight> {
     const keys = AskAI.prefix_keys(ask);
     const ttl = TTL[ask.vendor];
+    const far = ask.vendor.startsWith("claude") ? keys.length - REACH - 1 : -1;
     for (;;) {
       const now = Date.now();
-      const k = keys.findLastIndex((key) => AskAI.warm_or_writing(key, now));
+      const k = keys.findLastIndex((key, i) => i > far && AskAI.warm_or_writing(key, now));
       const got = k < 0 ? null : PREFIXES.get(keys[k]) ?? null;
       if (got !== null && got.writing !== null) {
         await got.writing;
@@ -344,7 +373,7 @@ export namespace AskAI {
     const begun = () => {
       if (own.writing !== null) {
         own.writing = null;
-        own.warm_until = Date.now() + ttl;
+        own.warm_until = now + ttl;
         written();
       }
     };

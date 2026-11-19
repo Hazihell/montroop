@@ -95,7 +95,6 @@ type Turn = {
   model : string;
   asked : boolean;
   check : Check | null;
-  back  : number;
   sums  : { from: number; total: number } | null;
   resume: { wake: AbortController; goal: string | null } | null;
   limits: { vendor: Vendor; n: number } | null;
@@ -256,7 +255,7 @@ export namespace Chat {
     const pick = Pick.load(mem.pick, config.OFFER, config.PICK);
     const chat: Chat = {
       id, who: id, mem, tools, pick, socks: new Set(), acts: new Map(), main, model: "", check: null, asked: false,
-      eye: { parts: [], from: 0 }, after: Promise.resolve(), batch: null, writes: Promise.resolve(), held: null, back: -1, sums: null, resume: null, limits: null, bell: undefined, fresh: true, told: false, gist: -1, stopped: false, subs: new Map(), gone: new Map(), leader: null,
+      eye: { parts: [], from: 0 }, after: Promise.resolve(), batch: null, writes: Promise.resolve(), held: null, sums: null, resume: null, limits: null, bell: undefined, fresh: true, told: false, gist: -1, stopped: false, subs: new Map(), gone: new Map(), leader: null,
     };
     const seat: Seat = { mem, note: (text) => Chat.note(chat, text), report: (text) => Chat.report(chat, text, true), timed: () => Chat.timed(chat), message: (to, text) => Chat.message(chat, to, text), subs: Chat.subs_of(chat) , agents: { on: () => Main.manages(chat), run: (args) => Main.agents_tool(chat, args) } };
     tools.seats.set(id, seat);
@@ -516,8 +515,7 @@ export namespace Chat {
     chat.sums = null;
     const msgs = take();
     const says = msgs.filter((m) => m.end > from).map((m) => Chat.said(mem, Math.max(m.id, from), m.end));
-    const view = Memory.view(mem, from, mem.view.parts, mem.talk, mem.talk === null ? -1 : chat.back);
-    chat.back = mem.talk === null ? -1 : view.length - 3;
+    const view = Memory.view(mem, from, mem.view.parts, mem.talk);
     Mcp.heard(chat.tools.mcp, Tools.off(chat.tools), chat.who, true);
     const text = (chat.stopped ? STOPPED_TOLD + "\n\n" : "") + says.map((say) => AskAI.labeled(say)).join("\n\n");
     chat.stopped = false;
@@ -532,7 +530,7 @@ export namespace Chat {
         Chat.used(chat, tokens);
       }
     };
-    const ask = { ...Chat.share(chat, Chat.system(chat)), searches: SEARCHES, server, blocks, imgs, talk: mem.talk !== null, no_wait: true, limits, who: chat.who, used };
+    const ask = { ...Chat.share(chat, Chat.system(chat)), searches: SEARCHES, server, blocks, imgs, no_wait: true, limits, who: chat.who, used };
     chat.model = model;
     chat.asked = true;
     return ask;

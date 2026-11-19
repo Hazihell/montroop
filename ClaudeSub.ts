@@ -595,8 +595,8 @@ export namespace ClaudeSub {
 
   // the messages Claude Code reads, as they come; closed: it ends. A put's
   // text `mark` (-1: none) ends a cache entry, an hour's (ENV): the view's
-  // last whole block (Memory.view), so a turn reads the view the turn
-  // before cached. One only: a request takes four, and Claude Code marks
+  // mark (AskAI.view_blocks), so a turn reads the view the turn before
+  // cached. One only: a request takes four, and Claude Code marks
   // three of its own: our system prompt's shared part, before the
   // boundary, its own part (ClaudeSub.options), and its last message
   export function inbox() {
