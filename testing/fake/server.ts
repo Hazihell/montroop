@@ -28,7 +28,9 @@ const REMINDER = /<system-reminder>[\s\S]*?<\/system-reminder>/g;
 const QUEUE: Array<Order & { match: string }> = [];
 const LOG: Seen[] = [];
 const CACHED = new Set<string>();
-const LIMITED: Partial<Record<Vendor, number>> = {};
+// a usage limit's reset, by vendor; claude-sub's by sign-in too, as each
+// Claude account has its own limits
+const LIMITED = new Map<string, number>();
 const REFUSE = new Set<string>();
 const EMAIL = "tester@example.com";
 const ACCOUNT = crypto.randomUUID();
@@ -329,7 +331,7 @@ async function sign_in(url: URL, req: Request): Promise<Response | null> {
     case "/api/oauth/profile":
       return json(200, { account: { uuid: ACCOUNT, email: EMAIL, full_name: "Tester", display_name: "Tester", has_claude_max: true, has_claude_pro: false }, organization: { uuid: ACCOUNT, name: EMAIL + "'s Organization", organization_type: "claude_max", rate_limit_tier: "default_claude_max_20x", billing_type: "stripe_subscription" } });
     case "/backend-api/wham/usage": {
-      const until = LIMITED["openai-sub"] ?? 0;
+      const until = LIMITED.get("openai-sub") ?? 0;
       const window = (used: number, seconds: number, after: number) => ({ used_percent: used, limit_window_seconds: seconds, reset_after_seconds: after, reset_at: secs() + after });
       return json(200, { plan_type: "plus", rate_limit: { allowed: until <= Date.now(), limit_reached: until > Date.now(), primary_window: window(until > Date.now() ? 100 : 12, 18000, until > Date.now() ? Math.ceil((until - Date.now()) / 1e3) : 3 * 3600), secondary_window: window(31, 604800, 4 * 86400) }, credits: null });
     }
@@ -351,7 +353,8 @@ async function model(req: Request, vendor: Vendor, url: URL): Promise<Response> 
   const latest = (last.replace(/<chat>[\s\S]*<\/chat>/, "").split(/^A new message from [^:\n]+:$/m).pop() ?? "").trim();
   const first = got.said.find((m) => m.role === "user")?.text.replace(REMINDER, "") ?? "";
   const compaction = TASK.test(first.replace(/<chat>[\s\S]*<\/chat>/, ""));
-  const until = LIMITED[vendor] ?? 0;
+  const limited = vendor === "claude-sub" ? vendor + " " + (req.headers.get("authorization") ?? "") : vendor;
+  const until = LIMITED.get(limited) ?? 0;
   const order: Order = until > Date.now() ? { what: "error", kind: "usage-limit", reset: until } : pick(latest, compaction);
   const tools = list(get(body, "tools")).map((t) => str(get(t, "name")) ?? str(get(t, "type")) ?? "");
   LOG.push({ n: LOG.length + 1, at: new Date().toISOString(), vendor, path: url.pathname, model: name, answer: JSON.stringify(order), system: got.system, tools, said: got.said, latest, headers: Object.fromEntries(req.headers), body });
@@ -359,7 +362,7 @@ async function model(req: Request, vendor: Vendor, url: URL): Promise<Response> 
   const claude = vendor.startsWith("claude");
   if (order.what === "error") {
     if (order.kind === "usage-limit") {
-      LIMITED[vendor] = order.reset;
+      LIMITED.set(limited, order.reset);
     }
     if (order.kind === "auth-expired") {
       REFUSE.add(vendor);
@@ -384,7 +387,7 @@ async function control(req: Request): Promise<Response> {
   if (url.pathname === "/clear") {
     QUEUE.length = 0;
     REFUSE.clear();
-    Object.keys(LIMITED).forEach((k) => delete LIMITED[k as Vendor]);
+    LIMITED.clear();
     return json(200, {});
   }
   const match = url.searchParams.get("match") ?? "";

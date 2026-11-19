@@ -234,7 +234,7 @@ export namespace Chat {
 
   // hello: the first agent of a new install, which says hello in its empty chat
   export function open(id: string, tools: Tools, hello = false): Chat {
-    const mem = Memory.load(AGENTS + "/" + id, () => ({ system: Prompts.prompt("compact", { Name: Team.get(id)?.name ?? "" }), own: Prompts.prompt("compact-agent", { Name: Team.get(id)?.name ?? "" }), searches: 0, server: "" }), Owner.act_put);
+    const mem = Memory.load(AGENTS + "/" + id, () => ({ system: Prompts.prompt("compact", { Name: Team.get(id)?.name ?? "" }), own: Prompts.prompt("compact-agent", { Name: Team.get(id)?.name ?? "" }), searches: 0, server: "", ...Chat.account(id) }), Owner.act_put);
     const cut = mem.work;
     const main = Run.make<Pending, Msg>(id, {
       pick   : () => chat.pick,
@@ -317,7 +317,14 @@ export namespace Chat {
   }
 
   export function share(chat: Chat, system: { system: string; own?: string }): Share {
-    return { ...Pick.ask(chat.pick), ...system, searches: 0, server: "" };
+    return { ...Pick.ask(chat.pick), ...system, searches: 0, server: "", ...Chat.account(chat.id) };
+  }
+
+  // the Claude account an agent's calls take, its subagents' and its
+  // compactor's too (none: personal)
+  export function account(id: string): { account?: string } {
+    const claude = Team.get(id)?.claude ?? "";
+    return claude === "" ? {} : { account: claude };
   }
 
   export async function say(chat: Chat, id: string, sizes: number[], body: Body): Promise<Answer> {
@@ -1140,7 +1147,7 @@ export namespace Chat {
     };
     const pick = Chat.sub_pick(chat, sub);
     Chat.sub_picked(chat, sub, pick);
-    return { ...Pick.ask(pick), system: Prompts.prompt("sub"), own, blocks, searches: SEARCHES, server: Tools.at(chat.tools, sub.name), agent: true, who: sub.name, used };
+    return { ...Pick.ask(pick), system: Prompts.prompt("sub"), own, blocks, searches: SEARCHES, server: Tools.at(chat.tools, sub.name), agent: true, who: sub.name, used, ...Chat.account(chat.id) };
   }
 
   export function sub_put(chat: Chat, run: Talk, msg: Log, sent: boolean): Msg {
@@ -2261,9 +2268,9 @@ export namespace Main {
     const agents = Team.all().map((a) => {
       const mem = Main.chats.get(a.id)?.mem;
       const chat = Main.chats.get(a.id);
-      return { ...a, prompt: Team.prompt(a), own: a.prompt !== null, template: Main.template(), leader: mem?.leader ?? false, lines: mem?.lines ?? LINES, manage: chat === undefined ? false : Main.manages(chat) };
+      return { ...a, claude: a.claude || config.PERSONAL, prompt: Team.prompt(a), own: a.prompt !== null, template: Main.template(), leader: mem?.leader ?? false, lines: mem?.lines ?? LINES, manage: chat === undefined ? false : Main.manages(chat) };
     });
-    return Response.json({ agents, template: Main.template() });
+    return Response.json({ agents, template: Main.template(), accounts: config.claude_accounts() });
   }
 
   // /api/agents/<id>: edit; /archive, /restore; DELETE: delete (archived

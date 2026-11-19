@@ -8,7 +8,8 @@ import type { Part } from "./Service.ts";
 import * as Update from "./Update.ts";
 
 const SET = /^--env=(KI_DIR|XDG_CONFIG_HOME)=(.+)$/;
-const ARGS = process.argv.slice(2).filter((a) => !SET.test(a));
+// "--account NAME" reads as NAME, the argument of `ki serve claude login`
+const ARGS = process.argv.slice(2).filter((a) => !SET.test(a) && a !== "--account");
 const SETS = process.argv.slice(2).filter((a) => SET.test(a));
 for (const a of SETS) {
   const m = SET.exec(a);
@@ -112,14 +113,16 @@ function not_by_sudo(cmd: string): void {
 }
 
 function plan(name: "claude" | "chatgpt", about: string): Cmd {
-  const cli = async (word: string) => {
+  const cli = async (word: string, account?: string) => {
     const mod = name === "claude" ? (await import("./ClaudeSub.ts")).ClaudeSub : (await import("./ChatGPT.ts")).ChatGPT;
-    await mod.cli([word]).catch((err: unknown) => fail(err_why(err)));
+    await mod.cli(account === undefined ? [word] : [word, account]).catch((err: unknown) => fail(err_why(err)));
   };
+  // Claude: one account per sign-in, personal unless named
+  const [use, arg, of] = name === "claude" ? [" [--account name]", /^[a-z0-9-]{1,24}$/, " (an account: personal unless named)"] : ["", undefined, ""];
   return { use: name, about, kids: [
-    { use: "login", about: "sign in", run: () => cli("login") },
-    { use: "logout", about: "sign out", run: () => cli("logout") },
-    { use: "status", about: "who it's signed in as", run: () => cli("status") },
+    { use: "login" + use, about: "sign in" + of, arg, run: (account) => cli("login", account) },
+    { use: "logout" + use, about: "sign out", arg, run: (account) => cli("logout", account) },
+    { use: "status" + use, about: "who it's signed in as", arg, run: (account) => cli("status", account) },
   ] };
 }
 

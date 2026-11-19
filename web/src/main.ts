@@ -1787,9 +1787,9 @@ function popped(ev: PopStateEvent): void {
 }
 
 // the agents, and a new one's default prompt
-async function agents(): Promise<{ agents: Html.Agent[]; template: string } | null> {
+async function agents(): Promise<{ agents: Html.Agent[]; template: string; accounts: string[] } | null> {
   const res = await fetch("/api/agents").catch(() => null);
-  return res?.ok ? ((await res.json().catch(() => null)) as { agents: Html.Agent[]; template: string } | null) : null;
+  return res?.ok ? ((await res.json().catch(() => null)) as { agents: Html.Agent[]; template: string; accounts: string[] } | null) : null;
 }
 
 // new agent (id null) or an agent's settings
@@ -1808,7 +1808,7 @@ async function agent_page(id: string | null): Promise<void> {
     return;
   }
   $("header .title").textContent = a?.name ?? "New agent";
-  el.innerHTML = Html.agent_html(a, leader_others(id));
+  el.innerHTML = Html.agent_html(a, leader_others(id), all.accounts);
   const form = find(el, "form", HTMLFormElement);
   const [name, prompt] = [find(form, "[name=name]", HTMLInputElement), find(form, "[name=prompt]", HTMLTextAreaElement)];
   const was = { prompt: a?.own === true ? null : a?.template ?? all.template };
@@ -1914,7 +1914,7 @@ async function agent_save_now(form: HTMLFormElement, a: Html.Agent | null, at: E
   }
   const data = new FormData(form);
   const text = (k: string) => text_of(data.get(k));
-  const body = { name: text("name"), about: text("about"), picture: text("picture"), prompt: text("prompt"), lines: text("lines"), leader: data.get("leader") === "on", manage: data.get("manage") === "on" };
+  const body = { name: text("name"), about: text("about"), picture: text("picture"), prompt: text("prompt"), lines: text("lines"), leader: data.get("leader") === "on", manage: data.get("manage") === "on", ...(data.has("claude") ? { claude: text("claude") } : {}) };
   const why = at.closest(".set")?.querySelector(".err") ?? form.querySelector(".save .why") ?? form.querySelector(".up .why");
   form.querySelectorAll(".err").forEach((e) => (e.textContent = ""));
   RENEW.saving++;

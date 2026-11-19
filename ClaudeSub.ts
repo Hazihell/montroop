@@ -13,8 +13,6 @@ import * as config from "./Config.ts";
 import { err_why } from "./Err.ts";
 import { get, text_of } from "./Json.ts";
 
-const DIR = config.CLAUDE_SUB;
-
 export const SUMS = 4;
 
 const FRESH = 60e3;
@@ -57,8 +55,6 @@ const OUTLASTS_CLAUDE_CODES_MCP_TIMEOUT = 1e8;
 // Ki's one MCP server in Claude Code, which names each of its tools for
 // the model mcp__ki__<name> (#190)
 const MCP = "ki";
-
-const SIGN_IN = "claude-sub is not signed in, or its sign-in expired: run `ki serve claude login` on the server";
 
 const OFF = ["server_error", "overloaded", "billing_error", "account_on_hold", "oauth_org_not_allowed", "verification_required", "model_not_found"];
 
@@ -184,17 +180,35 @@ export namespace ClaudeSub {
     return LOADED.sdk;
   }
 
-  export function env(): Record<string, string | undefined> {
-    fs.mkdirSync(DIR, { recursive: true, mode: 0o700 });
-    fs.chmodSync(DIR, 0o700);
+  // an ask's Claude account ("": personal), whose sign-in Claude Code
+  // runs with and whose usage limits it's under
+  export function account(ask: { account?: string }): string {
+    return ask.account === undefined || ask.account === config.PERSONAL ? "" : ask.account;
+  }
+
+  export function limit_key(account: string): string {
+    return account === "" ? "claude-sub" : "claude-sub:" + account;
+  }
+
+  export function sign_in(account: string): string {
+    const named = account === "" ? "" : " (account " + account + ")";
+    return "claude-sub" + named + " is not signed in, or its sign-in expired: run `ki serve claude login" + (account === "" ? "" : " --account " + account) + "` on the server";
+  }
+
+  export function env(dir: string): Record<string, string | undefined> {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    fs.chmodSync(dir, 0o700);
     const ours = Object.entries(process.env).filter(([k]) => !/^(ANTHROPIC_|CLAUDE_|FORCE_PROMPT_CACHING)/.test(k));
-    return { ...Object.fromEntries(ours), ...ENV, CLAUDE_CONFIG_DIR: DIR };
+    return { ...Object.fromEntries(ours), ...ENV, CLAUDE_CONFIG_DIR: dir };
   }
 
 
+  // args: login, logout or status, then an account's name (none: personal)
   export async function cli(args: string[]): Promise<void> {
-    if (args.includes("status")) {
-      const run = Bun.spawn([await ClaudeSub.bin(), "auth", "status"], { env: ClaudeSub.env(), stdio: ["ignore", "pipe", "inherit"] });
+    const account = args[1] ?? config.PERSONAL;
+    const dir = config.claude_dir(account);
+    if (args[0] === "status") {
+      const run = Bun.spawn([await ClaudeSub.bin(), "auth", "status"], { env: ClaudeSub.env(dir), stdio: ["ignore", "pipe", "inherit"] });
       const out = await new Response(run.stdout).text();
       await run.exited;
       let st: unknown = null;
@@ -207,12 +221,13 @@ export namespace ClaudeSub {
       }
       const type = get(st, "subscriptionType");
       const plan = type ? " (" + text_of(type) + " plan)" : "";
-      console.log(get(st, "loggedIn") ? "Signed in to Claude as " + text_of(get(st, "email"), "an account") + plan + "; sign-in in " + DIR + "." : "Not signed in to Claude.");
+      const named = account === config.PERSONAL ? "" : " (account " + account + ")";
+      console.log(get(st, "loggedIn") ? "Signed in to Claude" + named + " as " + text_of(get(st, "email"), "an account") + plan + "; sign-in in " + dir + "." : "Not signed in to Claude" + named + ".");
       process.exitCode = get(st, "loggedIn") ? 0 : 1;
       return;
     }
-    const cmd = args.includes("logout") ? ["logout"] : ["login", "--claudeai"];
-    const run = Bun.spawn([await ClaudeSub.bin(), "auth", ...cmd], { env: ClaudeSub.env(), stdio: ["inherit", "inherit", "inherit"] });
+    const cmd = args[0] === "logout" ? ["logout"] : ["login", "--claudeai"];
+    const run = Bun.spawn([await ClaudeSub.bin(), "auth", ...cmd], { env: ClaudeSub.env(dir), stdio: ["inherit", "inherit", "inherit"] });
     process.exitCode = await run.exited;
   }
 
@@ -238,10 +253,11 @@ export namespace ClaudeSub {
   export function options(ask: Ask, abort: AbortController, builtin: readonly string[], boundary: string): Options {
     const tools = WEB;
     const deny = [...builtin, ...MORE].filter((t) => !tools.includes(t));
+    const dir = config.claude_dir(ClaudeSub.account(ask));
     return {
       abortController        : abort,
-      env                    : { ...ClaudeSub.env(), ...Object.fromEntries(MODEL_SLOTS.map((slot) => [slot, ask.model])) },
-      cwd                    : DIR,
+      env                    : { ...ClaudeSub.env(dir), ...Object.fromEntries(MODEL_SLOTS.map((slot) => [slot, ask.model])) },
+      cwd                    : dir,
       model                  : ask.model,
       effort                 : ask.effort === "" ? undefined : ask.effort as Options["effort"],
       thinking               : { type: "adaptive", display: "summarized" },
@@ -373,10 +389,10 @@ export namespace ClaudeSub {
     return typeof at === "number" && at > 0 ? (at < 1e12 ? at * 1e3 : at) : null;
   }
 
-  export function note(info: SDKRateLimitInfo): void {
+  export function note(info: SDKRateLimitInfo, account: string): void {
     const bills = info.isUsingOverage === true || info.overageStatus === "allowed" || info.overageStatus === "allowed_warning";
     const on = info.status === "rejected" || info.isUsingOverage === true;
-    Limit.note("claude-sub", on && bills ? ClaudeSub.reset(info) ?? Date.now() + LIMIT : null);
+    Limit.note(ClaudeSub.limit_key(account), on && bills ? ClaudeSub.reset(info) ?? Date.now() + LIMIT : null);
   }
 
   export function off(ask: Ask, off: Off, acted: boolean): Partial<End> {
@@ -405,7 +421,7 @@ export namespace ClaudeSub {
     let lead: string[] = [];
     try {
       for (let tries = 0; !signal.aborted; ) {
-        const guarded = await Limit.guard(limit, "claude-sub", acted.v);
+        const guarded = await Limit.guard(limit, ClaudeSub.limit_key(ClaudeSub.account(ask)), acted.v);
         if (guarded !== null) {
           return ClaudeSub.off(ask, guarded, acted.v);
         }
@@ -540,7 +556,7 @@ export namespace ClaudeSub {
       }
       if (msg.type === "rate_limit_event") {
         info = msg.rate_limit_info;
-        ClaudeSub.note(info);
+        ClaudeSub.note(info, ClaudeSub.account(ask));
         code.over ||= info.isUsingOverage === true;
       }
       if (msg.type === "assistant" && msg.error === undefined) {
@@ -550,7 +566,7 @@ export namespace ClaudeSub {
       }
       if (msg.type === "assistant" && msg.error === "authentication_failed") {
         await ClaudeSub.settle(code);
-        return { text: SIGN_IN };
+        return { text: ClaudeSub.sign_in(ClaudeSub.account(ask)) };
       }
       hit ||= msg.type === "assistant" && msg.error === "rate_limit";
       err = msg.type === "assistant" ? msg.error ?? err : err;

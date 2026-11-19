@@ -1,13 +1,15 @@
+import * as config from "./Config.ts";
 import { Owner } from "./Owner.ts";
 import { get as field } from "./Json.ts";
 import * as Prompts from "./Prompts.ts";
 
-// prompt null: the default, which follows renames until it's edited
-export type Agent = { id: string; name: string; about: string; picture: string; prompt: string | null; archived: number; made: number; unread: number };
+// prompt null: the default, which follows renames until it's edited;
+// claude: its Claude account ("": personal, config.PERSONAL)
+export type Agent = { id: string; name: string; about: string; picture: string; prompt: string | null; archived: number; made: number; unread: number; claude: string };
 
-type Fields = { name: string; about: string; picture: string; prompt: string | null };
+type Fields = { name: string; about: string; picture: string; prompt: string | null; claude: string };
 
-const SCHEMA = "create table if not exists agents (id text primary key, name text not null, about text not null, picture text not null, prompt text, archived integer not null default 0, made integer not null, unread integer not null default 0)";
+const SCHEMA = "create table if not exists agents (id text primary key, name text not null, about text not null, picture text not null, prompt text, archived integer not null default 0, made integer not null, unread integer not null default 0, claude text not null default '')";
 
 const NAME  = 24;
 const ABOUT = 120;
@@ -25,6 +27,9 @@ export namespace Team {
   export function open(): string | null {
     const db = Owner.open();
     db.run(SCHEMA);
+    if (!(db.query("select name from pragma_table_info('agents')").all() as Array<{ name: string }>).some((c) => c.name === "claude")) {
+      db.run("alter table agents add column claude text not null default ''");
+    }
     if (db.query("select 1 from agents").get() !== null) {
       return null;
     }
@@ -63,13 +68,17 @@ export namespace Team {
   }
 
   // the fields a form sent, checked: a text saying what's wrong, or the
-  // fields to keep (a prompt that is the default is kept as none)
+  // fields to keep (a prompt that is the default is kept as none; no
+  // Claude account sent: the one it has)
   export function fields(x: unknown, id: string | null): Fields | string {
     const text = (k: string) => (typeof field(x, k) === "string" ? String(field(x, k)) : "");
     const name = text("name").trim();
     const about = text("about").trim();
     const picture = text("picture").trim() || Team.head_random();
     const own = text("prompt").trim();
+    const was = id === null ? "" : Team.get(id)?.claude ?? "";
+    const sent = typeof field(x, "claude") === "string" ? text("claude").trim() : null;
+    const claude = sent === null ? was : sent === config.PERSONAL ? "" : sent;
     const taken = Team.by_name(name);
     if (name === "" || name.length > NAME) {
       return "A name is 1 to " + NAME + " characters.";
@@ -92,7 +101,10 @@ export namespace Team {
     if (own.length > OWN) {
       return "A system prompt holds at most " + OWN / 1024 + " KB.";
     }
-    return { name, about, picture, prompt: own === Team.default_prompt(name) ? null : own };
+    if (claude !== was && claude !== "" && !config.claude_accounts().includes(claude)) {
+      return "No Claude account " + claude + " is signed in: run `ki serve claude login --account " + claude + "` on the server.";
+    }
+    return { name, about, picture, prompt: own === Team.default_prompt(name) ? null : own, claude };
   }
 
   export function picture_ok(picture: string): boolean {
@@ -114,12 +126,12 @@ export namespace Team {
 
   export function add(f: Fields): Agent {
     const id = Team.new_id();
-    Owner.open().query("insert into agents (id, name, about, picture, prompt, made) values (?, ?, ?, ?, ?, ?)").run(id, f.name, f.about, f.picture, f.prompt, Date.now());
+    Owner.open().query("insert into agents (id, name, about, picture, prompt, made, claude) values (?, ?, ?, ?, ?, ?, ?)").run(id, f.name, f.about, f.picture, f.prompt, Date.now(), f.claude);
     return Team.get(id) as Agent;
   }
 
   export function set(id: string, f: Fields): Agent | null {
-    Owner.open().query("update agents set name = ?, about = ?, picture = ?, prompt = ? where id = ?").run(f.name, f.about, f.picture, f.prompt, id);
+    Owner.open().query("update agents set name = ?, about = ?, picture = ?, prompt = ?, claude = ? where id = ?").run(f.name, f.about, f.picture, f.prompt, f.claude, id);
     return Team.get(id);
   }
 

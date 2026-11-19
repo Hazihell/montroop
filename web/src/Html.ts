@@ -304,7 +304,7 @@ export function timers_html(timers: Timer.Timer[]): string[] {
 }
 
 // an agent as its settings page reads and saves it
-export type Agent = { id: string; name: string; about: string; picture: string; prompt: string; own: boolean; template: string; archived: number; leader: boolean; lines: number; manage: boolean };
+export type Agent = { id: string; name: string; about: string; picture: string; prompt: string; own: boolean; template: string; archived: number; leader: boolean; lines: number; manage: boolean; claude: string };
 
 // what Leader mode adds to each request: about 400 B a line (#168)
 export function leader_cost(lines: number, agents: number): string {
@@ -316,7 +316,8 @@ export function leader_cost(lines: number, agents: number): string {
   return "Adds about " + size + " KB to every request (" + lines + (lines === 1 ? " line" : " lines") + " × " + agents + (agents === 1 ? " agent" : " agents") + ").";
 }
 
-export function agent_html(a: Agent | null, others: number): string {
+// accounts: the Claude accounts signed in on the server, personal first
+export function agent_html(a: Agent | null, others: number, accounts: string[]): string {
   const heads = Array.from({ length: 24 }, (_, k) => "head-" + String(k + 1).padStart(2, "0"));
   const [leader, lines] = [a?.leader ?? false, a?.lines ?? View.LINES];
   const own = a !== null && a.picture.startsWith("/media/") ? [a.picture] : [];
@@ -333,10 +334,21 @@ export function agent_html(a: Agent | null, others: number): string {
       set("name", "Name", "", `<input id="ag-name" name="name" maxlength="24" value="${esc(a?.name ?? "")}" spellcheck="false">`)
       + set("about", "Description", "For the chat list and the other agents.", `<input id="ag-about" name="about" maxlength="120" value="${esc(a?.about ?? "")}">`)
       + set("prompt", "System prompt", "Who it is and what it does.", `<textarea id="ag-prompt" name="prompt" rows="6" spellcheck="true">${esc(a?.prompt ?? "")}</textarea>`)
+      + claude_html(a?.claude ?? accounts[0], accounts, set)
       + set("manage", "Manage agents", "It may create, archive and restore agents, when you ask it to. None is deleted.", `<label class="opt"><input type="checkbox" id="ag-manage" name="manage"${a?.manage === true ? " checked" : ""}> On</label>`)
       + set("leader", "Leader mode", "Each turn, the newest lines of every other agent's memory, to zoom into.", `<label class="opt"><input type="checkbox" id="ag-leader" name="leader"${leader ? " checked" : ""}> On</label>`)
       + `<div class="set lines" data-key="lines"${leader ? "" : " hidden"}><label for="ag-lines">Lines per agent<small class="cost">${esc(leader_cost(lines, others))}</small></label><div class="field"><input id="ag-lines" name="lines" type="number" min="1" max="${View.LINES_MOST}" step="1" value="${lines}"></div><p class="err"></p></div>`)
     + create + `</form>` + history + archive;
+}
+
+// with one Claude account signed in, and the agent on it, nothing to pick
+function claude_html(now: string, accounts: string[], set: (key: string, name: string, about: string, control: string) => string): string {
+  const all = accounts.includes(now) ? accounts : [...accounts, now];
+  if (all.length < 2) {
+    return "";
+  }
+  const options = all.map((c) => `<option value="${esc(c)}"${c === now ? " selected" : ""}>${esc(c)}${accounts.includes(c) ? "" : " (signed out)"}</option>`);
+  return set("claude", "Claude account", "The Claude sign-in it, its subagents and its memory's summaries use, with that account's usage limits and connectors.", `<select id="ag-claude" name="claude">${options.join("")}</select>`);
 }
 
 export function face_pick_html(picture: string, on: boolean): string {

@@ -89,6 +89,13 @@ const FILE: Record<string, unknown> = config_file();
 export const CHATGPT    = config_path(config_get("chatgpt", DIR + "/chatgpt.json"));
 
 export const CLAUDE_SUB = config_path(config_get("claude_sub", DIR + "/claude-sub"));
+
+// the Claude account an agent takes unless set to another: CLAUDE_SUB's
+export const PERSONAL = "personal";
+
+// another Claude account's name, its sign-in in DIR/claude-<name>: a
+// letter in it, so Claude Code's own claude-<uid> under DIR is none
+const ACCOUNT = /^(?!sub$)(?=[a-z0-9-]*[a-z])[a-z0-9][a-z0-9-]{0,23}$/;
 export const CLAUDE     = config_path(config_get("claude", ""));
 
 const ENV_KEYS: Record<string, string> = Object.fromEntries(Object.entries(VARS).map(([name, v]) => [name, config_key(v)]));
@@ -195,22 +202,51 @@ export function config_keep(vendors: string[]): void {
 // .credentials.json, or (macOS, in the keychain) only its account in
 // .claude.json
 function config_usable(): Vendor[] {
-  const field = (file: string, ...keys: string[]): unknown => {
-    let at: unknown;
-    try {
-      at = JSON.parse(fs.readFileSync(file, "utf8"));
-    } catch {
-      return undefined;
-    }
-    for (const key of keys) {
-      at = typeof at === "object" && at !== null ? (at as Record<string, unknown>)[key] : undefined;
-    }
-    return at;
-  };
-  const claude = field(CLAUDE_SUB + "/.credentials.json", "claudeAiOauth") != null || field(CLAUDE_SUB + "/.claude.json", "oauthAccount") != null;
-  const chatgpt = typeof field(CHATGPT, "tokens", "refresh_token") === "string";
+  const claude = claude_signed(CLAUDE_SUB) || claude_accounts().length > 1;
+  const chatgpt = typeof config_field(CHATGPT, "tokens", "refresh_token") === "string";
   const has: Record<Vendor, boolean> = { "claude-sub": claude, "openai-sub": chatgpt, "claude-api": KEYS.anthropic !== "", "openai-api": KEYS.openai !== "" };
   return (Object.keys(USABLE) as Vendor[]).filter((v) => has[v]);
+}
+
+function config_field(file: string, ...keys: string[]): unknown {
+  let at: unknown;
+  try {
+    at = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    return undefined;
+  }
+  for (const key of keys) {
+    at = typeof at === "object" && at !== null ? (at as Record<string, unknown>)[key] : undefined;
+  }
+  return at;
+}
+
+function claude_signed(dir: string): boolean {
+  return config_field(dir + "/.credentials.json", "claudeAiOauth") != null || config_field(dir + "/.claude.json", "oauthAccount") != null;
+}
+
+// a Claude account's sign-in folder ("" or PERSONAL: CLAUDE_SUB)
+export function claude_dir(account: string): string {
+  if (account === "" || account === PERSONAL) {
+    return CLAUDE_SUB;
+  }
+  if (!ACCOUNT.test(account)) {
+    throw new Error("a Claude account's name is 1 to 24 lowercase letters, digits and dashes, with a letter, and not \"sub\": " + account);
+  }
+  return DIR + "/claude-" + account;
+}
+
+// personal and the other Claude accounts signed in here
+export function claude_accounts(): string[] {
+  let files: string[] = [];
+  try {
+    files = fs.readdirSync(DIR);
+  } catch {}
+  const named = files.flatMap((f) => {
+    const name = /^claude-(.+)$/.exec(f)?.[1];
+    return name !== undefined && ACCOUNT.test(name) && claude_signed(DIR + "/" + f) ? [name] : [];
+  });
+  return [PERSONAL, ...named.sort()];
 }
 
 export function config_none(): string | null {

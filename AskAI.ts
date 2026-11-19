@@ -43,6 +43,7 @@ export type Ask = Pick & {
   steer?    : Steer;
   limits?   : number;
   who?      : string;
+  account?  : string;
 };
 
 type Prefix = { warm_until: number; writing: Promise<void> | null };
@@ -134,9 +135,9 @@ export namespace AskAI {
     let picks = AskAI.falls(ask);
     let whys: (string | null)[] = picks.map(() => null);
     const skip = (from: number): number => {
-      const to = AskAI.up(picks, from);
+      const to = AskAI.up(picks, from, ask.account);
       for (let i = from; i < to; i++) {
-        whys[i] = (DOWN.get(AskAI.down_key(picks[i]))?.why ?? "") + " (skipped for a minute)";
+        whys[i] = (DOWN.get(AskAI.down_key(picks[i], ask.account))?.why ?? "") + " (skipped for a minute)";
       }
       return to;
     };
@@ -146,7 +147,7 @@ export namespace AskAI {
     const go = (): Try => {
       const run = picks[k];
       const from = k > 0 ? picks[k - 1] : null;
-      const why = from === null ? "" : whys[k - 1] ?? DOWN.get(AskAI.down_key(from))?.why ?? "";
+      const why = from === null ? "" : whys[k - 1] ?? DOWN.get(AskAI.down_key(from, ask.account))?.why ?? "";
       let heard = picks.length === 1;
       const hear = (ev: Event) => {
         if (!heard && (ev.$ === "Delta" || (ev.$ === "Entry" && ev.kind !== "mind"))) {
@@ -155,7 +156,7 @@ export namespace AskAI {
         }
         on(ev);
       };
-      const probe = picks.length > 1 && DOWN.has(AskAI.down_key(run));
+      const probe = picks.length > 1 && DOWN.has(AskAI.down_key(run, ask.account));
       const fallback = k < picks.length - 1;
       return AskAI.start({ ...ask, ...run, probe, fallback, limits }, hear);
     };
@@ -168,7 +169,7 @@ export namespace AskAI {
         const unset = failed && end.stop === undefined;
         const up = !halt.signal.aborted && (end.ok || end.stop === "fail" || (end.stop === "down" && !off));
         if (picks.length > 1 && (off || up)) {
-          AskAI.down(picks[k], off ? end.text : null);
+          AskAI.down(picks[k], off ? end.text : null, ask.account);
         }
         whys[k] = failed ? end.text : null;
         const next = (off || unset) && end.acted !== true && k < picks.length - 1;
@@ -275,15 +276,15 @@ export namespace AskAI {
     return { ok: false, text };
   }
 
-  export function up(picks: Pick[], k: number): number {
-    while (k < picks.length - 1 && (DOWN.get(AskAI.down_key(picks[k]))?.until ?? 0) > Date.now()) {
+  export function up(picks: Pick[], k: number, account?: string): number {
+    while (k < picks.length - 1 && (DOWN.get(AskAI.down_key(picks[k], account))?.until ?? 0) > Date.now()) {
       k += 1;
     }
     return k;
   }
 
-  export function down(run: Pick, why: string | null): void {
-    const key = AskAI.down_key(run);
+  export function down(run: Pick, why: string | null, account?: string): void {
+    const key = AskAI.down_key(run, account);
     if ((why !== null) !== DOWN.has(key)) {
       console.error(Pick.label(Pick.named(run)) + (why !== null ? ": failed; calls go on with their fallbacks" : ": answers again"));
     }
@@ -294,14 +295,15 @@ export namespace AskAI {
     }
   }
 
-  export function down_key(run: Pick): string {
-    return run.vendor + ":" + run.model;
+  // a claude-sub model is down for one Claude account (ClaudeSub.account)
+  export function down_key(run: Pick, account?: string): string {
+    return run.vendor + ":" + run.model + (run.vendor === "claude-sub" && account ? "@" + account : "");
   }
 
   export function prefix_keys(ask: Ask): string[] {
     const last = ask.blocks.slice(0, -1).findLastIndex((b) => b.mark);
     // OpenAI caches per session (OpenAI.session)
-    const head = [ask.vendor, ask.model, ask.effort, ask.speed, OpenAI.system(ask), ask.searches > 0, ask.vendor.startsWith("openai") ? OpenAI.sharer(ask) : null];
+    const head = [ask.vendor, ask.model, ask.effort, ask.speed, OpenAI.system(ask), ask.searches > 0, ask.vendor.startsWith("openai") ? OpenAI.sharer(ask) : null, ...(ask.vendor === "claude-sub" && ask.account ? [ask.account] : [])];
     let key = Bun.hash(JSON.stringify(head));
     return ask.blocks.slice(0, last + 1).map((b) => String((key = Bun.hash(b.text, key))));
   }
