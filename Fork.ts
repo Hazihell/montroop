@@ -172,7 +172,7 @@ function relied_on(src: string, base: string): Array<[string, RegExp]> {
   const words = (names: string[]) => new RegExp("\\b(?:" + names.join("|") + ")\\b");
   const env = [...new Set(code.match(/\b(?:CLAUDE_|ANTHROPIC_|DISABLE_|MCP_|FORCE_)[A-Z0-9_]+\b/g) ?? [])];
   const options = [...new Set([...code.matchAll(/^ {6,8}([a-z]+[A-Z]\w*|[A-Z]\w+) +:/gm)].map((m) => m[1]))];
-  const denied = [...code.matchAll(/const (?:MORE|WEB) += \[([^\]]*)\]/g)].flatMap((m) => [...m[1].matchAll(/"(\w+)"/g)].map((n) => n[1]));
+  const denied = [...code.matchAll(/const (?:MORE|WEB|TOOLS) += \[([^\]]*)\]/g)].flatMap((m) => [...m[1].matchAll(/"(\w+)"/g)].map((n) => n[1]));
   return [
     ["boundary", /SYSTEM_PROMPT_DYNAMIC_BOUNDARY|dynamic boundary|system prompt/i],
     ["cache", /cache_control|cache control|prompt cach|cache ttl|cache.?creation|cache.?read|cache breakpoint/i],

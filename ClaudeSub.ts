@@ -21,6 +21,11 @@ const FRESH = 60e3;
 // model's answer about the page (fetched by this computer), not the page
 const WEB = ["WebSearch"];
 
+// ToolSearch keeps the claude.ai connectors' tool definitions (~140k
+// tokens with Slack, Linear, Gmail and Calendar) out of every call until
+// Claude looks one up; Ki's own tools stay loaded, by alwaysLoad in mcp()
+const TOOLS = [...WEB, "ToolSearch"];
+
 const MORE = ["Task", "DesignSync"];
 
 const CONNECTORS = ["mcp__claude_ai_Slack", "mcp__claude_ai_Linear", "mcp__claude_ai_Gmail", "mcp__claude_ai_Google_Calendar"];
@@ -251,7 +256,7 @@ export namespace ClaudeSub {
   }
 
   export function options(ask: Ask, abort: AbortController, builtin: readonly string[], boundary: string): Options {
-    const tools = WEB;
+    const tools = TOOLS;
     const deny = [...builtin, ...MORE].filter((t) => !tools.includes(t));
     const dir = config.claude_dir(ClaudeSub.account(ask));
     return {
@@ -561,7 +566,7 @@ export namespace ClaudeSub {
       }
       if (msg.type === "assistant" && msg.error === undefined) {
         Anthropic.entries(msg.message.content).forEach((e) => log({ $: "Entry", ...e }));
-        acted.v ||= msg.message.content.some((b) => b.type === "tool_use" && !WEB.includes(b.name));
+        acted.v ||= msg.message.content.some((b) => b.type === "tool_use" && !TOOLS.includes(b.name));
         fresh();
       }
       if (msg.type === "assistant" && msg.error === "authentication_failed") {
