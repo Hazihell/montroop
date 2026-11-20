@@ -38,6 +38,9 @@ export type McpServer = {
   url     : string;
   headers : Record<string, string>;
   timeout : number;
+  // defer: its tools wait behind ToolSearch, but for those in keep
+  defer   : boolean;
+  keep    : string[];
 };
 
 export const DIR = config_path(process.env.KI_DIR ?? "~/.ki");
@@ -524,7 +527,10 @@ function config_server(name: string, s: unknown, device: string): McpServer {
   if (s.device !== undefined) {
     throw bad("has \"device\", which a device's own config.json doesn't take (its servers run on it)");
   }
-  const server = { name: config_mcp_prefix(device) + "_" + name, device, command: "", args: [], env: {}, cwd: "", url: "", headers: {}, timeout };
+  if (s.defer !== undefined && typeof s.defer !== "boolean") {
+    throw bad("needs defer as true or false");
+  }
+  const server = { name: config_mcp_prefix(device) + "_" + name, device, command: "", args: [], env: {}, cwd: "", url: "", headers: {}, timeout, defer: s.defer === true, keep: strs(s.keep, "keep") };
   if (type === "stdio") {
     if (typeof s.command !== "string" || s.command === "" || (s.cwd !== undefined && typeof s.cwd !== "string")) {
       throw bad("needs a command (and cwd, if any, as a string)");

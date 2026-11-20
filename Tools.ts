@@ -273,7 +273,8 @@ export namespace Tools {
         const bare = tools.seats.get(who)?.mcp === false;
         const all = bare ? [] : await Mcp.list(tools.mcp, Tools.held(tools, who));
         const theirs = all.filter((t) => t.name.length <= NAME_MOST - prefix.length);
-        const list = [...Tools.listed(tools, who), ...theirs].map((t) => ({ name: t.name, description: t.info, inputSchema: t.schema }));
+        // a deferred tool overrides alwaysLoad on Ki's server, tested 20 Nov 2026
+        const list = [...Tools.listed(tools, who), ...theirs].map((t) => ({ name: t.name, description: t.info, inputSchema: t.schema, ...(t.defer === true ? { _meta: { "anthropic/alwaysLoad": false } } : {}) }));
         if (params.notes !== true || bare) {
           return { tools: list };
         }

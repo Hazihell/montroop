@@ -277,8 +277,10 @@ export namespace Mcp {
           left.push(JSON.stringify(String(get(tool, "name"))) + " (" + schema + ")");
           continue;
         }
-        names.set(name, String(get(tool, "name")));
-        specs.push({ name, info: text_of(get(tool, "description")), schema });
+        const own = String(get(tool, "name"));
+        names.set(name, own);
+        const defer = s.conf.defer && !s.conf.keep.includes(own);
+        specs.push({ name, info: text_of(get(tool, "description")), schema, ...(defer ? { defer } : {}) });
       }
       const more = get(got, "nextCursor");
       cursor = typeof more === "string" ? more : undefined;

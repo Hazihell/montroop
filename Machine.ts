@@ -16,7 +16,8 @@ type Probe = {
   format?  : { duration?: string; format_name?: string; start_time?: string };
 };
 
-export type Spec = { name: string; info: string; schema: object };
+// defer: Claude Code loads it only once the model finds it by ToolSearch
+export type Spec = { name: string; info: string; schema: object; defer?: boolean };
 
 export type Skill = { name: string; description: string; dir: string };
 
