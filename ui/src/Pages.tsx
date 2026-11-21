@@ -6,6 +6,7 @@ import { text_of } from "../../Json.ts";
 import type { Pin } from "../../Pins.ts";
 import { timer_when } from "../../Timer.ts";
 import * as View from "../../View.ts";
+import { tree_hide, tree_show } from "../../web/src/Tree.ts";
 import { Archived } from "./Agent.tsx";
 import { Face } from "./Avatar.tsx";
 import { act, MOODS, mood_of, note, signed_out, useKi } from "./Ki.ts";
@@ -100,9 +101,20 @@ function pin_note(pin: Pin): string {
   return [pin.until === null ? "lasting" : "until " + pin.until, "used " + pin.used].join(" · ");
 }
 
+function Tabs({ agent }: { agent: string }): ReactNode {
+  return (
+    <nav className="seg gl mx-3.5 mb-2 max-w-sm" aria-label="Memory">
+      <Link to="/memory">Pins</Link>
+      <Link to="/tree" search={{ a: agent }} hash="view" activeOptions={{ includeHash: true }}>View</Link>
+      <Link to="/tree" search={{ a: agent }} activeOptions={{ includeHash: true }}>Tree</Link>
+    </nav>
+  );
+}
+
 // what is kept: how full the open chat's context is, and the pins every
 // agent follows
 export function Memory(): ReactNode {
+  const agent = useKi((s) => s.agent);
   const name = useKi((s) => s.team.find((m) => m.id === s.agent)?.name ?? "");
   const talk = useKi((s) => s.talk);
   const [pins, setPins] = useState<Pin[] | null | undefined>(undefined);
@@ -114,6 +126,7 @@ export function Memory(): ReactNode {
   return (
     <section className="page">
       <header className="head"><h1>Memory</h1></header>
+      <Tabs agent={agent} />
       <div className="scroll pb-4">
         {talk === null ? null : (
           <>
@@ -128,6 +141,7 @@ export function Memory(): ReactNode {
           </>
         )}
         <h2 className="label">Pins</h2>
+        <p className="lede pb-2 text-[0.875rem]">What your agents learned about you and keep outside the memory's compression, for every agent.</p>
         {pins === undefined ? null
           : pins === null ? <p className="lede">Could not read the pins. <button type="button" className="font-semibold text-act-ink underline" onClick={() => load(null)}>Try again</button></p>
           : pins.length === 0 ? <p className="lede">None yet. An agent pins what you teach it for good, and every agent follows it.</p>
@@ -139,6 +153,29 @@ export function Memory(): ReactNode {
             </div>
           ))}
       </div>
+    </section>
+  );
+}
+
+// an agent's memory as it is: what it sees now (view), or all of it as the
+// tree of summaries (tree), which Tree.ts draws into this page's elements
+export function Grown({ agent, view }: { agent: string; view: boolean }): ReactNode {
+  const name = useKi((s) => s.team.find((m) => m.id === agent)?.name ?? "");
+  useEffect(() => {
+    if (agent !== "") {
+      tree_show(view ? "VIEW" : "TREE", agent);
+    }
+  }, [agent, view]);
+  useEffect(() => tree_hide, []);
+  return (
+    <section className="page">
+      <header className="head"><h1 className="truncate">{name === "" ? "Memory" : name + "'s memory"}</h1></header>
+      <Tabs agent={agent} />
+      <main id="tree">
+        <nav className="levels"><a className="tab" data-tab="VIEW" /><a className="tab" data-tab="TREE" /><small className="legend" /><button type="button" className="prev" aria-label="Level below">‹</button><button type="button" className="next" aria-label="Level above">›</button></nav>
+        <section className="view" tabIndex={-1} />
+        <section className="bracket" />
+      </main>
     </section>
   );
 }

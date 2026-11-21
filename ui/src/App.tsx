@@ -7,7 +7,7 @@ import { Avatar, Face, look_of } from "./Avatar.tsx";
 import { Composer } from "./Composer.tsx";
 import { MOODS, mood_of, noted, show, useKi } from "./Ki.ts";
 import { Look } from "./Look.tsx";
-import { Memory, Running, Settings, Team } from "./Pages.tsx";
+import { Grown, Memory, Running, Settings, Team } from "./Pages.tsx";
 import { Timeline } from "./Timeline.tsx";
 import { Viewer } from "./Viewer.tsx";
 
@@ -53,13 +53,14 @@ function Bar(): ReactNode {
   const first = useKi((s) => s.team.find((m) => m.archived === 0)?.id ?? "");
   const going = useKi((s) => s.team.filter((m) => m.archived === 0 && (m.busy || (m.asks ?? 0) > 0)).length);
   const to = agent === "" ? first : agent;
+  const tree = useLocation().pathname === "/tree";
   return (
     <nav className="bar gl" aria-label="Places">
       {to === ""
         ? <Link to="/"><span><ChatCircleIcon size={23} /></span>Chat</Link>
         : <Link to="/a/$agent" params={{ agent: to }}>{({ isActive }) => <><span><ChatCircleIcon size={23} weight={isActive ? "fill" : "regular"} /></span>Chat</>}</Link>}
       <Link to="/running">{({ isActive }) => <><span><PlayIcon size={23} weight={isActive ? "fill" : "bold"} />{going > 0 ? <em aria-label={going + " at work"}>{going}</em> : null}</span>Running</>}</Link>
-      <Link to="/memory">{({ isActive }) => <><span><TreeStructureIcon size={23} weight={isActive ? "fill" : "regular"} /></span>Memory</>}</Link>
+      <Link to="/memory" aria-current={tree ? "page" : undefined}>{({ isActive }) => <><span><TreeStructureIcon size={23} weight={isActive || tree ? "fill" : "regular"} /></span>Memory</>}</Link>
       <Link to="/team">{({ isActive }) => <><span><UsersThreeIcon size={23} weight={isActive ? "fill" : "regular"} /></span>Team</>}</Link>
     </nav>
   );
@@ -67,13 +68,13 @@ function Bar(): ReactNode {
 
 function Shell(): ReactNode {
   const signed = useKi((s) => s.signed);
-  const at = /^\/(team|running|memory|settings)/.exec(useLocation().pathname)?.[1] ?? "chat";
+  const at = /^\/(team|running|memory|settings|tree|new)/.exec(useLocation().pathname)?.[1] ?? "chat";
   if (signed === null) {
     return null;
   }
   return (
     <div className="shell">
-      <div className="aurora" data-at={at === "settings" ? "team" : at}><i /><i /><i /></div>
+      <div className="aurora" data-at={at === "settings" || at === "new" ? "team" : at === "tree" ? "memory" : at}><i /><i /><i /></div>
       {signed ? <><Outlet /><Bar /></> : <div className="flex h-full"><SignIn /></div>}
       <Note />
       <Viewer />
@@ -91,6 +92,12 @@ function Home(): ReactNode {
     }
   }, [agent, navigate]);
   return <section className="page"><Wait /></section>;
+}
+
+function Tree(): ReactNode {
+  const { a } = tree.useSearch();
+  const held = useKi((s) => s.agent || (s.team.find((m) => m.archived === 0)?.id ?? ""));
+  return <Grown agent={a ?? held} view={useLocation().hash === "view"} />;
 }
 
 // an agent's chat, or the page of a subagent it spawned: what that one
@@ -157,10 +164,11 @@ const edit     = createRoute({ getParentRoute: () => root, path: "/a/$agent/edit
 const look     = createRoute({ getParentRoute: () => root, path: "/a/$agent/look", component: () => <Look agent={look.useParams().agent} /> });
 const running  = createRoute({ getParentRoute: () => root, path: "/running", component: Running });
 const memory   = createRoute({ getParentRoute: () => root, path: "/memory", component: Memory });
+const tree     = createRoute({ getParentRoute: () => root, path: "/tree", validateSearch: (s): { a?: string } => (typeof s.a === "string" ? { a: s.a } : {}), component: Tree });
 const team     = createRoute({ getParentRoute: () => root, path: "/team", component: Team });
 const settings = createRoute({ getParentRoute: () => root, path: "/settings", component: Settings });
 
-export const router = createRouter({ routeTree: root.addChildren([home, chat, sub, fresh, edit, look, running, memory, team, settings]) });
+export const router = createRouter({ routeTree: root.addChildren([home, chat, sub, fresh, edit, look, running, memory, tree, team, settings]) });
 
 declare module "@tanstack/react-router" {
   interface Register {

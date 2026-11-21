@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./avatar.css";
+@import "./tree.css";
 
 @font-face {
   font-family: "Bricolage Grotesque";
@@ -1189,14 +1190,16 @@
     padding: 0.25rem;
     border-radius: 1.5rem;
   }
-  .seg button {
+  .seg button, .seg a {
+    display: grid;
+    place-items: center;
     border-radius: 1.25rem;
     color: var(--mid);
     font-size: 0.9375rem;
     font-weight: 600;
     transition: background-color 180ms var(--ease-out), color 180ms var(--ease-out);
   }
-  .seg button[aria-pressed="true"] {
+  .seg button[aria-pressed="true"], .seg a[aria-current="page"] {
     background: var(--raise);
     color: var(--ink);
   }
