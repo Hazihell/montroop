@@ -1,7 +1,8 @@
 import { CheckIcon, CopyIcon, PaperclipIcon } from "@phosphor-icons/react";
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import * as Md from "../../Md.ts";
 import * as View from "../../View.ts";
+import { viewer_open } from "./Viewer.tsx";
 
 const COPIED = 1500;
 
@@ -20,12 +21,33 @@ export function Copy({ text }: { text: string }): ReactNode {
   );
 }
 
+const SIZES = new Map<string, Promise<string>>();
+
+async function size_ask(url: string): Promise<string> {
+  const res = await fetch(url, { headers: { range: "bytes=0-0" } }).catch(() => null);
+  res?.body?.cancel().catch(() => {});
+  const total = /\/(\d+)$/.exec(res?.headers.get("content-range") ?? "")?.[1] ?? (res?.ok === true ? res.headers.get("content-length") : null);
+  return total == null ? "" : View.size_show(Number(total));
+}
+
+// how big a stored file is, asked once
+function Size({ url }: { url: string }): ReactNode {
+  const [text, setText] = useState("");
+  useEffect(() => {
+    const got = SIZES.get(url) ?? size_ask(url);
+    SIZES.set(url, got);
+    void got.then(setText);
+  }, [url]);
+  return text === "" ? null : <small className="shrink-0 text-dim">{text}</small>;
+}
+
 function Chip({ url, name }: { url: string; name: string }): ReactNode {
   const shown = name.trim() || (url.split("/").pop() ?? "");
   return (
     <a className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-raise px-3 py-1.5 text-sm" href={url} download={shown}>
       <PaperclipIcon size={16} className="shrink-0 text-dim" />
       <span className="truncate">{shown}</span>
+      <Size url={url} />
     </a>
   );
 }
@@ -34,7 +56,7 @@ function Pict({ s }: { s: Extract<Md.Span, { $: "Pict" }> }): ReactNode {
   const title = s.t === "" ? undefined : s.t;
   switch (View.media_kind(s.k)) {
     case "image": {
-      return <a href={s.k} target="_blank" rel="noopener"><img className="media" src={s.k} alt={s.x} title={title} loading="lazy" /></a>;
+      return <img className="media" src={s.k} alt={s.x} title={title} loading="lazy" role="button" tabIndex={0} onClick={(ev) => viewer_open(ev.currentTarget)} onKeyDown={(ev) => ev.key === "Enter" && viewer_open(ev.currentTarget)} />;
     }
     case "video": {
       return <video className="media" src={s.k} title={title} controls preload="metadata" />;

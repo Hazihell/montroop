@@ -2,6 +2,7 @@ import { ArrowUpIcon, CheckIcon, FileIcon, MicrophoneIcon, PlusIcon, StopIcon, W
 import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import * as View from "../../View.ts";
 import { act, note, useKi, voice } from "./Ki.ts";
+import { viewer_open } from "./Viewer.tsx";
 
 // on a phone Enter is a new line: its keyboard has no Shift+Enter
 const TOUCH = matchMedia("(pointer: coarse)").matches;
@@ -285,7 +286,7 @@ export function Composer({ agent, name }: { agent: string; name: string }): Reac
         <ul>
           {items.map((item) => (
             <li key={item.key} data-state={item.state} title={item.name} style={{ "--part": Math.round(item.part * 100) + "%" } as React.CSSProperties}>
-              {item.peek !== "" ? <img src={item.peek} alt="" /> : item.state === "bad" ? <WarningIcon size={18} weight="fill" /> : <FileIcon size={18} />}
+              {item.peek !== "" ? <img src={item.peek} alt={item.name} onClick={(ev) => viewer_open(ev.currentTarget)} /> : item.state === "bad" ? <WarningIcon size={18} weight="fill" /> : <FileIcon size={18} />}
               <span>
                 <b>{item.name}</b>
                 <small>{item.state === "up" ? Math.round(item.part * 100) + "%" : item.state === "bad" ? "Failed" : View.size_show(item.size)}</small>

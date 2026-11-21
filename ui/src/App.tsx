@@ -8,6 +8,7 @@ import { MOODS, mood_of, noted, show, useKi } from "./Ki.ts";
 import { Look } from "./Look.tsx";
 import { Memory, Running, Settings, Team } from "./Pages.tsx";
 import { Timeline } from "./Timeline.tsx";
+import { Viewer } from "./Viewer.tsx";
 
 const NOTE = 6000;
 
@@ -74,6 +75,7 @@ function Shell(): ReactNode {
       <div className="aurora" data-at={at === "settings" ? "team" : at}><i /><i /><i /></div>
       {signed ? <><Outlet /><Bar /></> : <div className="flex h-full"><SignIn /></div>}
       <Note />
+      <Viewer />
     </div>
   );
 }

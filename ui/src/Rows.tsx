@@ -10,6 +10,7 @@ import * as View from "../../View.ts";
 import { Face } from "./Avatar.tsx";
 import { act, answer, useKi } from "./Ki.ts";
 import { Blocks, Copy } from "./Markdown.tsx";
+import { viewer_open } from "./Viewer.tsx";
 
 type Of<K extends View.Row["$"]> = Extract<View.Row, { $: K }>;
 
@@ -120,7 +121,7 @@ function Pics({ names }: { names: string[] }): ReactNode {
     <div className="mt-2 flex flex-wrap gap-2">
       {names.map((name) => {
         const url = "/image/" + agent + "/" + name;
-        return <a key={name} href={url} target="_blank" rel="noopener"><img className="media max-h-48" src={url} alt={name} loading="lazy" /></a>;
+        return <img key={name} className="media" src={url} alt={name} loading="lazy" role="button" tabIndex={0} onClick={(ev) => viewer_open(ev.currentTarget)} onKeyDown={(ev) => ev.key === "Enter" && viewer_open(ev.currentTarget)} />;
       })}
     </div>
   );

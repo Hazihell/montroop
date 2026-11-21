@@ -563,6 +563,10 @@
   .msg.user .prose :not(pre) > code {
     background: color-mix(in oklab, var(--on-act) 16%, transparent);
   }
+  .msg.user a small {
+    color: inherit;
+    opacity: 0.75;
+  }
   .msg.user .who {
     color: inherit;
     opacity: 0.8;
@@ -1172,6 +1176,86 @@
   .media {
     max-width: 100%;
     border-radius: 1.125rem;
+  }
+  img.media {
+    width: auto;
+    max-height: 20rem;
+    cursor: zoom-in;
+  }
+
+  .viewer {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    background: light-dark(#f4f3effa, #000000f2);
+    color: var(--ink);
+    overscroll-behavior: contain;
+  }
+  .viewer::backdrop {
+    background: none;
+  }
+  .viewer > header {
+    position: absolute;
+    inset: 0 0 auto 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: max(0.625rem, env(safe-area-inset-top)) 0.75rem 0.625rem 1.125rem;
+  }
+  .viewer > header p {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .viewer .stage > span {
+    position: absolute;
+    bottom: max(1rem, env(safe-area-inset-bottom));
+    padding: 0.125rem 0.625rem;
+    border-radius: 1rem;
+    background: var(--island);
+    color: var(--mid);
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .viewer .stage {
+    display: grid;
+    width: 100%;
+    height: 100%;
+    place-items: center;
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+  }
+  .viewer .stage img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    transition: transform 220ms var(--ease-out);
+    will-change: transform;
+  }
+  .viewer .prev, .viewer .next {
+    position: absolute;
+    top: 50%;
+    translate: 0 -50%;
+  }
+  .viewer .prev {
+    left: 0.75rem;
+  }
+  .viewer .next {
+    right: 0.75rem;
+  }
+  @media (pointer: coarse) {
+    .viewer .prev, .viewer .next {
+      display: none;
+    }
   }
   .toast {
     position: fixed;
