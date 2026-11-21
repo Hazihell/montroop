@@ -26,6 +26,7 @@ type Ki = {
   page      : string | null;
   sub       : SubRow | null;
   hearing   : boolean;
+  importing : View.Progress | null;
   note      : string;
 };
 
@@ -37,7 +38,7 @@ const v = View.view_new(AGENT.exec(location.pathname)?.[1] ?? localStorage.getIt
 // the chat on screen, counted read by the server while the window has focus
 const SEEN = { agent: null as string | null, at: 0, on: false, ws: null as WebSocket | null };
 
-export const useKi = create<Ki>(() => ({ signed: null, agent: v.agent, loaded: false, offline: false, team: [], rows: [], stoppable: false, mood: "idle", asks: 0, timers: [], jobs: [], talk: null, meter: null, knobs: [], plugs: [], page: null, sub: null, hearing: false, note: "" }));
+export const useKi = create<Ki>(() => ({ signed: null, agent: v.agent, loaded: false, offline: false, team: [], rows: [], stoppable: false, mood: "idle", asks: 0, timers: [], jobs: [], talk: null, meter: null, knobs: [], plugs: [], page: null, sub: null, hearing: false, importing: null, note: "" }));
 
 let due = false;
 
@@ -104,6 +105,7 @@ function draw(): void {
       page      : v.page?.name ?? null,
       sub       : View.view_sub(v) ?? null,
       hearing   : v.out.some((p) => p.msg.$ === "voice"),
+      importing : v.importing,
       ...(note === undefined ? {} : { note }),
     });
   });
@@ -211,6 +213,19 @@ export function voice(audio: Blob): Promise<View.Answer> {
     View.link_send(v, { $: "voice", type: audio.type, body: () => audio }, done);
     draw();
   });
+}
+
+// past chats, read in this browser, into an agent's memory
+export function import_send(agent: string, body: () => Promise<Blob>): Promise<View.Answer> {
+  return new Promise((done) => {
+    View.link_send(v, { $: "import", body, agent }, done);
+    draw();
+  });
+}
+
+// an import paused goes on, one going pauses
+export function import_flow(): void {
+  View.link_send(v, { $: "go", on: Boolean(v.importing?.why) }, (out) => out.error !== undefined && useKi.setState({ note: out.error }));
 }
 
 export function note(text: string): void {

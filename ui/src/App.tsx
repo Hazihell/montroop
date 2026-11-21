@@ -2,6 +2,7 @@ import { ArrowLeftIcon, ChatCircleIcon, PlayIcon, TreeStructureIcon, UsersThreeI
 import { createRootRoute, createRoute, createRouter, Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
 import * as View from "../../View.ts";
+import { AgentPage } from "./Agent.tsx";
 import { Avatar, Face, look_of } from "./Avatar.tsx";
 import { Composer } from "./Composer.tsx";
 import { MOODS, mood_of, noted, show, useKi } from "./Ki.ts";
@@ -119,7 +120,7 @@ function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode 
       <div className="relative flex min-h-0 flex-1 flex-col">
         <header className="top">
           {sub === null ? (
-            <Link to="/a/$agent/look" params={{ agent }} className="isl" aria-label={(mate?.name ?? "This agent") + ": change its look"}>
+            <Link to="/a/$agent/edit" params={{ agent }} className="isl" aria-label={(mate?.name ?? "This agent") + ": its settings"}>
               <Face picture={mate?.picture ?? ""} id={agent} mood={mood} size={56} />
               <b>{mate?.name ?? ""}</b>
               {doing === "" ? null : <span>{doing}</span>}
@@ -151,13 +152,15 @@ const root     = createRootRoute({ component: Shell });
 const home     = createRoute({ getParentRoute: () => root, path: "/", component: Home });
 const chat     = createRoute({ getParentRoute: () => root, path: "/a/$agent", component: () => <Chat agent={chat.useParams().agent} sub={null} /> });
 const sub      = createRoute({ getParentRoute: () => root, path: "/a/$agent/s/$name", component: () => <Chat agent={sub.useParams().agent} sub={sub.useParams().name} /> });
+const fresh    = createRoute({ getParentRoute: () => root, path: "/new", component: () => <AgentPage agent={null} /> });
+const edit     = createRoute({ getParentRoute: () => root, path: "/a/$agent/edit", component: () => <AgentPage agent={edit.useParams().agent} /> });
 const look     = createRoute({ getParentRoute: () => root, path: "/a/$agent/look", component: () => <Look agent={look.useParams().agent} /> });
 const running  = createRoute({ getParentRoute: () => root, path: "/running", component: Running });
 const memory   = createRoute({ getParentRoute: () => root, path: "/memory", component: Memory });
 const team     = createRoute({ getParentRoute: () => root, path: "/team", component: Team });
 const settings = createRoute({ getParentRoute: () => root, path: "/settings", component: Settings });
 
-export const router = createRouter({ routeTree: root.addChildren([home, chat, sub, look, running, memory, team, settings]) });
+export const router = createRouter({ routeTree: root.addChildren([home, chat, sub, fresh, edit, look, running, memory, team, settings]) });
 
 declare module "@tanstack/react-router" {
   interface Register {

@@ -1,9 +1,10 @@
-import { AlarmIcon, CaretLeftIcon, GitBranchIcon, HandPalmIcon, PushPinIcon, SlidersHorizontalIcon, TerminalWindowIcon } from "@phosphor-icons/react";
+import { AlarmIcon, CaretLeftIcon, GitBranchIcon, HandPalmIcon, PlusIcon, PushPinIcon, SlidersHorizontalIcon, TerminalWindowIcon } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import type { Pin } from "../../Pins.ts";
 import { timer_when } from "../../Timer.ts";
 import * as View from "../../View.ts";
+import { Archived } from "./Agent.tsx";
 import { Face } from "./Avatar.tsx";
 import { MOODS, mood_of, useKi } from "./Ki.ts";
 import { ACCENTS, prefs_set, usePrefs, type Theme } from "./Prefs.ts";
@@ -35,7 +36,10 @@ export function Team(): ReactNode {
     <section className="page">
       <header className="head">
         <h1>Team</h1>
-        <Link to="/settings" className="round gl" aria-label="Settings"><SlidersHorizontalIcon size={22} weight="bold" /></Link>
+        <span className="flex gap-2">
+          <Link to="/new" className="round gl" aria-label="New agent"><PlusIcon size={22} weight="bold" /></Link>
+          <Link to="/settings" className="round gl" aria-label="Settings"><SlidersHorizontalIcon size={22} weight="bold" /></Link>
+        </span>
       </header>
       <div className="scroll px-1.5 pb-4">
         {team.filter((m) => m.archived === 0).map((m) => <Mate key={m.id} m={m} size={68} />)}
@@ -161,6 +165,7 @@ export function Settings(): ReactNode {
         <div className="seg gl mx-3.5 max-w-sm">
           {THEMES.map(([value, text]) => <button key={value} type="button" aria-pressed={value === theme} onClick={() => prefs_set({ theme: value })}>{text}</button>)}
         </div>
+        <Archived />
         <h2 className="label">This device</h2>
         <div className="px-3.5"><button type="button" className="pillbtn" onClick={out}>Sign out</button></div>
       </div>

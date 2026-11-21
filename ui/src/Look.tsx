@@ -47,7 +47,7 @@ function Editor({ agent, mate }: { agent: string; mate: View.Mate }): ReactNode 
     void save(agent, look).then((error) => {
       setSaving(false);
       if (error === "") {
-        void navigate({ to: "/a/$agent", params: { agent } });
+        void navigate({ to: "/a/$agent/edit", params: { agent } });
       } else {
         useKi.setState({ note: error });
       }
@@ -56,7 +56,7 @@ function Editor({ agent, mate }: { agent: string; mate: View.Mate }): ReactNode 
   return (
     <section className="page">
       <header className="head pl-3.5">
-        <Link to="/a/$agent" params={{ agent }} className="round gl" aria-label="Back to the chat"><CaretLeftIcon size={22} weight="bold" /></Link>
+        <Link to="/a/$agent/edit" params={{ agent }} className="round gl" aria-label="Back to its settings"><CaretLeftIcon size={22} weight="bold" /></Link>
         <h1 className="truncate pl-1.5">{mate.name}</h1>
         <button type="button" className="round go" aria-label="Save the look" disabled={saving} onClick={done}><CheckIcon size={22} weight="bold" /></button>
       </header>
