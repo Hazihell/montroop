@@ -1,6 +1,7 @@
-import { ChatCircleIcon, PlayIcon, TreeStructureIcon, UsersThreeIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, ChatCircleIcon, PlayIcon, TreeStructureIcon, UsersThreeIcon, XIcon } from "@phosphor-icons/react";
 import { createRootRoute, createRoute, createRouter, Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
+import * as View from "../../View.ts";
 import { Avatar, Face, look_of } from "./Avatar.tsx";
 import { Composer } from "./Composer.tsx";
 import { MOODS, mood_of, noted, show, useKi } from "./Ki.ts";
@@ -89,36 +90,56 @@ function Home(): ReactNode {
   return <section className="page"><Wait /></section>;
 }
 
-function Chat(): ReactNode {
-  const { agent } = chat.useParams();
+// an agent's chat, or the page of a subagent it spawned: what that one
+// does, read only
+function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode {
   const navigate = useNavigate();
   const mate = useKi((s) => s.team.find((m) => m.id === agent));
-  const loaded = useKi((s) => s.loaded && s.agent === agent);
-  const mood = useKi((s) => (mate === undefined ? "idle" : mood_of(mate, s)));
+  const loaded = useKi((s) => s.loaded && s.agent === agent && s.page === sub);
+  const mood = useKi((s) => (sub !== null ? s.mood : mate === undefined ? "idle" : mood_of(mate, s)));
   const offline = useKi((s) => s.offline);
+  const row = useKi((s) => s.sub);
+  const meter = useKi((s) => s.meter);
+  const knobs = useKi((s) => s.knobs);
   useEffect(() => {
-    show(agent);
+    show(agent, sub);
     return () => show(null);
-  }, [agent]);
+  }, [agent, sub]);
   // the server shows another agent's chat when it has none of this one
   useEffect(() => useKi.subscribe((s) => {
     if (s.loaded && s.agent !== agent) {
       void navigate({ to: "/a/$agent", params: { agent: s.agent }, replace: true });
     }
   }), [agent, navigate]);
-  const doing = offline ? "Offline" : MOODS[mood];
+  const doing = offline ? "Offline" : sub === null ? MOODS[mood] : row === null ? "Done" : row.doing;
   return (
     <section className="page">
       <div className="relative flex min-h-0 flex-1 flex-col">
         <header className="top">
-          <Link to="/a/$agent/look" params={{ agent }} className="isl" aria-label={(mate?.name ?? "This agent") + ": change its look"}>
-            <Face picture={mate?.picture ?? ""} id={agent} mood={mood} size={56} />
-            <b>{mate?.name ?? ""}</b>
-            {doing === "" ? null : <span>{doing}</span>}
-          </Link>
+          {sub === null ? (
+            <Link to="/a/$agent/look" params={{ agent }} className="isl" aria-label={(mate?.name ?? "This agent") + ": change its look"}>
+              <Face picture={mate?.picture ?? ""} id={agent} mood={mood} size={56} />
+              <b>{mate?.name ?? ""}</b>
+              {doing === "" ? null : <span>{doing}</span>}
+            </Link>
+          ) : (
+            <>
+              <Link to="/a/$agent" params={{ agent }} className="round gl" aria-label={"Back to " + (mate?.name ?? "the chat")}><ArrowLeftIcon size={20} weight="bold" /></Link>
+              <p className="isl">
+                <Avatar look={look_of("", agent + "/" + sub)} mood={mood} size={56} />
+                <b>{sub}</b>
+                {doing === "" ? null : <span>{doing}</span>}
+              </p>
+            </>
+          )}
         </header>
-        {loaded ? <Timeline key={agent} /> : <Wait />}
-        <Composer name={mate?.name ?? ""} />
+        {loaded ? <Timeline key={agent + "/" + (sub ?? "")} sub={sub !== null} /> : <Wait />}
+        {sub === null ? <Composer key={agent} agent={agent} name={mate?.name ?? ""} /> : (
+          <p className="under">
+            {knobs.map((k) => k.text).join(" · ")}
+            {meter === null ? "" : " · context " + View.talk_percent(meter) + "%"}
+          </p>
+        )}
       </div>
     </section>
   );
@@ -126,14 +147,15 @@ function Chat(): ReactNode {
 
 const root     = createRootRoute({ component: Shell });
 const home     = createRoute({ getParentRoute: () => root, path: "/", component: Home });
-const chat     = createRoute({ getParentRoute: () => root, path: "/a/$agent", component: Chat });
+const chat     = createRoute({ getParentRoute: () => root, path: "/a/$agent", component: () => <Chat agent={chat.useParams().agent} sub={null} /> });
+const sub      = createRoute({ getParentRoute: () => root, path: "/a/$agent/s/$name", component: () => <Chat agent={sub.useParams().agent} sub={sub.useParams().name} /> });
 const look     = createRoute({ getParentRoute: () => root, path: "/a/$agent/look", component: () => <Look agent={look.useParams().agent} /> });
 const running  = createRoute({ getParentRoute: () => root, path: "/running", component: Running });
 const memory   = createRoute({ getParentRoute: () => root, path: "/memory", component: Memory });
 const team     = createRoute({ getParentRoute: () => root, path: "/team", component: Team });
 const settings = createRoute({ getParentRoute: () => root, path: "/settings", component: Settings });
 
-export const router = createRouter({ routeTree: root.addChildren([home, chat, look, running, memory, team, settings]) });
+export const router = createRouter({ routeTree: root.addChildren([home, chat, sub, look, running, memory, team, settings]) });
 
 declare module "@tanstack/react-router" {
   interface Register {

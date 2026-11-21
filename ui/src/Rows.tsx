@@ -163,7 +163,7 @@ function Msg({ row }: { row: Of<"Msg"> }): ReactNode {
       <div className="prose">{row.call === null ? <Blocks x={row.body} /> : <CallBody call={row.call} />}</div>
       <Pics names={row.images} />
       {row.queued === true ? <p className="who">Queued</p> : null}
-      {row.kind === "reply" && row.writing !== true ? <Copy text={row.text} /> : null}
+      {row.kind === "reply" ? <Copy text={row.text} /> : null}
     </div>
   );
 }

@@ -61,10 +61,10 @@ export function Running(): ReactNode {
           <div key={m.id} className="px-1.5">
             <Mate m={m} size={56} />
             {(m.subs ?? []).map((sub) => (
-              <div key={sub.name} className="item pl-6">
+              <Link key={sub.name} to="/a/$agent/s/$name" params={{ agent: m.id, name: sub.name }} className="item pl-6">
                 <GitBranchIcon size={18} />
-                <p><b className="font-semibold">{sub.name}</b><small>{sub.doing === "" ? sub.task : sub.doing}</small></p>
-              </div>
+                <p><b className="font-semibold">{sub.name}</b><small>{[sub.model, sub.effort, sub.doing === "" ? sub.task : sub.doing].filter((x) => x !== "").join(" · ")}</small></p>
+              </Link>
             ))}
           </div>
         ))}

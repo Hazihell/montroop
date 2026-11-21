@@ -1,7 +1,7 @@
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
-import { ArrowDownIcon } from "@phosphor-icons/react";
+import { ArrowDownIcon, ArrowUpIcon } from "@phosphor-icons/react";
 import { useRef, useState, type ReactNode } from "react";
-import { useKi } from "./Ki.ts";
+import { earlier, useKi } from "./Ki.ts";
 import { items_of, Row, useWork } from "./Rows.tsx";
 
 // the first rows start under the island, the room it takes
@@ -9,16 +9,25 @@ function Top(): ReactNode {
   return <div className="talk-top" />;
 }
 
-export function Timeline(): ReactNode {
+// sub: a subagent's page, which loads its earlier entries near its top
+export function Timeline({ sub }: { sub: boolean }): ReactNode {
   const rows = useKi((s) => s.rows);
   const open = useWork((s) => s.open);
   const list = useRef<LegendListRef>(null);
   const [away, setAway] = useState(false);
+  const [above, setAbove] = useState(false);
+  const items = items_of(rows, open);
+  const mine = items.findLastIndex((i) => i.row.$ === "Msg" && i.row.kind === "user");
+  const scrolled = () => {
+    const state = list.current?.getState();
+    setAway(state?.isAtEnd === false);
+    setAbove(mine >= 0 && state !== undefined && mine < state.start);
+  };
   return (
     <div className="talk">
       <LegendList
         ref={list}
-        data={items_of(rows, open)}
+        data={items}
         keyExtractor={(item) => item.key}
         renderItem={({ item }) => <Row item={item} />}
         ListHeaderComponent={Top}
@@ -28,14 +37,22 @@ export function Timeline(): ReactNode {
         initialScrollAtEnd
         maintainScrollAtEnd
         maintainVisibleContentPosition
-        onScroll={() => setAway(list.current?.getState().isAtEnd === false)}
+        onScroll={scrolled}
+        onStartReached={sub ? earlier : undefined}
         style={{ height: "100%" }}
       />
-      {away ? (
-        <button type="button" className="round small gl latest" aria-label="Latest messages" onClick={() => void list.current?.scrollToEnd({ animated: true })}>
-          <ArrowDownIcon size={18} weight="bold" />
-        </button>
-      ) : null}
+      <div className="jump">
+        {above ? (
+          <button type="button" className="round small gl" aria-label="Up to your message" onClick={() => void list.current?.scrollToIndex({ index: mine, animated: true })}>
+            <ArrowUpIcon size={18} weight="bold" />
+          </button>
+        ) : null}
+        {away ? (
+          <button type="button" className="round small gl" aria-label="Latest messages" onClick={() => void list.current?.scrollToEnd({ animated: true })}>
+            <ArrowDownIcon size={18} weight="bold" />
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }

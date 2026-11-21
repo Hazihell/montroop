@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { text_of } from "../../Json.ts";
+import type { Row as SubRow } from "../../Sub.ts";
 import type { Timer } from "../../Timer.ts";
 import * as View from "../../View.ts";
 import type { Mood } from "./Avatar.tsx";
@@ -19,6 +20,12 @@ type Ki = {
   timers    : Timer[];
   jobs      : View.BgJob[];
   talk      : View.Talk | null;
+  meter     : View.Talk | null;
+  knobs     : View.Knob[];
+  plugs     : View.Plug[];
+  page      : string | null;
+  sub       : SubRow | null;
+  hearing   : boolean;
   note      : string;
 };
 
@@ -30,7 +37,7 @@ const v = View.view_new(AGENT.exec(location.pathname)?.[1] ?? localStorage.getIt
 // the chat on screen, counted read by the server while the window has focus
 const SEEN = { agent: null as string | null, at: 0, on: false, ws: null as WebSocket | null };
 
-export const useKi = create<Ki>(() => ({ signed: null, agent: v.agent, loaded: false, offline: false, team: [], rows: [], stoppable: false, mood: "idle", asks: 0, timers: [], jobs: [], talk: null, note: "" }));
+export const useKi = create<Ki>(() => ({ signed: null, agent: v.agent, loaded: false, offline: false, team: [], rows: [], stoppable: false, mood: "idle", asks: 0, timers: [], jobs: [], talk: null, meter: null, knobs: [], plugs: [], page: null, sub: null, hearing: false, note: "" }));
 
 let due = false;
 
@@ -39,12 +46,13 @@ function mood(): Mood {
   if (View.view_offline(v) || v.limit !== null) {
     return "sleeping";
   }
-  if (v.asks.length > 0) {
+  if (v.asks.length > 0 && v.page === null) {
     return "asking";
   }
-  const last = v.live.at(-1);
+  const page = v.page;
+  const last = (page?.live ?? v.live).at(-1);
   if (last === undefined) {
-    return v.busy ? "thinking" : "idle";
+    return (page === null ? v.busy : View.view_sub(v) !== undefined) ? "thinking" : "idle";
   }
   return last.kind === "mind" ? "thinking" : last.kind === "reply" ? "writing" : "working";
 }
@@ -90,6 +98,12 @@ function draw(): void {
       timers    : v.timers,
       jobs      : v.bg,
       talk      : v.talk,
+      meter     : v.page === null ? v.talk : View.view_sub(v)?.meter ?? null,
+      knobs     : View.view_pick(v),
+      plugs     : v.mcp,
+      page      : v.page?.name ?? null,
+      sub       : View.view_sub(v) ?? null,
+      hearing   : v.out.some((p) => p.msg.$ === "voice"),
       ...(note === undefined ? {} : { note }),
     });
   });
@@ -152,22 +166,55 @@ export async function boot(): Promise<void> {
   setInterval(seen, View.USE_PING);
 }
 
-// the chat the screen shows now, null for none (the agent list)
-export function show(agent: string | null): void {
-  SEEN.agent = agent;
+// the chat the screen shows now, null for none (the agent list), or the
+// page of one of its subagents, which doesn't count its spawner's chat read
+export function show(agent: string | null, sub: string | null = null): void {
+  SEEN.agent = sub === null ? agent : null;
   for (const out of agent === null ? [] : View.view_switch(v, agent)) {
     View.link_send(v, out);
+  }
+  if (agent !== null && (v.page?.name ?? null) !== sub) {
+    for (const out of View.view_act(v, { $: "Goto", name: sub })) {
+      View.link_send(v, out);
+    }
   }
   seen();
   draw();
 }
 
-export function act(a: View.Act): void {
+// failed: a message the server refused, for the box to take back
+export function act(a: View.Act, failed?: () => void): void {
   const said = a.$ === "Send" ? a.text.trim() : "";
+  const back = (answer: View.Answer) => {
+    if (answer.error !== undefined) {
+      useKi.setState({ note: answer.error });
+      failed?.();
+    }
+  };
   for (const out of View.view_act(v, a)) {
-    View.link_send(v, out, a.$ === "Send" ? (answer) => answer.error !== undefined && useKi.setState({ note: answer.error }) : undefined, said);
+    View.link_send(v, out, a.$ === "Send" ? back : undefined, said);
   }
   draw();
+}
+
+// a subagent's page near its top asks for its earlier entries
+export function earlier(): void {
+  for (const out of View.view_earlier(v)) {
+    View.link_send(v, out);
+  }
+  draw();
+}
+
+// what was said in a recording, as the server heard it
+export function voice(audio: Blob): Promise<View.Answer> {
+  return new Promise((done) => {
+    View.link_send(v, { $: "voice", type: audio.type, body: () => audio }, done);
+    draw();
+  });
+}
+
+export function note(text: string): void {
+  useKi.setState({ note: text });
 }
 
 export async function answer(id: string, ok: boolean, note: string): Promise<boolean> {
