@@ -1,3 +1,4 @@
 .tmp/
 node_modules
 web/app.js
+ui/dist

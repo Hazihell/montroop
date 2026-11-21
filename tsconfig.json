@@ -4,6 +4,7 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
     "noEmit": true,
     "lib": ["esnext", "dom", "dom.iterable"],
     "types": ["bun"],
@@ -15,5 +16,5 @@
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true
   },
-  "include": ["*.ts", "web/src/*.ts", "testing/fake/*.ts"]
+  "include": ["*.ts", "web/src/*.ts", "ui/src/*.ts", "ui/src/*.tsx", "testing/fake/*.ts"]
 }

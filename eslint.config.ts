@@ -1,8 +1,9 @@
 import { defineConfig } from "eslint/config";
+import hooks from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
 
 export default defineConfig(
-  { ignores: ["web/app.js"] },
+  { ignores: ["web/app.js", "ui/dist"] },
   tseslint.configs.strictTypeChecked,
   { languageOptions: { parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname } } },
   {
@@ -26,5 +27,6 @@ export default defineConfig(
       "@typescript-eslint/no-deprecated": ["error", { allow: [{ from: "lib", name: "keyCode" }, { from: "lib", name: "caretRangeFromPoint" }] }],
     },
   },
+  { files: ["ui/src/*.tsx"], extends: [hooks.configs.flat.recommended] },
   { files: ["**/*.js"], extends: [tseslint.configs.disableTypeChecked] },
 );
