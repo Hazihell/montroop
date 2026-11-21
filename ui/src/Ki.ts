@@ -228,6 +228,12 @@ export function import_flow(): void {
   View.link_send(v, { $: "go", on: Boolean(v.importing?.why) }, (out) => out.error !== undefined && useKi.setState({ note: out.error }));
 }
 
+// signed out: nothing of the session stays in this browser
+export function signed_out(): void {
+  Object.keys(localStorage).filter((k) => k.startsWith("ki.") && k !== "ki.look" && k !== "ki.notify").forEach((k) => localStorage.removeItem(k));
+  location.assign("/");
+}
+
 export function note(text: string): void {
   useKi.setState({ note: text });
 }
