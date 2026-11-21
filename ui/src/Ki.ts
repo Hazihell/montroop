@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { text_of } from "../../Json.ts";
+import type { Timer } from "../../Timer.ts";
 import * as View from "../../View.ts";
+import type { Mood } from "./Avatar.tsx";
 
 // what the screen draws: taken from the view at most once a frame, so a
 // reply streaming in costs one render a frame however many pieces come
@@ -12,6 +14,11 @@ type Ki = {
   team      : View.Mate[];
   rows      : View.Row[];
   stoppable : boolean;
+  mood      : Mood;
+  asks      : number;
+  timers    : Timer[];
+  jobs      : View.BgJob[];
+  talk      : View.Talk | null;
   note      : string;
 };
 
@@ -23,9 +30,45 @@ const v = View.view_new(AGENT.exec(location.pathname)?.[1] ?? localStorage.getIt
 // the chat on screen, counted read by the server while the window has focus
 const SEEN = { agent: null as string | null, at: 0, on: false, ws: null as WebSocket | null };
 
-export const useKi = create<Ki>(() => ({ signed: null, agent: v.agent, loaded: false, offline: false, team: [], rows: [], stoppable: false, note: "" }));
+export const useKi = create<Ki>(() => ({ signed: null, agent: v.agent, loaded: false, offline: false, team: [], rows: [], stoppable: false, mood: "idle", asks: 0, timers: [], jobs: [], talk: null, note: "" }));
 
 let due = false;
+
+// what the agent of the chat held does now, as its avatar shows it
+function mood(): Mood {
+  if (View.view_offline(v) || v.limit !== null) {
+    return "sleeping";
+  }
+  if (v.asks.length > 0) {
+    return "asking";
+  }
+  const last = v.live.at(-1);
+  if (last === undefined) {
+    return v.busy ? "thinking" : "idle";
+  }
+  return last.kind === "mind" ? "thinking" : last.kind === "reply" ? "writing" : "working";
+}
+
+// an agent's mood in a list: the held chat's is known closely, another's
+// from what the team list says of it
+export function mood_of(m: View.Mate, s: { agent: string; loaded: boolean; mood: Mood }): Mood {
+  if (m.id === s.agent && s.loaded) {
+    return s.mood === "idle" && m.unread > 0 ? "done" : s.mood;
+  }
+  return (m.asks ?? 0) > 0 ? "asking" : m.busy ? "working" : m.unread > 0 ? "done" : "idle";
+}
+
+export const MOODS: Record<Mood, string> = {
+  idle      : "",
+  thinking  : "Thinking",
+  working   : "Working",
+  writing   : "Writing",
+  asking    : "Needs you",
+  listening : "Listening",
+  done      : "New for you",
+  error     : "Stuck",
+  sleeping  : "Asleep",
+};
 
 function draw(): void {
   if (due) {
@@ -42,6 +85,11 @@ function draw(): void {
       team      : v.team,
       rows      : [...View.view_body(v), ...View.view_tail(v)],
       stoppable : View.view_stoppable(v),
+      mood      : mood(),
+      asks      : v.asks.length,
+      timers    : v.timers,
+      jobs      : v.bg,
+      talk      : v.talk,
       ...(note === undefined ? {} : { note }),
     });
   });

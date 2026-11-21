@@ -1,0 +1,109 @@
+/* The avatar's motion: the mood class on the root picks what the character does. Only transform
+   and opacity move, so a list of them stays cheap. */
+.av{display:block;flex:none;--av-act:color-mix(in oklab,var(--act) 72%,var(--av-fx));--av-fx:var(--ink);--av-line:light-dark(#a9a9b6,#e8e8ee)}
+.av svg{display:block;width:100%;height:100%;overflow:visible}
+.av.lit{filter:drop-shadow(0 8px 22px color-mix(in oklab,var(--c) 55%,transparent))}
+.av-g0{stop-color:color-mix(in oklab,var(--c) 42%,#fff)}
+.av-g1{stop-color:var(--c)}
+.av-g2{stop-color:color-mix(in oklab,var(--c) 60%,#000)}
+.av-all{transform-origin:60px 102px}
+.av-body{transform-origin:60px 104px;animation:av-breathe 4.2s ease-in-out infinite}
+.av-eye,.av-eyes,.av-p{transform-box:fill-box;transform-origin:50% 50%}
+.av-eye{animation:av-blink 4.6s infinite}
+.av-p{animation:av-glance 9.2s ease-in-out infinite}
+.av-sway{transform-origin:60px var(--top);animation:av-sway 4.2s ease-in-out infinite}
+.av-shut,.av-joy,.av-brow,.av-fx>g{display:none}
+@keyframes av-breathe{50%{transform:scale(1.025,.975)}}
+@keyframes av-blink{0%,93%,100%{transform:scaleY(1)}96%{transform:scaleY(.08)}}
+@keyframes av-glance{0%,58%,100%{transform:translate(0,0)}63%,74%{transform:translate(2.4px,.4px)}80%,90%{transform:translate(-2.4px,.4px)}}
+@keyframes av-sway{0%,100%{transform:rotate(-5deg)}50%{transform:rotate(5deg)}}
+
+/* Thinking: head tilted, eyes up and drifting, thought dots rising. */
+.s-thinking .av-all{animation:av-tilt 3.4s ease-in-out infinite}
+.s-thinking .av-p{animation:av-ponder 3.4s ease-in-out infinite}
+.s-thinking .av-eye{animation:none}
+.s-thinking .fx-think{display:block}
+.fx-think circle{transform-box:fill-box;transform-origin:50% 50%;animation:av-pop 1.8s ease-in-out infinite both}
+.fx-think circle:nth-child(2){animation-delay:.22s}
+.fx-think circle:nth-child(3){animation-delay:.44s}
+@keyframes av-tilt{0%,100%{transform:rotate(-6deg)}50%{transform:rotate(2deg)}}
+@keyframes av-ponder{0%,100%{transform:translate(2.2px,-2.6px)}50%{transform:translate(-.8px,-3px)}}
+@keyframes av-pop{0%,10%{transform:scale(0);opacity:0}35%,75%{transform:scale(1);opacity:.9}100%{transform:scale(.6);opacity:0}}
+
+/* Working (a tool or a thread runs): eyes down and darting, body pumping, a ring turning round. */
+.s-working .av-body{animation:av-pump .62s ease-in-out infinite}
+.s-working .av-p{animation:av-dart 1.24s steps(1) infinite}
+.s-working .av-eye{animation:none;transform:scaleY(.84)}
+.s-working .fx-work{display:block}
+.av-orbit{transform-origin:60px 66px;animation:av-spin 1.15s linear infinite}
+.s-working .av-tip,.s-working .av-halo{animation:av-beacon .62s ease-in-out infinite}
+@keyframes av-pump{0%,100%{transform:scale(1.035,.965)}50%{transform:scale(.975,1.03)}}
+@keyframes av-dart{0%{transform:translate(-2px,2.6px)}25%{transform:translate(0,2.8px)}50%{transform:translate(2px,2.6px)}75%{transform:translate(0,2.8px)}}
+@keyframes av-spin{to{transform:rotate(360deg)}}
+@keyframes av-beacon{50%{opacity:.2}}
+
+/* Writing: eyes run along a line, a typing bubble. */
+.s-writing .av-body{animation:av-bob 1.3s ease-in-out infinite}
+.s-writing .av-p{animation:av-scan 1.3s cubic-bezier(.3,0,.7,1) infinite}
+.s-writing .av-eye{animation:none}
+.s-writing .fx-write{display:block}
+.fx-write circle{animation:av-dot 1s ease-in-out infinite}
+.fx-write circle:nth-child(2){animation-delay:.15s}
+.fx-write circle:nth-child(3){animation-delay:.3s}
+@keyframes av-bob{50%{transform:translateY(-1.6px) scale(1.012,.988)}}
+@keyframes av-scan{0%,100%{transform:translate(-2.6px,1.8px)}80%{transform:translate(2.6px,1.8px)}}
+@keyframes av-dot{0%,60%,100%{transform:translateY(0);opacity:.5}30%{transform:translateY(-3px);opacity:1}}
+
+/* Asking (waits on the owner): hops, eyes wide and on you, rings going out in the accent. */
+.s-asking .av-all{animation:av-hop 1.7s cubic-bezier(.3,0,.3,1) infinite}
+.s-asking .av-eyes{transform:scale(1.12)}
+.s-asking .av-p{animation:none}
+.s-asking .fx-ask{display:block}
+.fx-ask circle{transform-origin:60px 68px;animation:av-ping 1.7s ease-out infinite both}
+.fx-ask circle:nth-child(2){animation-delay:.55s}
+@keyframes av-hop{0%,46%,100%{transform:translateY(0) scale(1)}8%{transform:translateY(0) scale(1.07,.92)}22%{transform:translateY(-10px) scale(.96,1.05)}36%{transform:translateY(0) scale(1.05,.95)}}
+@keyframes av-ping{0%{transform:scale(.92);opacity:.85}80%,100%{transform:scale(1.42);opacity:0}}
+
+/* Done: happy eyes, a little dance, sparkles. */
+.s-done .av-open{display:none}
+.s-done .av-joy{display:block}
+.s-done .av-all{animation:av-cheer 1.5s ease-in-out infinite}
+.s-done .fx-done{display:block}
+.fx-done path{transform-box:fill-box;transform-origin:50% 50%;animation:av-twinkle 1.5s ease-in-out infinite both}
+.fx-done g:nth-child(2) path{animation-delay:.25s}
+.fx-done g:nth-child(3) path{animation-delay:.5s}
+@keyframes av-cheer{0%,50%,100%{transform:translateY(0) rotate(0)}25%{transform:translateY(-7px) rotate(-5deg)}75%{transform:translateY(-7px) rotate(5deg)}}
+@keyframes av-twinkle{0%,100%{transform:scale(0) rotate(0);opacity:0}45%{transform:scale(1) rotate(45deg);opacity:1}}
+
+/* Sleeping (nothing to do for long, or its device is off): eyes shut, slow breath, dimmed. */
+.s-sleeping .av-open{display:none}
+.s-sleeping .av-shut{display:block}
+.s-sleeping .av-all{transform:rotate(5deg)}
+.s-sleeping .av-body{animation:av-doze 5.2s ease-in-out infinite;filter:saturate(.6) brightness(.78)}
+.s-sleeping .av-sway{animation:none}
+.s-sleeping .fx-sleep{display:block}
+.fx-sleep path{transform-box:fill-box;transform-origin:50% 50%;animation:av-zzz 3.9s linear infinite both}
+.fx-sleep path:nth-child(2){animation-delay:1.3s}
+.fx-sleep path:nth-child(3){animation-delay:2.6s}
+@keyframes av-doze{50%{transform:scale(1.045,.955)}}
+@keyframes av-zzz{0%{transform:translate(-9px,12px) scale(.55);opacity:0}25%{opacity:.9}100%{transform:translate(10px,-14px) scale(1.15);opacity:0}}
+
+/* Error: a shake, worried brows, small pupils, a drop of sweat. */
+.s-error .av-all{animation:av-shake 2.2s ease-in-out infinite}
+.s-error .av-p{animation:none;transform:scale(.72)}
+.s-error .av-eye{animation:none}
+.s-error .av-brow,.s-error .fx-error{display:block}
+.fx-error path{animation:av-drip 2.2s ease-in infinite both}
+@keyframes av-shake{0%,30%,100%{transform:translateX(0)}5%,15%,25%{transform:translateX(-3.5px) rotate(-2deg)}10%,20%{transform:translateX(3.5px) rotate(2deg)}}
+@keyframes av-drip{0%{transform:translateY(-4px);opacity:0}20%{opacity:1}70%,100%{transform:translateY(16px);opacity:0}}
+
+/* Listening (the mic is on): leans in, eyes wide, sound coming in from both sides. */
+.s-listening .av-all{animation:av-lean 2s ease-in-out infinite}
+.s-listening .av-eyes{transform:scale(1.1)}
+.s-listening .fx-listen{display:block}
+.fx-listen path{animation:av-wave 1.2s ease-in-out infinite both}
+.fx-listen path:nth-child(even){animation-delay:.3s}
+@keyframes av-lean{0%,100%{transform:scale(1.03)}50%{transform:scale(1.07)}}
+@keyframes av-wave{0%,100%{opacity:.12}50%{opacity:.95}}
+
+@media (prefers-reduced-motion:reduce){.av *{animation:none!important}}

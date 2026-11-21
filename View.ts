@@ -28,8 +28,9 @@ type Node = { text: string; to: string };
 // of: a tool call's id, while it waits for its result
 export type Live = { kind: Kind; text: string; of?: string };
 
-// an agent as the chat list shows it: last, its last message's gist
-export type Mate = { id: string; name: string; about: string; picture: string; unread: number; last: string; busy: boolean; archived: number; subs?: SubRow[] };
+// an agent as the chat list shows it: last, its last message's gist; asks,
+// how many of its calls wait for the owner's yes
+export type Mate = { id: string; name: string; about: string; picture: string; unread: number; last: string; busy: boolean; asks?: number; archived: number; subs?: SubRow[] };
 
 // a subagent's page: its log as loaded (from: how many of its first
 // entries aren't yet), what it says now, whether it is done (#116)

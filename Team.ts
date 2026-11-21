@@ -107,9 +107,12 @@ export namespace Team {
     return { name, about, picture, prompt: own === Team.default_prompt(name) ? null : own, claude };
   }
 
+  // a drawn avatar: its shape, eyes, glasses and extra, then its two colors
+  export const DRAWN = /^av:[a-z]{1,12}(?:\.[a-z]{1,12}){3}(?:\.[0-9a-f]{6}){2}$/;
+
   export function picture_ok(picture: string): boolean {
     const head = /^head-(\d\d)$/.exec(picture);
-    return (head !== null && Number(head[1]) >= 1 && Number(head[1]) <= HEADS) || /^\/media\/(?:[a-z0-9]{1,16}\/)?[0-9a-f]{16}\.(png|jpeg|webp)$/.test(picture) || picture === LOGO;
+    return (head !== null && Number(head[1]) >= 1 && Number(head[1]) <= HEADS) || /^\/media\/(?:[a-z0-9]{1,16}\/)?[0-9a-f]{16}\.(png|jpeg|webp)$/.test(picture) || picture === LOGO || DRAWN.test(picture);
   }
 
   export function head_random(): string {

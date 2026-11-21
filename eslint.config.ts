@@ -3,7 +3,7 @@ import hooks from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
 
 export default defineConfig(
-  { ignores: ["web/app.js", "ui/dist"] },
+  { ignores: ["web/app.js", "ui/dist", ".impeccable"] },
   tseslint.configs.strictTypeChecked,
   { languageOptions: { parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname } } },
   {

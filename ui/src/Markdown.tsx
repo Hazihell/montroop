@@ -14,7 +14,7 @@ export function Copy({ text }: { text: string }): ReactNode {
     });
   };
   return (
-    <button type="button" className="tap text-muted hover:text-ink" aria-label={done ? "Copied" : "Copy"} onClick={copy}>
+    <button type="button" className="copy" aria-label={done ? "Copied" : "Copy"} onClick={copy}>
       {done ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
     </button>
   );
@@ -23,8 +23,8 @@ export function Copy({ text }: { text: string }): ReactNode {
 function Chip({ url, name }: { url: string; name: string }): ReactNode {
   const shown = name.trim() || (url.split("/").pop() ?? "");
   return (
-    <a className="inline-flex max-w-full items-center gap-1.5 rounded-control border border-line px-2 py-1 text-sm" href={url} download={shown}>
-      <PaperclipIcon size={16} className="shrink-0 text-muted" />
+    <a className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-raise px-3 py-1.5 text-sm" href={url} download={shown}>
+      <PaperclipIcon size={16} className="shrink-0 text-dim" />
       <span className="truncate">{shown}</span>
     </a>
   );

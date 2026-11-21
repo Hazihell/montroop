@@ -1,51 +1,30 @@
-import { CaretLeftIcon, XIcon } from "@phosphor-icons/react";
-import { createRootRoute, createRoute, createRouter, Link, Outlet, useNavigate, useParams } from "@tanstack/react-router";
+import { ChatCircleIcon, PlayIcon, TreeStructureIcon, UsersThreeIcon, XIcon } from "@phosphor-icons/react";
+import { createRootRoute, createRoute, createRouter, Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
+import { Avatar, Face, look_of } from "./Avatar.tsx";
 import { Composer } from "./Composer.tsx";
-import { noted, show, useKi } from "./Ki.ts";
-import { Face } from "./Rows.tsx";
+import { MOODS, mood_of, noted, show, useKi } from "./Ki.ts";
+import { Look } from "./Look.tsx";
+import { Memory, Running, Settings, Team } from "./Pages.tsx";
 import { Timeline } from "./Timeline.tsx";
 
 const NOTE = 6000;
 
 function SignIn(): ReactNode {
   return (
-    <form className="m-auto flex w-full max-w-sm flex-col gap-3 p-6" method="post" action="/auth">
-      <h1 className="text-xl font-semibold">Sign in</h1>
-      <p className="text-muted">This Ki server is private. On the computer it runs on, run <code className="font-mono text-sm">ki serve login</code> and type the code it prints here.</p>
+    <form className="m-auto flex w-full max-w-sm flex-col items-start gap-3 p-6" method="post" action="/auth">
+      <Avatar look={look_of("", "ki")} mood="asking" size={104} lit />
+      <h1 className="text-4xl font-extrabold tracking-tight">Sign in</h1>
+      <p className="text-mid">This Ki server is private. On the computer it runs on, run <code className="font-mono text-[0.84em]">ki serve login</code> and type the code it prints here.</p>
       <input type="hidden" name="to" value={location.pathname} />
-      <input className="field text-center text-xl tracking-widest" name="code" inputMode="numeric" autoComplete="one-time-code" autoFocus aria-label="Sign-in code" />
-      <button type="submit" className="btn primary">Sign in</button>
+      <input className="field text-center font-mono text-xl tracking-[0.3em]" name="code" inputMode="numeric" autoComplete="one-time-code" autoFocus aria-label="Sign-in code" />
+      <button type="submit" className="pillbtn go w-full">Sign in</button>
     </form>
   );
 }
 
-function Agents(): ReactNode {
-  const team = useKi((s) => s.team);
-  const here = useParams({ strict: false }).agent;
-  return (
-    <nav aria-label="Agents" className="flex h-full flex-col overflow-y-auto pb-[env(safe-area-inset-bottom)]">
-      <h1 className="px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-2 text-xl font-semibold">Ki</h1>
-      {team.filter((m) => m.archived === 0).map((m) => (
-        <div key={m.id}>
-          <Link to="/a/$agent" params={{ agent: m.id }} className="mate" aria-current={m.id === here ? "page" : undefined}>
-            <Face picture={m.picture} size={40} />
-            <span className="flex min-w-0 flex-1 flex-col">
-              <span className="flex items-center gap-2"><b className="truncate font-semibold">{m.name}</b>{m.busy ? <i className="busy" aria-label="Working" /> : null}</span>
-              <span className="truncate text-sm text-muted">{m.last}</span>
-            </span>
-            {m.unread > 0 ? <span className="pill" aria-label={m.unread + " unread"}>{m.unread}</span> : null}
-          </Link>
-          {(m.subs ?? []).map((s) => (
-            <p key={s.name} className="flex gap-2 py-1 pr-4 pl-17 text-sm">
-              <span className="shrink-0 font-semibold">{s.name}</span>
-              <span className="truncate text-muted">{s.doing === "" ? s.task : s.doing}</span>
-            </p>
-          ))}
-        </div>
-      ))}
-    </nav>
-  );
+function Wait(): ReactNode {
+  return <div className="grid flex-1 place-items-center"><p className="wait" role="status" aria-label="Loading"><i /><i /><i /></p></div>;
 }
 
 function Note(): ReactNode {
@@ -58,37 +37,56 @@ function Note(): ReactNode {
     return null;
   }
   return (
-    <p role="status" className="fixed inset-x-3 top-[max(0.75rem,env(safe-area-inset-top))] z-10 mx-auto flex max-w-md items-center gap-2 rounded-card border border-line bg-surface py-1 pr-1 pl-4 shadow-lg">
+    <p role="status" className="toast gl">
       <span className="min-w-0 flex-1">{note}</span>
-      <button type="button" className="tap" aria-label="Dismiss" onClick={noted}><XIcon size={16} /></button>
+      <button type="button" className="round small" aria-label="Dismiss" onClick={noted}><XIcon size={16} weight="bold" /></button>
     </p>
+  );
+}
+
+// the four places: the chat last open, what runs, what is kept, who is there
+function Bar(): ReactNode {
+  const agent = useKi((s) => s.agent);
+  const first = useKi((s) => s.team.find((m) => m.archived === 0)?.id ?? "");
+  const going = useKi((s) => s.team.filter((m) => m.archived === 0 && (m.busy || (m.asks ?? 0) > 0)).length);
+  const to = agent === "" ? first : agent;
+  return (
+    <nav className="bar gl" aria-label="Places">
+      {to === ""
+        ? <Link to="/"><span><ChatCircleIcon size={23} /></span>Chat</Link>
+        : <Link to="/a/$agent" params={{ agent: to }}>{({ isActive }) => <><span><ChatCircleIcon size={23} weight={isActive ? "fill" : "regular"} /></span>Chat</>}</Link>}
+      <Link to="/running">{({ isActive }) => <><span><PlayIcon size={23} weight={isActive ? "fill" : "bold"} />{going > 0 ? <em aria-label={going + " at work"}>{going}</em> : null}</span>Running</>}</Link>
+      <Link to="/memory">{({ isActive }) => <><span><TreeStructureIcon size={23} weight={isActive ? "fill" : "regular"} /></span>Memory</>}</Link>
+      <Link to="/team">{({ isActive }) => <><span><UsersThreeIcon size={23} weight={isActive ? "fill" : "regular"} /></span>Team</>}</Link>
+    </nav>
   );
 }
 
 function Shell(): ReactNode {
   const signed = useKi((s) => s.signed);
+  const at = /^\/(team|running|memory|settings)/.exec(useLocation().pathname)?.[1] ?? "chat";
   if (signed === null) {
     return null;
   }
-  if (!signed) {
-    return <div className="flex h-full"><SignIn /></div>;
-  }
   return (
-    <div className="flex h-full">
-      <aside className="hidden w-80 shrink-0 border-r border-line md:block"><Agents /></aside>
-      <main className="min-w-0 flex-1"><Outlet /></main>
+    <div className="shell">
+      <div className="aurora" data-at={at === "settings" ? "team" : at}><i /><i /><i /></div>
+      {signed ? <><Outlet /><Bar /></> : <div className="flex h-full"><SignIn /></div>}
       <Note />
     </div>
   );
 }
 
+// the chat last open, else the first agent's
 function Home(): ReactNode {
-  return (
-    <>
-      <div className="h-full md:hidden"><Agents /></div>
-      <p className="hidden h-full place-items-center text-muted md:grid">Pick an agent to open its chat.</p>
-    </>
-  );
+  const navigate = useNavigate();
+  const agent = useKi((s) => s.agent || (s.team.find((m) => m.archived === 0)?.id ?? ""));
+  useEffect(() => {
+    if (agent !== "") {
+      void navigate({ to: "/a/$agent", params: { agent }, replace: true });
+    }
+  }, [agent, navigate]);
+  return <section className="page"><Wait /></section>;
 }
 
 function Chat(): ReactNode {
@@ -96,6 +94,7 @@ function Chat(): ReactNode {
   const navigate = useNavigate();
   const mate = useKi((s) => s.team.find((m) => m.id === agent));
   const loaded = useKi((s) => s.loaded && s.agent === agent);
+  const mood = useKi((s) => (mate === undefined ? "idle" : mood_of(mate, s)));
   const offline = useKi((s) => s.offline);
   useEffect(() => {
     show(agent);
@@ -107,27 +106,34 @@ function Chat(): ReactNode {
       void navigate({ to: "/a/$agent", params: { agent: s.agent }, replace: true });
     }
   }), [agent, navigate]);
+  const doing = offline ? "Offline" : MOODS[mood];
   return (
-    <section className="flex h-full flex-col">
-      <header className="flex items-center gap-2 border-b border-line px-1 pt-[env(safe-area-inset-top)] md:px-4">
-        <Link to="/" className="tap md:hidden" aria-label="All agents"><CaretLeftIcon size={20} /></Link>
-        <Face picture={mate?.picture ?? ""} size={32} />
-        <h1 className="flex min-h-14 min-w-0 flex-1 flex-col justify-center">
-          <b className="truncate font-semibold">{mate?.name ?? ""}</b>
-          <span className="truncate text-sm font-normal text-muted">{offline ? "Offline, trying again" : mate?.busy === true ? "Working" : mate?.about ?? ""}</span>
-        </h1>
-      </header>
-      {loaded ? <Timeline key={agent} /> : <div className="grid flex-1 place-items-center"><p className="wait" role="status" aria-label="Loading"><i /><i /><i /></p></div>}
-      <Composer />
+    <section className="page">
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <header className="top">
+          <Link to="/a/$agent/look" params={{ agent }} className="isl" aria-label={(mate?.name ?? "This agent") + ": change its look"}>
+            <Face picture={mate?.picture ?? ""} id={agent} mood={mood} size={56} />
+            <b>{mate?.name ?? ""}</b>
+            {doing === "" ? null : <span>{doing}</span>}
+          </Link>
+        </header>
+        {loaded ? <Timeline key={agent} /> : <Wait />}
+        <Composer name={mate?.name ?? ""} />
+      </div>
     </section>
   );
 }
 
-const root = createRootRoute({ component: Shell });
-const home = createRoute({ getParentRoute: () => root, path: "/", component: Home });
-const chat = createRoute({ getParentRoute: () => root, path: "/a/$agent", component: Chat });
+const root     = createRootRoute({ component: Shell });
+const home     = createRoute({ getParentRoute: () => root, path: "/", component: Home });
+const chat     = createRoute({ getParentRoute: () => root, path: "/a/$agent", component: Chat });
+const look     = createRoute({ getParentRoute: () => root, path: "/a/$agent/look", component: () => <Look agent={look.useParams().agent} /> });
+const running  = createRoute({ getParentRoute: () => root, path: "/running", component: Running });
+const memory   = createRoute({ getParentRoute: () => root, path: "/memory", component: Memory });
+const team     = createRoute({ getParentRoute: () => root, path: "/team", component: Team });
+const settings = createRoute({ getParentRoute: () => root, path: "/settings", component: Settings });
 
-export const router = createRouter({ routeTree: root.addChildren([home, chat]) });
+export const router = createRouter({ routeTree: root.addChildren([home, chat, look, running, memory, team, settings]) });
 
 declare module "@tanstack/react-router" {
   interface Register {

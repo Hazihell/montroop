@@ -1,21 +1,39 @@
 import {
   AlarmIcon, BookOpenTextIcon, CalendarBlankIcon, CaretDownIcon, CaretRightIcon, ChatCircleTextIcon, FilePlusIcon, HandPalmIcon, type Icon, MagnifyingGlassIcon,
-  MagnifyingGlassPlusIcon, PencilSimpleLineIcon, ShieldWarningIcon, TerminalWindowIcon, UsersThreeIcon, WrenchIcon, XCircleIcon,
+  MagnifyingGlassPlusIcon, PencilSimpleLineIcon, TerminalWindowIcon, UsersThreeIcon, WrenchIcon, XCircleIcon,
 } from "@phosphor-icons/react";
 import { memo, useState, type CSSProperties, type ReactNode } from "react";
+import { create } from "zustand";
 import * as Call from "../../Call.ts";
 import * as Md from "../../Md.ts";
 import * as View from "../../View.ts";
+import { Face } from "./Avatar.tsx";
 import { act, answer, useKi } from "./Ki.ts";
 import { Blocks, Copy } from "./Markdown.tsx";
 
 type Of<K extends View.Row["$"]> = Extract<View.Row, { $: K }>;
 
+// a run of finished tool calls, shown as one line saying what was done:
+// opened, its calls follow it one by one
+type Work = { $: "Work"; id: string; lines: Array<Of<"Line">>; open: boolean };
+
 // the timeline's items: an opened fold's rows come flat after its head,
 // one level deeper, so a long opened fold is drawn row by row as any other
-export type Item = { key: string; depth: number; row: View.Row };
+export type Item = { key: string; depth: number; row: View.Row | Work };
 
-export function items_of(rows: View.Row[]): Item[] {
+const RUN = 2;
+
+export const useWork = create<{ open: ReadonlySet<string> }>(() => ({ open: new Set() }));
+
+function work_toggle(id: string): void {
+  const open = new Set(useWork.getState().open);
+  if (!open.delete(id)) {
+    open.add(id);
+  }
+  useWork.setState({ open });
+}
+
+export function items_of(rows: View.Row[], open: ReadonlySet<string>): Item[] {
   const seen = new Map<string, number>();
   const out: Item[] = [];
   const key = (base: string) => {
@@ -23,14 +41,25 @@ export function items_of(rows: View.Row[]): Item[] {
     seen.set(base, n + 1);
     return base + "." + n;
   };
+  const one = (row: View.Row, depth: number) => {
+    const id = row.$ === "Ask" ? row.ask.id : row.$ === "Sum" || row.$ === "Box" ? row.id + "+" + row.n : row.$ === "Cap" ? "" : String(row.id);
+    out.push({ key: key(row.$ + id), depth, row });
+  };
   const walk = (list: View.Row[], depth: number) => {
-    for (const row of list) {
-      if (row.$ === "Box") {
-        out.push({ key: key("box" + row.id + "+" + row.n), depth, row });
-        walk(row.rows, depth + 1);
+    for (let k = 0; k < list.length; k++) {
+      const row = list[k];
+      const run: Array<Of<"Line">> = [];
+      for (let next = list[k + run.length]; next?.$ === "Line" && next.phase === undefined; next = list[k + run.length]) {
+        run.push(next);
+      }
+      if (run.length >= RUN) {
+        const id = "w" + String(run[0]?.id) + "d" + depth;
+        out.push({ key: key(id), depth, row: { $: "Work", id, lines: run, open: open.has(id) } });
+        open.has(id) && run.forEach((line) => one(line, depth + 1));
+        k += run.length - 1;
       } else {
-        const id = row.$ === "Ask" ? row.ask.id : row.$ === "Sum" ? row.id + "+" + row.n : row.$ === "Cap" ? "" : String(row.id);
-        out.push({ key: key(row.$ + id), depth, row });
+        one(row, depth);
+        row.$ === "Box" && walk(row.rows, depth + 1);
       }
     }
   };
@@ -56,24 +85,18 @@ const TOOLS: Record<string, Icon> = {
 
 function ToolIcon({ name }: { name: string }): ReactNode {
   const Shown = TOOLS[name] ?? WrenchIcon;
-  return <Shown size={16} className="shrink-0 text-muted" />;
-}
-
-export function Face({ picture, size }: { picture: string; size: number }): ReactNode {
-  const src = picture === "logo" ? "/mark.svg" : /^head-\d\d$/.test(picture) ? "/heads/" + picture + ".svg" : picture;
-  const style = { width: size, height: size };
-  return src === "" ? <span className="face" style={style} /> : <img className="face" style={style} src={src} alt="" />;
+  return <Shown size={17} />;
 }
 
 function Sum({ row }: { row: Of<"Sum"> }): ReactNode {
   if (row.n === 1) {
-    return <p className="text-sm text-muted">{row.text}</p>;
+    return <p className="cap">{row.text}</p>;
   }
   return (
     <button type="button" className="fold" aria-expanded={false} onClick={() => act({ $: "Open", id: row.id, n: row.n })}>
-      <CaretRightIcon size={14} className="mt-1 shrink-0" />
       <span className="count">{row.msgs}</span>
-      <span className="line-clamp-2 text-left">{row.text}</span>
+      <span className="line-clamp-2 min-w-0 flex-1">{row.text}</span>
+      <CaretRightIcon size={14} weight="bold" />
     </button>
   );
 }
@@ -81,9 +104,9 @@ function Sum({ row }: { row: Of<"Sum"> }): ReactNode {
 function BoxHead({ row }: { row: Of<"Box"> }): ReactNode {
   return (
     <button type="button" className="fold" aria-expanded onClick={() => act({ $: "Shut", id: row.id, n: row.n })}>
-      <CaretDownIcon size={14} className="mt-1 shrink-0" />
       <span className="count">{row.msgs}</span>
-      <span>messages, opened</span>
+      <span className="min-w-0 flex-1">messages, opened</span>
+      <CaretDownIcon size={14} weight="bold" />
     </button>
   );
 }
@@ -116,13 +139,14 @@ function Said({ row }: { row: Of<"Msg"> }): ReactNode {
   const mate = useKi((s) => s.team.find((m) => m.id === row.from));
   const gist = Md.md_flat(Call.report_read(row.text)?.text ?? row.text);
   return (
-    <details className="said">
-      <summary>
-        <Face picture={mate?.picture ?? ""} size={20} />
+    <details className="said card gl">
+      <summary className="who">
+        <Face picture={mate?.picture ?? ""} id={row.from ?? ""} size={30} />
         <b>{mate?.name ?? row.who}</b>
-        <span className="truncate text-muted">{gist}</span>
+        <span>{gist}</span>
+        <CaretRightIcon size={14} weight="bold" className="shrink-0 text-dim [[open]>summary>&]:rotate-90" />
       </summary>
-      <div className="prose mt-2"><Blocks x={row.body} /></div>
+      <div className="prose mt-1"><Blocks x={row.body} /></div>
       <Pics names={row.images} />
     </details>
   );
@@ -134,8 +158,8 @@ function Msg({ row }: { row: Of<"Msg"> }): ReactNode {
   }
   const state = (row.queued === true ? " queued" : "") + (row.writing === true ? " writing" : "");
   return (
-    <div className={"msg " + row.kind + state}>
-      {row.who === "" ? null : <p className="who">{row.who}</p>}
+    <div className={"msg " + row.kind + state + (row.kind === "work" ? " card gl" : "")}>
+      {row.who === "" ? null : <p className="who"><b>{row.who}</b></p>}
       <div className="prose">{row.call === null ? <Blocks x={row.body} /> : <CallBody call={row.call} />}</div>
       <Pics names={row.images} />
       {row.queued === true ? <p className="who">Queued</p> : null}
@@ -144,28 +168,65 @@ function Msg({ row }: { row: Of<"Msg"> }): ReactNode {
   );
 }
 
+function failed(row: Of<"Line">): boolean {
+  return row.echo?.startsWith("error") === true;
+}
+
+// the lines a write or an edit added and took out, as its result's diff says
+function changed(row: Of<"Line">): [number, number] | null {
+  if ((row.call.name !== "write" && row.call.name !== "edit") || row.echo === null || failed(row)) {
+    return null;
+  }
+  const lines = row.echo.split("\n");
+  return [lines.filter((l) => /^\+(?!\+\+)/.test(l)).length, lines.filter((l) => /^-(?!--)/.test(l)).length];
+}
+
+function Changed({ n }: { n: [number, number] }): ReactNode {
+  return <span className="shrink-0 font-mono text-[0.8125rem] whitespace-nowrap tabular-nums"><span className="text-ok">+{n[0]}</span> <span className="text-bad">−{n[1]}</span></span>;
+}
+
+const DID: Array<[string[], string, string]> = [[["shell"], "ran", "command"], [["write", "edit"], "edited", "file"], [["read"], "read", "file"], [["search", "zoom"], "looked back", "time"]];
+
+// what a run of calls did, by its two largest kinds, the rest counted
+function did(lines: Array<Of<"Line">>): string {
+  const count = (names: string[]) => lines.filter((l) => names.includes(l.call.name)).length;
+  const said = DID.map(([names, verb, thing]) => [count(names), verb, thing] as const).filter(([n]) => n > 0).sort((a, b) => b[0] - a[0]).slice(0, 2);
+  const rest = lines.length - said.reduce((sum, [n]) => sum + n, 0);
+  const all = [...said.map(([n, verb, thing]) => verb + " " + n + " " + thing + (n === 1 ? "" : "s")), ...(rest === 0 ? [] : said.length === 0 ? ["used " + rest + " tools"] : [rest + " more"])].join(", ");
+  return all.charAt(0).toUpperCase() + all.slice(1);
+}
+
+function WorkHead({ row }: { row: Work }): ReactNode {
+  const sums = row.lines.map(changed).filter((n) => n !== null);
+  return (
+    <button type="button" className="line work" aria-expanded={row.open} onClick={() => work_toggle(row.id)}>
+      <TerminalWindowIcon size={17} />
+      <span className="min-w-0 truncate">{did(row.lines)}</span>
+      <CaretRightIcon size={13} weight="bold" className={"shrink-0 text-dim" + (row.open ? " rotate-90" : "")} />
+      {sums.length === 0 ? null : <span className="ml-auto"><Changed n={[sums.reduce((sum, n) => sum + n[0], 0), sums.reduce((sum, n) => sum + n[1], 0)]} /></span>}
+      {row.lines.some(failed) ? <XCircleIcon size={17} weight="fill" className={"shrink-0 text-bad" + (sums.length === 0 ? " ml-auto" : "")} aria-label="A call failed" /> : null}
+    </button>
+  );
+}
+
 function Line({ row }: { row: Of<"Line"> }): ReactNode {
   const [open, setOpen] = useState(false);
   const c = row.call;
-  const failed = row.echo?.startsWith("error") === true;
   const files = c.name === "write" || c.name === "edit";
-  const lines = files && row.echo !== null && !failed ? row.echo.split("\n") : null;
+  const lines = changed(row);
   return (
     <details className={"line" + (row.phase === undefined ? "" : " " + row.phase)} open={open} onToggle={(ev) => setOpen(ev.currentTarget.open)}>
       <summary>
         <ToolIcon name={c.name} />
         {c.name === "" ? null : <b>{c.name}</b>}
         <span className={files ? "arg path" : "arg"}><bdi>{c.head.trim().replace(/\s*\n\s*/g, " ")}</bdi></span>
-        {lines === null ? null : (
-          <span className="shrink-0 tabular-nums">
-            <b className="text-ok">+{lines.filter((l) => /^\+(?!\+\+)/.test(l)).length}</b> <b className="text-bad">−{lines.filter((l) => /^-(?!--)/.test(l)).length}</b>
-          </span>
-        )}
-        {failed ? <XCircleIcon size={16} weight="fill" className="shrink-0 text-bad" aria-label="Failed" /> : null}
-        {c.device === "" ? null : <span className="shrink-0 text-muted">{c.device}</span>}
+        {lines === null ? null : <Changed n={lines} />}
+        {failed(row) ? <XCircleIcon size={17} weight="fill" className="shrink-0 text-bad" aria-label="Failed" /> : null}
+        {c.device === "" ? null : <span className="shrink-0 text-dim">{c.device}</span>}
+        <CaretRightIcon size={13} weight="bold" className={"shrink-0 text-dim" + (open ? " rotate-90" : "")} />
       </summary>
       {open ? (
-        <div className="prose mt-2">
+        <div className="prose mt-1.5">
           {row.rows.map((part, k) => part.$ !== "Msg" ? null : (
             <div key={k}>
               {part.call === null ? <Blocks x={part.body} /> : <CallBody call={part.call} />}
@@ -193,17 +254,14 @@ function Ask({ row }: { row: Of<"Ask"> }): ReactNode {
     void answer(row.ask.id, ok, note.trim()).then((done) => done || setSent(false));
   };
   return (
-    <div className="ask" role="group" aria-label={View.ASKS + ": " + row.ask.what}>
-      <p className="flex items-center gap-2 font-semibold">
-        <ShieldWarningIcon size={18} className="shrink-0 text-action" />
-        <span>{row.ask.what}</span>
-        {row.ask.who === "" ? null : <span className="font-normal text-muted">{row.ask.who}</span>}
-      </p>
-      <div className="prose my-2 text-sm"><CallBody call={row.call} /></div>
+    <div className="ask card" role="group" aria-label={View.ASKS + ": " + row.ask.what}>
+      <h3>{row.ask.what}</h3>
+      {row.ask.who === "" ? null : <p className="cap">asked by {row.ask.who}</p>}
+      <div className="prose my-2.5 text-[0.9375rem]"><CallBody call={row.call} /></div>
       <input className="field" maxLength={2000} placeholder="Note for the agent (optional)" aria-label="Note for the agent" autoComplete="off" value={note} onChange={(ev) => setNote(ev.target.value)} />
-      <div className="mt-2 flex gap-2">
-        <button type="button" className="btn flex-1" disabled={sent} onClick={() => say(false)}>Deny</button>
-        <button type="button" className="btn primary flex-1" disabled={sent} onClick={() => say(true)}>Approve</button>
+      <div className="mt-3 flex gap-2">
+        <button type="button" className="pillbtn go" disabled={sent} onClick={() => say(true)}>Approve</button>
+        <button type="button" className="pillbtn" disabled={sent} onClick={() => say(false)}>Deny</button>
       </div>
     </div>
   );
@@ -222,14 +280,18 @@ function same(a: { item: Item }, b: { item: Item }): boolean {
   if (x.$ === "Box" && y.$ === "Box") {
     return x.id === y.id && x.n === y.n && x.msgs === y.msgs;
   }
+  if (x.$ === "Work" && y.$ === "Work") {
+    return x.id === y.id && x.open === y.open && x.lines.length === y.lines.length && x.lines.at(-1)?.echo === y.lines.at(-1)?.echo;
+  }
   return x === y;
 }
 
 export const Row = memo(function Row({ item }: { item: Item }): ReactNode {
   const row = item.row;
   return (
-    <div className="row" style={{ "--depth": item.depth } as CSSProperties}>
-      {row.$ === "Sum" ? <Sum row={row} />
+    <div className={"row" + (row.$ === "Line" || row.$ === "Work" ? " thin" : "")} style={{ "--depth": item.depth } as CSSProperties}>
+      {row.$ === "Work" ? <WorkHead row={row} />
+        : row.$ === "Sum" ? <Sum row={row} />
         : row.$ === "Box" ? <BoxHead row={row} />
         : row.$ === "Msg" ? <Msg row={row} />
         : row.$ === "Line" ? <Line row={row} />

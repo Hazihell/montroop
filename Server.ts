@@ -2145,7 +2145,7 @@ export namespace Main {
   export function mates(): Mate[] {
     return Team.all().map((a) => {
       const chat = Main.chats.get(a.id);
-      return { id: a.id, name: a.name, about: a.about, picture: a.picture, unread: a.unread, last: chat === undefined ? "" : Chat.last(chat), busy: chat?.main.busy === true, archived: a.archived, subs: chat === undefined ? [] : [...chat.subs.values()].map((sub) => Chat.sub_row(chat, sub)) };
+      return { id: a.id, name: a.name, about: a.about, picture: a.picture, unread: a.unread, last: chat === undefined ? "" : Chat.last(chat), busy: chat?.main.busy === true, asks: chat === undefined ? 0 : Gate.shown(chat.tools.gate, chat.id).length, archived: a.archived, subs: chat === undefined ? [] : [...chat.subs.values()].map((sub) => Chat.sub_row(chat, sub)) };
     });
   }
 
@@ -2710,7 +2710,10 @@ export namespace Main {
     Push.keys();
     Main.tools = Tools.serve({
       note   : (text) => Chat.note(Main.first(), text),
-      change : () => Main.chats.forEach((chat) => Chat.change(chat)),
+      change : () => {
+        Main.chats.forEach((chat) => Chat.change(chat));
+        Main.team_soon();
+      },
       off    : () => config.MCP_OFF,
       asked  : (a) => Main.asked(a),
     });
