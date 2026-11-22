@@ -53,6 +53,7 @@ export function Timeline({ sub, head }: { sub: boolean; head: HTMLElement | null
   // smooth scroll's target, which a phone then drops midway: only a drawn row
   // is slid to
   const up = () => {
+    touched();
     const state = list.current?.getState();
     const at = higher();
     if (state !== undefined && at >= 0) {
@@ -65,13 +66,29 @@ export function Timeline({ sub, head }: { sub: boolean; head: HTMLElement | null
     void list.current?.scrollToEnd({ animated: state !== undefined && state.distanceFromEnd < 2 * state.scrollLength });
   };
   const count = items.length;
+  // until the owner touches the chat it holds its end: the rows drawn from
+  // this browser's copy, which can be old, give way to the server's, and
+  // keeping the rows on screen in place would leave the chat far from its end
+  const held = useRef(true);
+  const touched = () => {
+    held.current = false;
+  };
+  useEffect(() => {
+    if (!held.current) {
+      return undefined;
+    }
+    const end = () => void list.current?.scrollToEnd({ animated: false });
+    end();
+    const id = setTimeout(end, 150);
+    return () => clearTimeout(id);
+  }, [rows]);
   useEffect(() => {
     const id = setTimeout(() => setAbove(higher() >= 0), 400);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per row count: higher reads the list as it is then
   }, [count]);
   return (
-    <div className="talk" ref={talk}>
+    <div className="talk" ref={talk} onTouchStart={touched} onWheel={touched} onPointerDown={touched} onKeyDown={touched}>
       <LegendList
         ref={list}
         data={items}

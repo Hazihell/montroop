@@ -1,11 +1,13 @@
-import { ArrowLeftIcon, ChatCircleIcon, PlayIcon, TreeStructureIcon, UsersThreeIcon, XIcon } from "@phosphor-icons/react";
-import { createRootRoute, createRoute, createRouter, lazyRouteComponent, Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
-import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
+import { PlayIcon, SlidersHorizontalIcon, TreeStructureIcon, UsersThreeIcon, XIcon } from "@phosphor-icons/react";
+import { createRootRoute, createRoute, createRouter, lazyRouteComponent, Link, Outlet, redirect, useLocation, useNavigate } from "@tanstack/react-router";
+import { lazy, Suspense, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import * as View from "../../View.ts";
 import { Avatar, Face, look_of } from "./Avatar.tsx";
 import { Composer } from "./Composer.tsx";
 import { intro_end, MOODS, mood_of, noted, show, useKi, welcomed } from "./Ki.ts";
-import { Memory, Running, Team } from "./Pages.tsx";
+import { Back, useBack, useEdgeBack } from "./Back.tsx";
+import { TOP } from "./Based.ts";
+import { Agents, Memory, Running } from "./Pages.tsx";
 import { Timeline } from "./Timeline.tsx";
 import { Viewer } from "./Viewer.tsx";
 
@@ -89,35 +91,47 @@ function Intro(): ReactNode {
   );
 }
 
-// the four places: the chat last open, what runs, what is kept, who is there
+// a screen wide enough for the list beside the open chat
+const WIDE = matchMedia("(min-width: 64rem)");
+const wide_on = (then: () => void) => {
+  WIDE.addEventListener("change", then);
+  return () => WIDE.removeEventListener("change", then);
+};
+
+function useWide(): boolean {
+  return useSyncExternalStore(wide_on, () => WIDE.matches);
+}
+
+// the four places: the agents, what runs, what is kept, how Ki works; a
+// chat or a page on top of them goes full screen without it
 function Bar(): ReactNode {
-  const agent = useKi((s) => s.agent);
-  const first = useKi((s) => s.team.find((m) => m.archived === 0)?.id ?? "");
   const going = useKi((s) => s.team.filter((m) => m.archived === 0 && (m.busy || (m.asks ?? 0) > 0)).length);
-  const to = agent === "" ? first : agent;
-  const tree = useLocation().pathname === "/tree";
+  const path = useLocation().pathname;
+  const home = path === "/" || path.startsWith("/a/") || path === "/new";
   return (
     <nav className="bar gl" aria-label="Places">
-      {to === ""
-        ? <Link to="/"><span><ChatCircleIcon size={23} /></span>Chat</Link>
-        : <Link to="/a/$agent" params={{ agent: to }}>{({ isActive }) => <><span><ChatCircleIcon size={23} weight={isActive ? "fill" : "regular"} /></span>Chat</>}</Link>}
+      <Link to="/" aria-current={home ? "page" : undefined}><span><UsersThreeIcon size={23} weight={home ? "fill" : "regular"} /></span>Agents</Link>
       <Link to="/running">{({ isActive }) => <><span><PlayIcon size={23} weight={isActive ? "fill" : "bold"} />{going > 0 ? <em aria-label={going + " at work"}>{going}</em> : null}</span>Running</>}</Link>
-      <Link to="/memory" aria-current={tree ? "page" : undefined}>{({ isActive }) => <><span><TreeStructureIcon size={23} weight={isActive || tree ? "fill" : "regular"} /></span>Memory</>}</Link>
-      <Link to="/team">{({ isActive }) => <><span><UsersThreeIcon size={23} weight={isActive ? "fill" : "regular"} /></span>Team</>}</Link>
+      <Link to="/memory" aria-current={path === "/tree" ? "page" : undefined}>{({ isActive }) => <><span><TreeStructureIcon size={23} weight={isActive || path === "/tree" ? "fill" : "regular"} /></span>Memory</>}</Link>
+      <Link to="/settings">{({ isActive }) => <><span><SlidersHorizontalIcon size={23} weight={isActive ? "fill" : "regular"} /></span>Settings</>}</Link>
     </nav>
   );
 }
 
 function Shell(): ReactNode {
   const signed = useKi((s) => s.signed);
-  const at = /^\/(team|running|memory|settings|tree|new)/.exec(useLocation().pathname)?.[1] ?? "chat";
+  const path = useLocation().pathname;
+  const wide = useWide();
+  const at = /^\/(running|memory|settings|tree|new|a)\b/.exec(path)?.[1] ?? "team";
+  const split = wide && (path === "/" || path.startsWith("/a/") || path === "/new");
+  const bar = wide || TOP.test(path);
   if (signed === null) {
     return null;
   }
   return (
-    <div className="shell">
-      <div className="aurora" data-at={at === "settings" || at === "new" ? "team" : at === "tree" ? "memory" : at}><i /><i /><i /></div>
-      {signed ? <><Outlet /><Bar /></> : <div className="flex h-full"><SignIn /></div>}
+    <div className={"shell" + (split ? " split" : "") + (bar ? "" : " bare")}>
+      <div className="aurora" data-at={at === "settings" || at === "new" ? "team" : at === "tree" ? "memory" : at === "a" ? "chat" : at}><i /><i /><i /></div>
+      {signed ? <>{split ? <aside className="side"><Agents side /></aside> : null}<Outlet />{bar ? <Bar /> : null}</> : <div className="flex h-full"><SignIn /></div>}
       <Note />
       <Viewer />
       <Intro />
@@ -125,16 +139,21 @@ function Shell(): ReactNode {
   );
 }
 
-// the chat last open, else the first agent's
+// Ki opens on the agents; a wide screen has them beside, and here what to do
 function Home(): ReactNode {
-  const navigate = useNavigate();
-  const agent = useKi((s) => s.agent || (s.team.find((m) => m.archived === 0)?.id ?? ""));
-  useEffect(() => {
-    if (agent !== "") {
-      void navigate({ to: "/a/$agent", params: { agent }, replace: true });
-    }
-  }, [agent, navigate]);
-  return <section className="page"><Wait /></section>;
+  const wide = useWide();
+  const any = useKi((s) => s.team.some((m) => m.archived === 0));
+  if (!wide) {
+    return <Agents />;
+  }
+  return (
+    <section className="page">
+      <div className="m-auto grid max-w-xs justify-items-center gap-3 p-6 text-center">
+        <Avatar look={look_of("", "ki")} mood="idle" size={88} lit />
+        <p className="text-mid">{any ? "Pick an agent to open its chat." : "Make your first agent with the + button."}</p>
+      </div>
+    </section>
+  );
 }
 
 function Tree(): ReactNode {
@@ -156,6 +175,9 @@ function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode 
   const knobs = useKi((s) => s.knobs);
   const welcome = useKi((s) => s.welcome);
   const [head, setHead] = useState<HTMLElement | null>(null);
+  const [page, setPage] = useState<HTMLElement | null>(null);
+  const back = useBack(sub === null ? "/" : "/a/" + agent);
+  useEdgeBack(page, back);
   useEffect(() => {
     show(agent, sub);
     return () => show(null);
@@ -168,9 +190,10 @@ function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode 
   }), [agent, navigate]);
   const doing = offline ? "Offline" : sub === null ? MOODS[mood] : row === null ? "Done" : row.doing;
   return (
-    <section className="page">
+    <section ref={setPage} className="page swipe">
       <div className="relative flex min-h-0 flex-1 flex-col">
         <header className="top">
+          <Back to={sub === null ? "/" : "/a/" + agent} label={sub === null ? "Back to the agents" : "Back to " + (mate?.name ?? "the chat")} className={sub === null ? "back" : ""} />
           {sub === null ? (
             <Link to="/a/$agent/edit" params={{ agent }} className="isl" aria-label={(mate?.name ?? "This agent") + ": its settings"}>
               <Face picture={mate?.picture ?? ""} id={agent} mood={mood} size={56} />
@@ -178,14 +201,11 @@ function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode 
               {doing === "" ? null : <span>{doing}</span>}
             </Link>
           ) : (
-            <>
-              <Link to="/a/$agent" params={{ agent }} className="round gl" aria-label={"Back to " + (mate?.name ?? "the chat")}><ArrowLeftIcon size={20} weight="bold" /></Link>
-              <p className="isl">
-                <Avatar look={look_of("", agent + "/" + sub)} mood={mood} size={56} />
-                <b>{sub}</b>
-                {doing === "" ? null : <span>{doing}</span>}
-              </p>
-            </>
+            <p className="isl">
+              <Avatar look={look_of("", agent + "/" + sub)} mood={mood} size={56} />
+              <b>{sub}</b>
+              {doing === "" ? null : <span>{doing}</span>}
+            </p>
           )}
           <span ref={setHead} className="top-end" />
         </header>
@@ -212,7 +232,8 @@ const look     = createRoute({ getParentRoute: () => root, path: "/a/$agent/look
 const running  = createRoute({ getParentRoute: () => root, path: "/running", component: Running });
 const memory   = createRoute({ getParentRoute: () => root, path: "/memory", component: Memory });
 const tree     = createRoute({ getParentRoute: () => root, path: "/tree", validateSearch: (s): { a?: string } => (typeof s.a === "string" ? { a: s.a } : {}), component: Tree });
-const team     = createRoute({ getParentRoute: () => root, path: "/team", component: Team });
+// where the agents were before the list became home
+const team     = createRoute({ getParentRoute: () => root, path: "/team", beforeLoad: () => redirect({ to: "/", replace: true, throw: true }) });
 const settings = createRoute({ getParentRoute: () => root, path: "/settings", component: Settings });
 
 export const router = createRouter({ routeTree: root.addChildren([home, chat, sub, fresh, edit, look, running, memory, tree, team, settings]) });

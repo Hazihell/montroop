@@ -1,5 +1,3 @@
-import { CaretLeftIcon } from "@phosphor-icons/react";
-import { Link } from "@tanstack/react-router";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { err_why } from "../../Err.ts";
 import { text_of } from "../../Json.ts";
@@ -78,10 +76,7 @@ export function Settings(): ReactNode {
   };
   return (
     <section className="page">
-      <header className="head pl-3.5">
-        <Link to="/team" className="round gl" aria-label="Back to the team"><CaretLeftIcon size={22} weight="bold" /></Link>
-        <h1 className="pl-1.5">Settings</h1>
-      </header>
+      <header className="head"><h1>Settings</h1></header>
       <div className="scroll pb-6">
         <div className="mx-auto max-w-xl">
           <h2 className="label pt-2">Accent</h2>

@@ -1,4 +1,4 @@
-import { AlarmIcon, GitBranchIcon, HandPalmIcon, PlusIcon, PushPinIcon, SlidersHorizontalIcon, TerminalWindowIcon } from "@phosphor-icons/react";
+import { AlarmIcon, GitBranchIcon, HandPalmIcon, PlusIcon, PushPinIcon, TerminalWindowIcon } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
 import type { Pin } from "../../Pins.ts";
@@ -26,19 +26,18 @@ function Mate({ m, size }: { m: View.Mate; size: number }): ReactNode {
   );
 }
 
-export function Team(): ReactNode {
-  const team = useKi((s) => s.team);
+// the home screen: every agent with what it does now, its last words and
+// what waits for the owner; on a wide screen, the list beside the open chat
+export function Agents({ side = false }: { side?: boolean }): ReactNode {
+  const team = useKi((s) => s.team).filter((m) => m.archived === 0);
   return (
-    <section className="page">
+    <section className={side ? "list" : "page"}>
       <header className="head">
-        <h1>Team</h1>
-        <span className="flex gap-2">
-          <Link to="/new" className="round gl" aria-label="New agent"><PlusIcon size={22} weight="bold" /></Link>
-          <Link to="/settings" className="round gl" aria-label="Settings"><SlidersHorizontalIcon size={22} weight="bold" /></Link>
-        </span>
+        <h1>Agents</h1>
+        <Link to="/new" className="round gl" aria-label="New agent"><PlusIcon size={22} weight="bold" /></Link>
       </header>
       <div className="scroll px-1.5 pb-4">
-        {team.filter((m) => m.archived === 0).map((m) => <Mate key={m.id} m={m} size={68} />)}
+        {team.map((m) => <Mate key={m.id} m={m} size={side ? 56 : 68} />)}
       </div>
     </section>
   );

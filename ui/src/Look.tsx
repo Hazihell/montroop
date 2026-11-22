@@ -1,9 +1,9 @@
-import { CaretLeftIcon, CheckIcon } from "@phosphor-icons/react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { CheckIcon } from "@phosphor-icons/react";
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { text_of } from "../../Json.ts";
 import * as View from "../../View.ts";
 import { Avatar, BODIES, DETAILS, look_of, look_text, Outline, PICKS, type Look as Drawn, type Mood } from "./Avatar.tsx";
+import { Back, useBack } from "./Back.tsx";
 import { MOODS, useKi } from "./Ki.ts";
 
 type Part = keyof typeof PICKS;
@@ -37,7 +37,7 @@ function Colors({ list, on, pick, label }: { list: string[]; on: string; pick: (
 // the avatar's editor, opened once the agent is known: every pick shows on
 // the big one at once, in the mood chosen to try it
 function Editor({ agent, mate }: { agent: string; mate: View.Mate }): ReactNode {
-  const navigate = useNavigate();
+  const back = useBack("/a/" + agent + "/edit");
   const [look, setLook] = useState(() => look_of(mate.picture, agent));
   const [mood, setMood] = useState<Mood>("idle");
   const [part, setPart] = useState<Part>("shape");
@@ -47,7 +47,7 @@ function Editor({ agent, mate }: { agent: string; mate: View.Mate }): ReactNode 
     void save(agent, look).then((error) => {
       setSaving(false);
       if (error === "") {
-        void navigate({ to: "/a/$agent/edit", params: { agent } });
+        back();
       } else {
         useKi.setState({ note: error });
       }
@@ -56,7 +56,7 @@ function Editor({ agent, mate }: { agent: string; mate: View.Mate }): ReactNode 
   return (
     <section className="page">
       <header className="head pl-3.5">
-        <Link to="/a/$agent/edit" params={{ agent }} className="round gl" aria-label="Back to its settings"><CaretLeftIcon size={22} weight="bold" /></Link>
+        <Back to={"/a/" + agent + "/edit"} label="Back to its settings" />
         <h1 className="truncate pl-1.5">{mate.name}</h1>
         <button type="button" className="round go" aria-label="Save the look" disabled={saving} onClick={done}><CheckIcon size={22} weight="bold" /></button>
       </header>

@@ -1,10 +1,11 @@
-import { CaretLeftIcon, ShuffleIcon, UploadSimpleIcon } from "@phosphor-icons/react";
+import { ShuffleIcon, UploadSimpleIcon } from "@phosphor-icons/react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { err_why } from "../../Err.ts";
 import { get, text_of } from "../../Json.ts";
 import * as View from "../../View.ts";
 import { Avatar, Face, look_of, look_text } from "./Avatar.tsx";
+import { Back } from "./Back.tsx";
 import { holds, note, useKi } from "./Ki.ts";
 
 const Importer = lazy(() => import("./Importer.tsx"));
@@ -119,16 +120,14 @@ function Fields({ a, all }: { a: Agent | null; all: All }): ReactNode {
   };
   const archive = () => {
     if (a !== null && confirm("Archive " + a.name + "? It leaves the team. A running turn and its jobs finish; its timers pause. Settings can restore it.")) {
-      void View.post("/api/agents/" + a.id + "/archive", {}).then((out) => (out.error === undefined ? void navigate({ to: "/team" }) : note(text_of(out.error))));
+      void View.post("/api/agents/" + a.id + "/archive", {}).then((out) => (out.error === undefined ? void navigate({ to: "/", replace: true }) : note(text_of(out.error))));
     }
   };
 
   return (
     <section className="page">
       <header className="head pl-3.5">
-        {a === null
-          ? <Link to="/team" className="round gl" aria-label="Back to the team"><CaretLeftIcon size={22} weight="bold" /></Link>
-          : <Link to="/a/$agent" params={{ agent: a.id }} className="round gl" aria-label="Back to the chat"><CaretLeftIcon size={22} weight="bold" /></Link>}
+        {a === null ? <Back to="/" label="Back to the agents" /> : <Back to={"/a/" + a.id} label="Back to the chat" />}
         <h1 className="truncate pl-1.5">{a === null ? "New agent" : form.name}</h1>
       </header>
       <div className="scroll pb-6">
