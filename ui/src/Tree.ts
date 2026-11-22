@@ -73,10 +73,13 @@ export function tree_hide(): void {
   S.asked++;
   S.run?.stop();
   S.run = null;
-  $(".view").replaceChildren();
-  $(".bracket").replaceChildren();
-  $(".view").classList.remove("on");
-  $(".bracket").classList.remove("on", "drag");
+  // leaving the page: React has already taken its elements away, and with
+  // them all that was drawn in them
+  const [view, bracket] = [document.querySelector("#tree .view"), document.querySelector("#tree .bracket")];
+  view?.replaceChildren();
+  bracket?.replaceChildren();
+  view?.classList.remove("on");
+  bracket?.classList.remove("on", "drag");
 }
 
 function $(sel: string): HTMLElement {
