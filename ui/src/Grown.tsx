@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from "react";
-import { tree_hide, tree_show } from "../../web/src/Tree.ts";
+import { tree_hide, tree_show } from "./Tree.ts";
 import { useKi } from "./Ki.ts";
 import { Tabs } from "./Pages.tsx";
 

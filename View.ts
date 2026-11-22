@@ -160,7 +160,7 @@ export type Server =
   | { $: "jobs"; ids: string[] }
   | { $: "job"; id: string; job: Job };
 
-export type Sent = { text: string; images?: Blob[] };
+type Sent = { text: string; images?: Blob[] };
 
 export type Answer = { error?: string; status?: number; text?: string; going?: boolean };
 type Upload = BodyInit | AsyncIterable<string>;
@@ -216,7 +216,7 @@ type Phase = "typing" | "running";
 
 export type Knob = { text: string; move: Move; hint: string; choices: Choice[] };
 
-export type Choice = { text: string; to: string; move: Move; here: boolean; vendor: string | null };
+type Choice = { text: string; to: string; move: Move; here: boolean; vendor: string | null };
 
 export const TURN = "the main turn";
 
@@ -792,11 +792,6 @@ function backgrounded(rows: Row[], bg: BgJob[]): Row[] {
 function thought_last(v: View): boolean {
   const last = v.parts.at(-1);
   return last !== undefined && v.minds.has(last[0] + last[1] - 1);
-}
-
-// the text of the reply being written, all of it so far (#192)
-export function view_writing(v: View): string {
-  return (v.page?.live ?? v.live).findLast((l) => l.kind === "reply")?.text ?? "";
 }
 
 // the rows of the messages that wait in the tail, queued or unsent, made

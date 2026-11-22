@@ -1,4 +1,9 @@
-import { must } from "./Dom.ts";
+function must<T>(x: T | null | undefined, what: string): T {
+  if (x === null || x === undefined) {
+    throw new Error("no " + what);
+  }
+  return x;
+}
 
 type Meta = { count: number; has: string[]; parts: [number, number][]; view: Got[] };
 

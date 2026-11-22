@@ -12,7 +12,7 @@ export type Span =
 
 export type Code = { $: "Code"; k: string; x: string };
 
-export type Line = { s: " " | "-" | "+"; n: number; x: string };
+type Line = { s: " " | "-" | "+"; n: number; x: string };
 
 export type Block =
   | { $: "Para"; x: Span[] }

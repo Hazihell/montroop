@@ -31,7 +31,6 @@ import * as Pins from "./Pins.ts";
 import { Gate, type Asked } from "./Gate.ts";
 import { SEARCHES, Tools, type Seat, type Subs } from "./Tools.ts";
 import { JOB } from "./Machine.ts";
-import { HEADS } from "./Heads.ts";
 import { ACTIVE, ASKS, FRAME, IDLE, IMAGES, limit_note, LINES, LINES_MOST, live_push, MEDIA, PING, QUIT, SUMMARIES, TICK, TURN, WIRE, type Answer, type Live, type Part, type Pending, type Queued, type Server as Out, type Sums, type Talk as Meter, TOKEN, type Wait, type Mate } from "./View.ts";
 import * as config from "./Config.ts";
 import { err_code, err_stack, err_why } from "./Err.ts";
@@ -169,7 +168,6 @@ const WEB: Record<string, string> = { ...UI, "/": PAGE };
 for (const place of ["/settings", "/tree", "/new", "/running", "/memory", "/team"]) {
   WEB[place] = PAGE;
 }
-Object.assign(WEB, HEADS);
 
 // an agent's pages: /a/<id>, /a/<id>/edit, /a/<id>/look, /a/<id>/s/<Name>
 // (a subagent's chat)

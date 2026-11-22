@@ -16,5 +16,5 @@
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true
   },
-  "include": ["*.ts", "web/src/*.ts", "ui/src/*.ts", "ui/src/*.tsx", "testing/fake/*.ts"]
+  "include": ["*.ts", "ui/src/*.ts", "ui/src/*.tsx", "testing/fake/*.ts"]
 }

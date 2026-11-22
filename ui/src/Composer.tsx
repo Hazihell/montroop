@@ -290,7 +290,7 @@ export function Composer({ agent, name }: { agent: string; name: string }): Reac
       {items.length === 0 ? null : (
         <ul>
           {items.map((item) => (
-            <li key={item.key} data-state={item.state} title={item.name} style={{ "--part": Math.round(item.part * 100) + "%" } as React.CSSProperties}>
+            <li key={item.key} data-state={item.state} title={item.name} style={{ "--part": item.part.toFixed(2) } as React.CSSProperties}>
               {item.peek !== "" ? <img src={item.peek} alt={item.name} onClick={(ev) => viewer_open(ev.currentTarget)} /> : item.state === "bad" ? <WarningIcon size={18} weight="fill" /> : <FileIcon size={18} />}
               <span>
                 <b>{item.name}</b>

@@ -7,7 +7,7 @@ import { defineConfig, type Plugin, type ProxyOptions } from "vite";
 // the page talks to a Ki server: KI_SERVER names the one a dev or preview
 // run passes its calls to
 const to = process.env.KI_SERVER;
-const paths = ["/api", "/auth", "/media", "/image", "/heads"];
+const paths = ["/api", "/auth", "/media", "/image"];
 const proxy: Record<string, ProxyOptions> = to === undefined ? {} : { ...Object.fromEntries(paths.map((path) => [path, { target: to }])), "/ws": { target: to, ws: true } };
 
 const DIST = "ui/dist";
