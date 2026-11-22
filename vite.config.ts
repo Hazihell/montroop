@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import * as zlib from "node:zlib";
 import babel from "@rolldown/plugin-babel";
 import tailwind from "@tailwindcss/vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
@@ -14,12 +15,17 @@ const DIST = "ui/dist";
 
 // the build's files as Server.ts imports them, each a file Bun compiles
 // into the program: dist/files.ts, a map from the path a browser asks to
-// the file
+// the file. Each script and style also comes brotli'd at its best (NAME.br),
+// too slow to do as the server starts
 function files(): Plugin {
   return {
     name: "ki-files",
     apply: "build",
     closeBundle() {
+      for (const name of fs.readdirSync(DIST + "/assets").filter((name) => /\.(js|css)$/.test(name))) {
+        const file = DIST + "/assets/" + name;
+        fs.writeFileSync(file + ".br", zlib.brotliCompressSync(fs.readFileSync(file), { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11 } }));
+      }
       const names = fs.readdirSync(DIST, { recursive: true, encoding: "utf8" }).filter((name) => name !== "files.ts" && fs.statSync(DIST + "/" + name).isFile()).map((name) => name.replaceAll("\\", "/")).sort();
       const imports = names.map((name, k) => `import f${k} from "./${name}" with { type: "file" };`);
       const map = names.map((name, k) => `  ${JSON.stringify("/" + name)}: f${k},`);

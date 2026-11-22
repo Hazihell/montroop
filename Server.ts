@@ -3,6 +3,7 @@
 import * as fs from "node:fs";
 import * as net from "node:net";
 import * as path from "node:path";
+import * as zlib from "node:zlib";
 import type { ServerWebSocket } from "bun";
 import type { Out as Done } from "./Agent.ts";
 import { AskAI, type Ask, type Block, type Call, type End, type Event, type Kind, type Parked, type Said, type Say, type Vendor } from "./AskAI.ts";
@@ -178,15 +179,27 @@ const NAMED_BY_HASH = "/assets/";
 // asked again each time, and answered "the same" while the build is
 const ASKED_AGAIN = [PAGE, SW, file_path(UI["/manifest.webmanifest"])];
 // what a page needs to open with no network: the service worker keeps them
-const SHELL      = ["/", ...Object.keys(UI).filter((name) => name.startsWith(NAMED_BY_HASH)), "/mark.svg", "/manifest.webmanifest", "/icon-192.png"];
+const SHELL      = ["/", ...Object.keys(UI).filter((name) => name.startsWith(NAMED_BY_HASH) && !name.endsWith(".br")), "/mark.svg", "/manifest.webmanifest", "/icon-192.png"];
 const BUILD      = Bun.hash(Buffer.concat(Object.keys(UI).sort().map((name) => fs.readFileSync(file_path(UI[name]))))).toString(36);
 const INDEX      = fs.readFileSync(PAGE, "utf8").replace("<html ", `<html data-build="${BUILD}" `);
 const WORKER     = fs.readFileSync(SW, "utf8").replace("{build}", BUILD).replace("{shell}", SHELL.join(" "));
 const STAMPED_WITH_BUILD = new Map([[SW, WORKER]]);
-// the scripts and styles, as a browser that takes gzip gets them
+// the scripts and styles, as a browser that takes gzip gets them; one that
+// takes brotli gets the build's NAME.br
 const ZIPPED     = new Map(Object.keys(UI).filter((name) => name.startsWith(NAMED_BY_HASH) && /\.(js|css)$/.test(name)).map((name) => [name, Bun.gzipSync(fs.readFileSync(file_path(UI[name])))]));
+// a page made at each ask, with its chat's first messages, brotli'd fast
+const PAGE_BROTLI = { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 5 } };
 
 let held = 0;
+
+// whether a browser takes a coding: named in its accept-encoding, and not
+// with q=0
+function takes(req: Request, coding: string): boolean {
+  return (req.headers.get("accept-encoding") ?? "").split(",").some((part) => {
+    const [name, ...params] = part.split(";").map((word) => word.trim());
+    return name === coding && !params.some((param) => /^q=0(\.0*)?$/.test(param));
+  });
+}
 
 function stream_after(head: Uint8Array, tail: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
   const reader = tail.getReader();
@@ -2465,8 +2478,12 @@ export namespace Main {
     }
     if (pathname.startsWith(NAMED_BY_HASH)) {
       const headers = { "cache-control": "public, max-age=31536000, immutable", vary: "accept-encoding" };
+      const brotli = WEB[pathname + ".br"];
+      if (brotli !== undefined && takes(req, "br")) {
+        return new Response(Bun.file(brotli), { headers: { ...headers, "content-encoding": "br", "content-type": Bun.file(file).type } });
+      }
       const zipped = ZIPPED.get(pathname);
-      if (zipped !== undefined && /\bgzip\b/.test(req.headers.get("accept-encoding") ?? "")) {
+      if (zipped !== undefined && takes(req, "gzip")) {
         return new Response(zipped, { headers: { ...headers, "content-encoding": "gzip", "content-type": Bun.file(file).type } });
       }
       return new Response(Bun.file(file), { headers });
@@ -2500,7 +2517,14 @@ export namespace Main {
     const id = /^\/a\/([a-z0-9]{1,16})/.exec(url.pathname)?.[1] ?? (url.pathname === "/tree" ? url.searchParams.get("a") : null);
     const page = INDEX.replace("<html ", `<html data-first="${first}" data-signed="${signed ? "in" : "out"}" `);
     const made = signed ? page.replace("</body>", () => `<script type="application/json" id="opening">${Chat.opening(Main.chat_of(id))}</script>\n</body>`) : page;
-    return new Response(made, { headers: { "content-type": "text/html;charset=utf-8", "cache-control": "no-store" } });
+    const headers = { "content-type": "text/html;charset=utf-8", "cache-control": "no-store", vary: "accept-encoding" };
+    if (takes(req, "br")) {
+      return new Response(zlib.brotliCompressSync(made, PAGE_BROTLI), { headers: { ...headers, "content-encoding": "br" } });
+    }
+    if (takes(req, "gzip")) {
+      return new Response(Bun.gzipSync(made), { headers: { ...headers, "content-encoding": "gzip" } });
+    }
+    return new Response(made, { headers });
   }
 
   export async function page(p: string, req: Request): Promise<Response> {
