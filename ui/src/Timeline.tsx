@@ -3,10 +3,12 @@ import { ArrowDownIcon, ArrowUpIcon } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { earlier, holds, useKi } from "./Ki.ts";
-import { items_of, Row, useWork, type Item } from "./Rows.tsx";
+import { items_of, rose_keep, Row, useWork, type Item } from "./Rows.tsx";
 
 // the room the island takes over the list, in rem: .talk-top's height
 const ROOM = 5.5;
+// more items than this coming at once stay still
+const FEW = 3;
 
 const said = (item: Item): boolean => item.row.$ === "Msg" && item.row.kind === "user";
 
@@ -45,6 +47,20 @@ export function Timeline({ sub, head }: { sub: boolean; head: HTMLElement | null
   const live = items_of(tail, open, chat.seen).items;
   const items = [...chat.items, ...live];
   const mine = [...chat.mine, ...said_at(live, chat.items.length)];
+  // the items that may rise in: what streams in and waits at the end, and
+  // the owner's own message as it lands, unless it waited there already.
+  // Those that came since the last of them changed rise; the chat's first
+  // rows, or many coming at once, stay still
+  const end = chat.items.at(-1);
+  const may = end !== undefined && said(end) ? [end, ...live] : live;
+  const keys = may.map((item) => item.key).join("\n");
+  const [came, setCame] = useState({ keys, fresh: new Set<string>(), waited: live.some(said) });
+  if (came.keys !== keys) {
+    const was = new Set(came.keys.split("\n"));
+    const fresh = may.filter((item) => !was.has(item.key) && !(item === end && came.waited));
+    setCame({ keys, fresh: new Set(fresh.length > FEW ? [] : fresh.map((item) => item.key)), waited: live.some(said) });
+  }
+  useEffect(() => rose_keep(new Set(keys.split("\n"))), [keys]);
   const room = () => ROOM * parseFloat(getComputedStyle(document.documentElement).fontSize);
   // the last of the user's messages that starts above the island's room: a
   // drawn row says where it is, one not drawn is above when before the drawn
@@ -108,7 +124,7 @@ export function Timeline({ sub, head }: { sub: boolean; head: HTMLElement | null
         ref={list}
         data={items}
         keyExtractor={(item) => item.key}
-        renderItem={({ item }) => <Row item={item} />}
+        renderItem={({ item }) => <Row item={item} rise={came.fresh.has(item.key)} />}
         ListHeaderComponent={Top}
         estimatedItemSize={72}
         recycleItems={false}

@@ -641,6 +641,9 @@
   .row.thin {
     padding-block: 0.125rem;
   }
+  .row.rise {
+    animation: rise 200ms var(--ease-out);
+  }
   .who {
     display: flex;
     align-items: center;
