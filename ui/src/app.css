@@ -234,6 +234,10 @@
     background: var(--raise);
     object-fit: cover;
   }
+  /* a count that changed as it was in sight */
+  .pop {
+    animation: pop 240ms var(--ease-out);
+  }
   .badge {
     min-width: 1.5rem;
     height: 1.5rem;
@@ -1713,6 +1717,12 @@
   from {
     opacity: 0;
     transform: translateY(0.5rem);
+  }
+}
+
+@keyframes pop {
+  from {
+    transform: scale(0.6);
   }
 }
 

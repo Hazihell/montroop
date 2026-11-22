@@ -6,7 +6,7 @@ import { Avatar, Face, look_of } from "./Avatar.tsx";
 import { Composer } from "./Composer.tsx";
 import { intro_end, MOODS, mood_of, noted, show, useKi, welcomed } from "./Ki.ts";
 import { Back, turn, turned, useBack, useEdgeBack } from "./Back.tsx";
-import { Agents, Memory, Running } from "./Pages.tsx";
+import { Agents, Memory, Running, usePop } from "./Pages.tsx";
 import { Panel, Sheet, useGoing } from "./Panel.tsx";
 import { panel_set, usePrefs } from "./Prefs.ts";
 import { Timeline } from "./Timeline.tsx";
@@ -206,6 +206,7 @@ function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode 
   const wider = useMedia(WIDER);
   const shown = usePrefs((s) => s.panel);
   const going = useGoing(agent);
+  const pop = usePop(going, agent);
   const [sheet, openSheet, closeSheet] = useSheet(agent);
   const drawn = useLeaving(sheet && !wider && sub === null);
   const panel = wider && shown && sub === null;
@@ -230,7 +231,7 @@ function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode 
             <button type="button" className="isl" aria-expanded={wider ? panel : sheet} aria-label={(mate?.name ?? "This agent") + ": what runs, its memory and settings"} onClick={() => (wider ? panel_set(!shown) : openSheet())}>
               <span className="relative">
                 <Face picture={mate?.picture ?? ""} id={agent} mood={mood} size={56} />
-                {going > 0 ? <em className="count" aria-label={going + " at work"}>{going}</em> : null}
+                {going > 0 ? <em key={going} className={"count" + pop} aria-label={going + " at work"}>{going}</em> : null}
               </span>
               <b>{mate?.name ?? ""}</b>
               {doing === "" ? null : <span>{doing}</span>}
