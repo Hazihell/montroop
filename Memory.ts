@@ -64,7 +64,7 @@ type Chosen = {
   talk   : number | null;
   leader : boolean;
   lines  : number;
-  // manage: may create, archive and restore agents (null: only the first)
+  // manage: may use the agents tool (null: only the first)
   manage : boolean | null;
   talked : Map<number, number>;
   used   : number | null;

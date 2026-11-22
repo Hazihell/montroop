@@ -7,6 +7,7 @@ import * as View from "../../View.ts";
 import { Avatar, Face, look_of, look_text } from "./Avatar.tsx";
 import { Back } from "./Back.tsx";
 import { act, holds, note, show, useKi } from "./Ki.ts";
+import { Versions } from "./Versions.tsx";
 
 const Importer = lazy(() => import("./Importer.tsx"));
 
@@ -58,7 +59,7 @@ function Set({ name, about, children }: { name: string; about?: string; children
   );
 }
 
-// the MCP servers of the devices, each on or off for this agent; the client
+// the MCP servers of the devices, each on or off for every agent; the client
 // holds the agent while its settings are open, to know which are on
 function Plugs({ agent }: { agent: string }): ReactNode {
   const held = useKi((s) => s.agent === agent && s.loaded);
@@ -89,7 +90,7 @@ function Fields({ a, all }: { a: Agent | null; all: All }): ReactNode {
   const here = useKi((s) => s.agent);
   const others = useKi((s) => s.team.filter((m) => m.archived === 0 && m.id !== a?.id).length);
   const [seed] = useState(() => String(Math.random()));
-  const [form, setForm] = useState<Form>(() => ({
+  const [first] = useState<Form>(() => ({
     name    : a?.name ?? "",
     about   : a?.about ?? "",
     picture : a?.picture ?? look_text(look_of("", seed)),
@@ -99,10 +100,15 @@ function Fields({ a, all }: { a: Agent | null; all: All }): ReactNode {
     claude  : a?.claude ?? all.accounts[0] ?? "",
     lines   : String(a?.lines ?? View.LINES),
   }));
+  const [form, setForm] = useState(first);
+  // what the server has, as far as this page knows: an edit sends only what
+  // differs, so it keeps what an agent changed meanwhile
+  const kept = useRef(first);
   // the prompt follows the name until it is written by hand
   const [template, setTemplate] = useState(a === null ? all.template : a.own ? null : a.template);
   const [why, setWhy] = useState("");
   const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(0);
   const [importing, setImporting] = useState(false);
   const saves = useRef(Promise.resolve());
   const file = useRef<HTMLInputElement>(null);
@@ -111,9 +117,21 @@ function Fields({ a, all }: { a: Agent | null; all: All }): ReactNode {
   const send = (next: Form) => {
     holds("agent", true);
     const last = saves.current.then(async () => {
-      const out = await View.post("/api/agents" + (a === null ? "" : "/" + a.id), { ...next, ...(accounts.length < 2 ? { claude: undefined } : {}) });
+      // a prompt that follows the name is the server's to follow
+      const changed = a === null ? { ...next, ...(accounts.length < 2 ? { claude: undefined } : {}) } : Object.fromEntries(Object.entries(next).filter(([k, v]) => kept.current[k as keyof Form] !== v && !(k === "prompt" && template !== null)));
+      if (Object.keys(changed).length === 0) {
+        return;
+      }
+      const out = await View.post("/api/agents" + (a === null ? "" : "/" + a.id), changed);
       setWhy(out.error === undefined ? "" : text_of(out.error));
-      if (out.error === undefined && a === null) {
+      if (out.error !== undefined) {
+        return;
+      }
+      kept.current = { ...kept.current, ...changed };
+      if ("prompt" in changed) {
+        setSaved((n) => n + 1);
+      }
+      if (a === null) {
         void navigate({ to: "/a/$agent", params: { agent: text_of(get(out.agent, "id")) } });
       }
     }).finally(() => holds("agent", saves.current !== last));
@@ -183,7 +201,7 @@ function Fields({ a, all }: { a: Agent | null; all: All }): ReactNode {
               </select>
             </Set>
           )}
-          <Set name="Manage agents" about="It may create, archive and restore agents, when you ask it to. None is deleted.">
+          <Set name="Manage agents" about="It may create, edit, archive and restore agents, when you ask it to. None is deleted.">
             <input type="checkbox" role="switch" className="switch" checked={form.manage} onChange={(ev) => set({ manage: ev.target.checked }, true)} />
           </Set>
           <Set name="Leader mode" about="Each turn, the newest lines of every other agent's memory, to zoom into.">
@@ -195,6 +213,7 @@ function Fields({ a, all }: { a: Agent | null; all: All }): ReactNode {
             </Set>
           ) : null}
           {a === null ? null : <Plugs agent={a.id} />}
+          {a === null ? null : <Versions agent={a.id} saved={saved} reverted={(prompt) => { kept.current = { ...kept.current, prompt }; setTemplate(prompt === a.template.replaceAll("{Name}", form.name.trim()) ? a.template : null); setForm((f) => ({ ...f, prompt })); }} />}
           {why === "" ? null : <p className="px-5.5 pt-3 text-[0.9375rem] text-bad" role="alert">{why}</p>}
           {a === null ? <div className="px-3.5 pt-5"><button type="submit" className="pillbtn go w-full">Create</button></div> : (
             <>

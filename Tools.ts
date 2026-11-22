@@ -132,11 +132,17 @@ const boss = (): Spec[] => [
   }, ["action"]),
   spec("resume", "Wake every call on this server waiting for an AI service's usage limit (other turns, summaries), when the user says a limit was reset early. Each asks again once; one still limited waits again.", {}, []),
 ];
-const AGENTS = spec("agents", "Manage the team's agents: list them (archived ones too), create one (name, about: one line for the chat list and the other agents, prompt: its system prompt, by default the standard one), archive one by name (its chat and memory stay, and Settings or restore brings it back) or restore an archived one. No agent is ever deleted here. Act only when the user asked for it, or agreed to what you proposed; to brief a new agent, message it after creating it.", {
-  action : { type: "string", enum: ["list", "create", "archive", "restore"] },
+const AGENTS = spec("agents", "Manage the team's agents: list them (archived ones too), show one's settings by name, its system prompt included, create one (name, about: one line for the chat list and the other agents, prompt: its system prompt, by default the standard one), edit one by name, yourself too (only the fields given change; the answer says what changed), archive one by name (its chat and memory stay, and Settings or restore brings it back) or restore an archived one. No agent is ever deleted here. Create, edit, archive or restore only when the user asked for that change, or agreed to what you proposed; to brief a new agent, message it after creating it.", {
+  action : { type: "string", enum: ["list", "show", "create", "edit", "archive", "restore"] },
   name   : STR,
+  rename : { type: "string", description: "Edit: its new name." },
   about  : STR,
-  prompt : STR,
+  prompt : { type: "string", description: "Its whole system prompt; an edit keeps the old one in its history, which the user can revert to." },
+  picture: { type: "string", description: "Edit: head-01 to head-24, or a picture show gave." },
+  claude : { type: "string", description: "Edit: its Claude account, one show lists as signed in." },
+  model  : { type: "string", description: "Edit: the model its chat runs on, one show lists as offered." },
+  effort : { type: "string", description: "Edit: how hard its model thinks, one of the levels show lists." },
+  mcp    : { type: "object", additionalProperties: { type: "boolean" }, description: "Edit: MCP servers by name, each true (on) or false (off); this switches them for every agent." },
 }, ["action"]);
 const DEVICE = { device: { type: "string", description: "The name of the device to run on, one listed under Devices." } };
 const KIT: Spec[] = TOOLS.map((t) => {

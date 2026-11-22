@@ -1,6 +1,6 @@
 import * as config from "./Config.ts";
 import { Owner } from "./Owner.ts";
-import { get as field } from "./Json.ts";
+import { get as field, rec } from "./Json.ts";
 import * as Prompts from "./Prompts.ts";
 
 // prompt null: the default, which follows renames until it's edited;
@@ -9,7 +9,15 @@ export type Agent = { id: string; name: string; about: string; picture: string; 
 
 type Fields = { name: string; about: string; picture: string; prompt: string | null; claude: string };
 
+// a prompt an agent had, kept when it was changed (who: the agent that
+// changed it, by name; null: the owner); a default one reads with its name now
+export type Version = { id: number; at: number; who: string | null; prompt: string };
+
 const SCHEMA = "create table if not exists agents (id text primary key, name text not null, about text not null, picture text not null, prompt text, archived integer not null default 0, made integer not null, unread integer not null default 0, claude text not null default '')";
+
+const PROMPTS = "create table if not exists prompts (id integer primary key, agent text not null, at integer not null, who text, prompt text)";
+
+const KEPT = 50;
 
 const NAME  = 24;
 const ABOUT = 120;
@@ -27,6 +35,7 @@ export namespace Team {
   export function open(): string | null {
     const db = Owner.open();
     db.run(SCHEMA);
+    db.run(PROMPTS);
     if (!(db.query("select name from pragma_table_info('agents')").all() as Array<{ name: string }>).some((c) => c.name === "claude")) {
       db.run("alter table agents add column claude text not null default ''");
     }
@@ -107,6 +116,17 @@ export namespace Team {
     return { name, about, picture, prompt: own === Team.default_prompt(name) ? null : own, claude };
   }
 
+  // an edit of a: what x doesn't send stays as it is (a default prompt
+  // follows a new name)
+  export function edit(a: Agent, x: unknown): Fields | string {
+    if (!rec(x)) {
+      return "An edit is a JSON object.";
+    }
+    const name = field(x, "name");
+    const prompt = a.prompt ?? Team.default_prompt(typeof name === "string" ? name.trim() : a.name);
+    return Team.fields({ name: a.name, about: a.about, picture: a.picture, prompt, ...x }, a.id);
+  }
+
   // a drawn avatar: its shape, eyes, glasses and extra, then its two colors
   export const DRAWN = /^av:[a-z]{1,12}(?:\.[a-z]{1,12}){3}(?:\.[0-9a-f]{6}){2}$/;
 
@@ -133,9 +153,22 @@ export namespace Team {
     return Team.get(id) as Agent;
   }
 
-  export function set(id: string, f: Fields): Agent | null {
-    Owner.open().query("update agents set name = ?, about = ?, picture = ?, prompt = ?, claude = ? where id = ?").run(f.name, f.about, f.picture, f.prompt, f.claude, id);
+  export function set(id: string, f: Fields, who: Version["who"]): Agent | null {
+    const db = Owner.open();
+    const was = Team.get(id);
+    db.transaction(() => {
+      if (was !== null && was.prompt !== f.prompt) {
+        db.query("insert into prompts (agent, at, who, prompt) values (?, ?, ?, ?)").run(id, Date.now(), who, was.prompt);
+        db.query("delete from prompts where agent = ? and id not in (select id from prompts where agent = ? order by id desc limit ?)").run(id, id, KEPT);
+      }
+      db.query("update agents set name = ?, about = ?, picture = ?, prompt = ?, claude = ? where id = ?").run(f.name, f.about, f.picture, f.prompt, f.claude, id);
+    })();
     return Team.get(id);
+  }
+
+  export function versions(a: Agent): Version[] {
+    const kept = Owner.open().query("select id, at, who, prompt from prompts where agent = ? order by id desc").all(a.id) as Array<Omit<Version, "prompt"> & { prompt: string | null }>;
+    return kept.map((v) => ({ ...v, prompt: v.prompt ?? Team.default_prompt(a.name) }));
   }
 
   export function archive(id: string, on: boolean): void {
@@ -144,6 +177,7 @@ export namespace Team {
 
   export function drop(id: string): void {
     Owner.open().query("delete from agents where id = ?").run(id);
+    Owner.open().query("delete from prompts where agent = ?").run(id);
   }
 
   export function unread(id: string, n: number | null): void {
