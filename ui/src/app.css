@@ -1318,7 +1318,6 @@
     background: var(--raise);
   }
   .prose pre {
-    overflow-x: auto;
     border: 1px solid var(--edge);
     border-radius: 1.125rem;
     background: var(--glass);
@@ -1327,13 +1326,11 @@
   }
   .prose pre > code {
     display: block;
-    width: max-content;
-    min-width: 100%;
     padding: 0 0.875rem 0.875rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
   .prose pre > .lang {
-    position: sticky;
-    left: 0;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1343,6 +1340,9 @@
     font-family: var(--font-sans);
     font-size: 0.8125rem;
   }
+  .prose pre > .lang > .copy {
+    margin-left: auto;
+  }
   .prose pre.numbered > .lang {
     justify-content: flex-start;
     gap: 0.5rem;
@@ -1350,10 +1350,16 @@
   .prose pre.numbered code > span, .prose pre.numbered .hunk > span {
     display: block;
   }
+  .prose pre.numbered span:has(> i) {
+    display: block;
+    padding-left: calc(var(--nw) + 0.75rem);
+    text-indent: calc(-1 * (var(--nw) + 0.75rem));
+  }
   .prose pre.numbered i {
     display: inline-block;
     width: var(--nw);
     margin-right: 0.75rem;
+    text-indent: 0;
     color: var(--dim);
     font-style: normal;
     text-align: right;
