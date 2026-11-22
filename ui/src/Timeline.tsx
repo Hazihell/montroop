@@ -1,6 +1,7 @@
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { ArrowDownIcon, ArrowUpIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { earlier, holds, useKi } from "./Ki.ts";
 import { items_of, Row, useWork } from "./Rows.tsx";
 
@@ -9,8 +10,10 @@ function Top(): ReactNode {
   return <div className="talk-top" />;
 }
 
-// sub: a subagent's page, which loads its earlier entries near its top
-export function Timeline({ sub }: { sub: boolean }): ReactNode {
+// sub: a subagent's page, which loads its earlier entries near its top;
+// head: the header's end, where the way up to the user's message shows, out
+// of the last row's way
+export function Timeline({ sub, head }: { sub: boolean; head: HTMLElement | null }): ReactNode {
   const rows = useKi((s) => s.rows);
   const open = useWork((s) => s.open);
   const list = useRef<LegendListRef>(null);
@@ -45,12 +48,13 @@ export function Timeline({ sub }: { sub: boolean }): ReactNode {
         onStartReached={sub ? earlier : undefined}
         style={{ height: "100%" }}
       />
+      {above && head !== null ? createPortal(
+        <button type="button" className="round small gl" aria-label="Up to your message" onClick={() => void list.current?.scrollToIndex({ index: mine, animated: true })}>
+          <ArrowUpIcon size={18} weight="bold" />
+        </button>,
+        head,
+      ) : null}
       <div className="jump">
-        {above ? (
-          <button type="button" className="round small gl" aria-label="Up to your message" onClick={() => void list.current?.scrollToIndex({ index: mine, animated: true })}>
-            <ArrowUpIcon size={18} weight="bold" />
-          </button>
-        ) : null}
         {away ? (
           <button type="button" className="round small gl" aria-label="Latest messages" onClick={() => void list.current?.scrollToEnd({ animated: true })}>
             <ArrowDownIcon size={18} weight="bold" />

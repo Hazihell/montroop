@@ -155,6 +155,7 @@ function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode 
   const meter = useKi((s) => s.meter);
   const knobs = useKi((s) => s.knobs);
   const welcome = useKi((s) => s.welcome);
+  const [head, setHead] = useState<HTMLElement | null>(null);
   useEffect(() => {
     show(agent, sub);
     return () => show(null);
@@ -186,8 +187,9 @@ function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode 
               </p>
             </>
           )}
+          <span ref={setHead} className="top-end" />
         </header>
-        {loaded ? <Timeline key={agent + "/" + (sub ?? "")} sub={sub !== null} /> : <Wait />}
+        {loaded ? <Timeline key={agent + "/" + (sub ?? "")} sub={sub !== null} head={head} /> : <Wait />}
         {welcome && sub === null ? <Suspense><Importer agent={agent} shut={welcomed} /></Suspense> : null}
         {sub === null ? <Composer key={agent} agent={agent} name={mate?.name ?? ""} /> : (
           <p className="under">

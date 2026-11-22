@@ -520,8 +520,15 @@
     display: grid;
     gap: 0.5rem;
   }
-  .jump button {
+  .jump button, .top-end button {
     animation: rise 220ms var(--ease-out);
+  }
+  .top-end {
+    display: flex;
+    flex: none;
+    align-items: center;
+    height: 3.25rem;
+    margin-left: auto;
   }
   .under {
     z-index: 2;
