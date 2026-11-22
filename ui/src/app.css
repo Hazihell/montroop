@@ -401,6 +401,10 @@
   .isl {
     cursor: pointer;
     text-align: left;
+    transition: transform 180ms var(--ease-out);
+  }
+  button.isl:active {
+    transform: scale(0.97);
   }
 
   /* wide enough: the agents stay in a column beside the open chat */
@@ -1510,10 +1514,11 @@
     min-height: 2.75rem;
     border-radius: 50%;
     color: var(--dim);
-    transition: color 180ms var(--ease-out);
+    transition: color 180ms var(--ease-out), transform 180ms var(--ease-out);
   }
   .copy:active {
     color: var(--ink);
+    transform: scale(0.9);
   }
   .msg > .copy {
     margin: -0.125rem 0 -0.625rem -0.8125rem;
