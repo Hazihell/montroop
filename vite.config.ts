@@ -37,7 +37,7 @@ function files(): Plugin {
 // a Phosphor icon brings its six weights, each its own drawing: the app
 // draws these three, and the others stay out of the build
 const DRAWN = ["regular", "bold", "fill"];
-const WEIGHT = /  \[\n    "([a-z]+)",\n    .*\n  \],?\n/g;
+const WEIGHT = /  \[\n    "([a-z]+)",\n[\s\S]*?\n  \],?\n/g;
 
 function weights(): Plugin {
   return {
