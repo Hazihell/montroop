@@ -34,6 +34,23 @@ function files(): Plugin {
   };
 }
 
+// the first screen's text is in this font: the page asks for it with the
+// style, not once the style is read
+const FIRST_FONT = "HankenGrotesk";
+
+function preload(): Plugin {
+  return {
+    name: "ki-preload",
+    apply: "build",
+    transformIndexHtml: {
+      order: "post",
+      handler: (_html, { bundle }) => Object.keys(bundle ?? {}).filter((name) => name.includes(FIRST_FONT) && name.endsWith(".woff2")).map((name) => ({
+        tag: "link", attrs: { rel: "preload", href: "/" + name, as: "font", type: "font/woff2", crossorigin: "" }, injectTo: "head",
+      })),
+    },
+  };
+}
+
 // a Phosphor icon brings its six weights, each its own drawing: the app
 // draws these three, and the others stay out of the build
 const DRAWN = ["regular", "bold", "fill"];
@@ -50,7 +67,7 @@ function weights(): Plugin {
 
 export default defineConfig({
   root    : "ui",
-  plugins : [react(), babel({ presets: [reactCompilerPreset()] }), tailwind(), weights(), files()],
+  plugins : [react(), babel({ presets: [reactCompilerPreset()] }), tailwind(), weights(), preload(), files()],
   server  : { proxy },
   preview : { proxy },
 });
