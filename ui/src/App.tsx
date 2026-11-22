@@ -1,17 +1,20 @@
 import { ArrowLeftIcon, ChatCircleIcon, PlayIcon, TreeStructureIcon, UsersThreeIcon, XIcon } from "@phosphor-icons/react";
-import { createRootRoute, createRoute, createRouter, Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter, lazyRouteComponent, Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import * as View from "../../View.ts";
-import { AgentPage } from "./Agent.tsx";
 import { Avatar, Face, look_of } from "./Avatar.tsx";
 import { Composer } from "./Composer.tsx";
 import { intro_end, MOODS, mood_of, noted, show, useKi, welcomed } from "./Ki.ts";
-import { Look } from "./Look.tsx";
-import { Grown, Memory, Running, Settings, Team } from "./Pages.tsx";
+import { Memory, Running, Team } from "./Pages.tsx";
 import { Timeline } from "./Timeline.tsx";
 import { Viewer } from "./Viewer.tsx";
 
-const Importer = lazy(() => import("./Importer.tsx"));
+// the pages few visits open come when first opened
+const Importer  = lazy(() => import("./Importer.tsx"));
+const AgentPage = lazyRouteComponent(() => import("./Agent.tsx"), "AgentPage");
+const Look      = lazyRouteComponent(() => import("./Look.tsx"), "Look");
+const Grown     = lazyRouteComponent(() => import("./Grown.tsx"), "Grown");
+const Settings  = lazyRouteComponent(() => import("./Settings.tsx"), "Settings");
 
 const NOTE = 6000;
 // the intro's two scenes, then its fade

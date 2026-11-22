@@ -28,9 +28,23 @@ function files(): Plugin {
   };
 }
 
+// a Phosphor icon brings its six weights, each its own drawing: the app
+// draws these three, and the others stay out of the build
+const DRAWN = ["regular", "bold", "fill"];
+const WEIGHT = /  \[\n    "([a-z]+)",\n    .*\n  \],?\n/g;
+
+function weights(): Plugin {
+  return {
+    name: "ki-weights",
+    transform(code, id) {
+      return id.includes("@phosphor-icons/react/dist/defs/") ? code.replace(WEIGHT, (entry, weight: string) => (DRAWN.includes(weight) ? entry : "")) : null;
+    },
+  };
+}
+
 export default defineConfig({
   root    : "ui",
-  plugins : [react(), babel({ presets: [reactCompilerPreset()] }), tailwind(), files()],
+  plugins : [react(), babel({ presets: [reactCompilerPreset()] }), tailwind(), weights(), files()],
   server  : { proxy },
   preview : { proxy },
 });
