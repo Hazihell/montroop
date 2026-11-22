@@ -34,8 +34,10 @@ function work_toggle(id: string): void {
   useWork.setState({ open });
 }
 
-export function items_of(rows: View.Row[], open: ReadonlySet<string>): Item[] {
-  const seen = new Map<string, number>();
+// after: the counts of the keys of the items before these, which a key
+// made here goes on from
+export function items_of(rows: View.Row[], open: ReadonlySet<string>, after?: Map<string, number>): { items: Item[]; seen: Map<string, number> } {
+  const seen = new Map(after);
   const out: Item[] = [];
   const key = (base: string) => {
     const n = seen.get(base) ?? 0;
@@ -65,7 +67,7 @@ export function items_of(rows: View.Row[], open: ReadonlySet<string>): Item[] {
     }
   };
   walk(rows, 0);
-  return out;
+  return { items: out, seen };
 }
 
 const TOOLS: Record<string, Icon> = {

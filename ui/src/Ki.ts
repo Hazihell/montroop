@@ -7,7 +7,8 @@ import type { Mood } from "./Avatar.tsx";
 import { push_clear, push_keep } from "./Push.ts";
 
 // what the screen draws: taken from the view at most once a frame, so a
-// reply streaming in costs one render a frame however many pieces come
+// reply streaming in costs one render a frame however many pieces come;
+// rows are the chat's, tail what streams in and waits after them
 type Ki = {
   signed    : boolean | null;
   agent     : string;
@@ -15,6 +16,7 @@ type Ki = {
   offline   : boolean;
   team      : View.Mate[];
   rows      : View.Row[];
+  tail      : View.Row[];
   stoppable : boolean;
   mood      : Mood;
   asks      : number;
@@ -60,9 +62,12 @@ const v = View.view_new(AGENT.exec(location.pathname)?.[1] ?? localStorage.getIt
 // the chat on screen, counted read by the server while the window has focus
 const SEEN = { agent: null as string | null, at: 0, on: false, ws: null as WebSocket | null };
 
-export const useKi = create<Ki>(() => ({ signed: null, agent: v.agent, loaded: false, offline: false, team: [], rows: [], stoppable: false, mood: "idle", asks: 0, timers: [], jobs: [], talk: null, meter: null, knobs: [], plugs: [], page: null, sub: null, hearing: false, importing: null, note: "", stale: false, intro: localStorage.getItem(INTRO) === null && !new URLSearchParams(location.search).has("skip"), welcome: false }));
+export const useKi = create<Ki>(() => ({ signed: null, agent: v.agent, loaded: false, offline: false, team: [], rows: [], tail: [], stoppable: false, mood: "idle", asks: 0, timers: [], jobs: [], talk: null, meter: null, knobs: [], plugs: [], page: null, sub: null, hearing: false, importing: null, note: "", stale: false, intro: localStorage.getItem(INTRO) === null && !new URLSearchParams(location.search).has("skip"), welcome: false }));
 
 let due = false;
+// a piece of a reply streaming in changes only the tail: the chat's rows
+// are made again when anything else comes
+let rows_due = true;
 
 // what the agent of the chat held does now, as its avatar shows it
 function mood(): Mood {
@@ -101,7 +106,8 @@ export const MOODS: Record<Mood, string> = {
   sleeping  : "Asleep",
 };
 
-function draw(): void {
+function draw(rows = true): void {
+  rows_due ||= rows;
   if (due) {
     return;
   }
@@ -109,12 +115,15 @@ function draw(): void {
   requestAnimationFrame(() => {
     due = false;
     const note = v.notes.shift();
+    const body = rows_due ? View.view_body(v) : useKi.getState().rows;
+    rows_due = false;
     useKi.setState({
       agent     : v.agent,
       loaded    : v.held === v.agent,
       offline   : View.view_offline(v),
       team      : v.team,
-      rows      : [...View.view_body(v), ...View.view_tail(v)],
+      rows      : body,
+      tail      : View.view_tail(v),
       stoppable : View.view_stoppable(v),
       mood      : mood(),
       asks      : v.asks.length,
@@ -181,7 +190,7 @@ function hear(msg: View.Server): void {
     welcome();
   }
   seen();
-  draw();
+  draw(msg.$ !== "delta");
   clearTimeout(COPIES.soon);
   COPIES.soon = setTimeout(copy_keep, COPY_AFTER);
 }
@@ -191,7 +200,7 @@ function hear(msg: View.Server): void {
 // browser
 function lost(up: boolean): void {
   draw();
-  setTimeout(draw, View.GRACE + 100);
+  setTimeout(() => draw(), View.GRACE + 100);
   if (!up) {
     void fetch("/api/me").then((res) => {
       if (res.status === 401) {

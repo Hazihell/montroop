@@ -1,12 +1,19 @@
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { ArrowDownIcon, ArrowUpIcon } from "@phosphor-icons/react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { earlier, holds, useKi } from "./Ki.ts";
-import { items_of, Row, useWork } from "./Rows.tsx";
+import { items_of, Row, useWork, type Item } from "./Rows.tsx";
 
 // the room the island takes over the list, in rem: .talk-top's height
 const ROOM = 5.5;
+
+const said = (item: Item): boolean => item.row.$ === "Msg" && item.row.kind === "user";
+
+// where the user's messages are among items, the first at from
+function said_at(items: Item[], from: number): number[] {
+  return items.flatMap((item, at) => (said(item) ? [from + at] : []));
+}
 
 // the first rows start under the island, the room it takes
 function Top(): ReactNode {
@@ -19,6 +26,7 @@ function Top(): ReactNode {
 // long as one of them is above the island.
 export function Timeline({ sub, head }: { sub: boolean; head: HTMLElement | null }): ReactNode {
   const rows = useKi((s) => s.rows);
+  const tail = useKi((s) => s.tail);
   const open = useWork((s) => s.open);
   const list = useRef<LegendListRef>(null);
   const [away, setAway] = useState(false);
@@ -28,8 +36,15 @@ export function Timeline({ sub, head }: { sub: boolean; head: HTMLElement | null
     holds("place", away);
     return () => holds("place", false);
   }, [away]);
-  const items = items_of(rows, open);
-  const mine = items.flatMap((i, at) => (i.row.$ === "Msg" && i.row.kind === "user" ? [at] : []));
+  // the React Compiler leaves this component as written: the chat's items
+  // are made again only when its rows change, not at each piece of a reply
+  const chat = useMemo(() => {
+    const made = items_of(rows, open);
+    return { ...made, mine: said_at(made.items, 0) };
+  }, [rows, open]);
+  const live = items_of(tail, open, chat.seen).items;
+  const items = [...chat.items, ...live];
+  const mine = [...chat.mine, ...said_at(live, chat.items.length)];
   const room = () => ROOM * parseFloat(getComputedStyle(document.documentElement).fontSize);
   // the last of the user's messages that starts above the island's room: a
   // drawn row says where it is, one not drawn is above when before the drawn
