@@ -1,11 +1,12 @@
-import { AlarmIcon, GitBranchIcon, HandPalmIcon, PlusIcon, PushPinIcon, TerminalWindowIcon } from "@phosphor-icons/react";
+import { GearSixIcon, HandPalmIcon, PlusIcon, PushPinIcon } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
 import type { Pin } from "../../Pins.ts";
-import { timer_when } from "../../Timer.ts";
-import * as View from "../../View.ts";
+import type * as View from "../../View.ts";
 import { Face } from "./Avatar.tsx";
-import { act, MOODS, mood_of, useKi } from "./Ki.ts";
+import { Back } from "./Back.tsx";
+import { MOODS, mood_of, show, useKi } from "./Ki.ts";
+import { Context, RunList } from "./Panel.tsx";
 
 // an agent as a row: its avatar acts out its mood, the line under its name
 // says it, then its last words
@@ -35,6 +36,7 @@ export function Agents({ side = false }: { side?: boolean }): ReactNode {
       <header className="head">
         <h1>Agents</h1>
         <Link to="/new" className="round gl" aria-label="New agent"><PlusIcon size={22} weight="bold" /></Link>
+        <Link to="/settings" className="round gl" aria-label="Ki's settings"><GearSixIcon size={22} /></Link>
       </header>
       <div className="scroll px-1.5 pb-4">
         {team.map((m) => <Mate key={m.id} m={m} size={side ? 56 : 68} />)}
@@ -43,46 +45,27 @@ export function Agents({ side = false }: { side?: boolean }): ReactNode {
   );
 }
 
-// what goes on without the owner: the agents at work with their subagents,
-// then the jobs and timers of the chat last open
-export function Running(): ReactNode {
-  const team = useKi((s) => s.team);
-  const name = useKi((s) => s.team.find((m) => m.id === s.agent)?.name ?? "");
-  const jobs = useKi((s) => s.jobs);
-  const timers = useKi((s) => s.timers);
-  const going = team.filter((m) => m.archived === 0 && (m.busy || (m.asks ?? 0) > 0 || (m.subs ?? []).length > 0));
+// hold the agent for one of its pages, without its chat counted read
+function useHold(agent: string): void {
+  useEffect(() => {
+    show(agent, null, false);
+    return () => show(null);
+  }, [agent]);
+}
+
+// what goes on for one agent without the owner: its subagents, background
+// jobs and timers
+export function Running({ agent }: { agent: string }): ReactNode {
+  const name = useKi((s) => s.team.find((m) => m.id === agent)?.name ?? "");
+  useHold(agent);
   return (
     <section className="page">
-      <header className="head"><h1>Running</h1></header>
-      <div className="scroll pb-4">
-        {going.length + jobs.length + timers.length === 0 ? <p className="lede">Nothing runs right now. Agents at work, their subagents, background jobs and timers show here.</p> : null}
-        {going.map((m) => (
-          <div key={m.id} className="px-1.5">
-            <Mate m={m} size={56} />
-            {(m.subs ?? []).map((sub) => (
-              <Link key={sub.name} to="/a/$agent/s/$name" params={{ agent: m.id, name: sub.name }} className="item pl-6">
-                <GitBranchIcon size={18} />
-                <p><b className="font-semibold">{sub.name}</b><small>{[sub.model, sub.effort, sub.doing === "" ? sub.task : sub.doing].filter((x) => x !== "").join(" · ")}</small></p>
-              </Link>
-            ))}
-          </div>
-        ))}
-        {jobs.length === 0 ? null : <h2 className="label">{name === "" ? "Background jobs" : name + "'s background jobs"}</h2>}
-        {jobs.map((job) => (
-          <div key={job.device + job.id} className="item">
-            <TerminalWindowIcon size={18} />
-            <p>Job <span className="font-mono text-[0.84em]">{job.id}</span><small>on {job.device}</small></p>
-          </div>
-        ))}
-        {timers.length === 0 ? null : <h2 className="label">{name === "" ? "Timers" : name + "'s timers"}</h2>}
-        {timers.map((timer) => (
-          <div key={timer.id} className="item">
-            <AlarmIcon size={18} />
-            <p><span className="line-clamp-2">{timer.text}</span><small>{timer_when(timer)}</small></p>
-            <button type="button" className="pillbtn min-h-11 px-4 text-[0.875rem]" onClick={() => confirm("Cancel this timer?") && act({ $: "Unschedule", id: timer.id })}>Cancel</button>
-          </div>
-        ))}
-      </div>
+      <header className="head pl-3.5">
+        <Back to={"/a/" + agent} label="Back to the chat" />
+        <h1 className="truncate pl-1.5">Running</h1>
+      </header>
+      {name === "" ? null : <p className="lede -mt-1 pb-1">{name}'s subagents, background jobs and timers.</p>}
+      <div className="scroll pb-4"><RunList agent={agent} /></div>
     </section>
   );
 }
@@ -91,23 +74,24 @@ function pin_note(pin: Pin): string {
   return [pin.until === null ? "lasting" : "until " + pin.until, "used " + pin.used].join(" · ");
 }
 
+// the memory's three views; each takes the last one's place in the history,
+// so back leaves the memory at once
 export function Tabs({ agent }: { agent: string }): ReactNode {
   return (
     <nav className="seg gl mx-3.5 mb-2 max-w-sm" aria-label="Memory">
-      <Link to="/memory">Pins</Link>
-      <Link to="/tree" search={{ a: agent }} hash="view" activeOptions={{ includeHash: true }}>View</Link>
-      <Link to="/tree" search={{ a: agent }} activeOptions={{ includeHash: true }}>Tree</Link>
+      <Link to="/a/$agent/memory" params={{ agent }} replace>Pins</Link>
+      <Link to="/a/$agent/tree" params={{ agent }} hash="view" replace activeOptions={{ includeHash: true }}>View</Link>
+      <Link to="/a/$agent/tree" params={{ agent }} replace activeOptions={{ includeHash: true }}>Tree</Link>
     </nav>
   );
 }
 
-// what is kept: how full the open chat's context is, and the pins every
-// agent follows
-export function Memory(): ReactNode {
-  const agent = useKi((s) => s.agent);
-  const name = useKi((s) => s.team.find((m) => m.id === s.agent)?.name ?? "");
-  const talk = useKi((s) => s.talk);
+// what is kept: how full the agent's context is, and the pins every agent
+// follows
+export function Memory({ agent }: { agent: string }): ReactNode {
+  const name = useKi((s) => s.team.find((m) => m.id === agent)?.name ?? "");
   const [pins, setPins] = useState<Pin[] | null | undefined>(undefined);
+  useHold(agent);
   const load = (unpin: number | null) => {
     const init = unpin === null ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ unpin }) };
     void fetch("/api/pins", init).then((res) => (res.ok ? (res.json() as Promise<Pin[]>) : null), () => null).then(setPins);
@@ -115,21 +99,13 @@ export function Memory(): ReactNode {
   useEffect(() => load(null), []);
   return (
     <section className="page">
-      <header className="head"><h1>Memory</h1></header>
+      <header className="head pl-3.5">
+        <Back to={"/a/" + agent} label="Back to the chat" />
+        <h1 className="truncate pl-1.5">{name === "" ? "Memory" : name + "'s memory"}</h1>
+      </header>
       <Tabs agent={agent} />
       <div className="scroll pb-4">
-        {talk === null ? null : (
-          <>
-            <h2 className="label pt-2">{name === "" ? "Context" : name + "'s context"}</h2>
-            <div className="px-5.5">
-              <p><b className="font-display text-3xl font-extrabold tracking-tight tabular-nums">{View.talk_percent(talk)}%</b> <span className="text-mid">full</span></p>
-              <div className="my-2 h-2 overflow-hidden rounded-full bg-raise" role="meter" aria-label="Context used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={View.talk_percent(talk)}>
-                <div className="h-full rounded-full bg-act" style={{ width: Math.min(100, View.talk_percent(talk)) + "%" }} />
-              </div>
-              <p className="text-[0.875rem] text-mid">{View.talk_tokens(talk)}</p>
-            </div>
-          </>
-        )}
+        <Context agent={agent} label />
         <h2 className="label">Pins</h2>
         <p className="lede pb-2 text-[0.875rem]">What your agents learned about you and keep outside the memory's compression, for every agent.</p>
         {pins === undefined ? null

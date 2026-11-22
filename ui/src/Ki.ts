@@ -459,9 +459,11 @@ export async function boot(go: (url: string) => void): Promise<void> {
 }
 
 // the chat the screen shows now, null for none (the agent list), or the
-// page of one of its subagents, which doesn't count its spawner's chat read
-export function show(agent: string | null, sub: string | null = null): void {
-  SEEN.agent = sub === null ? agent : null;
+// page of one of its subagents, which doesn't count its spawner's chat read;
+// read false holds an agent for one of its pages (what runs, its memory)
+// without its chat on screen
+export function show(agent: string | null, sub: string | null = null, read = true): void {
+  SEEN.agent = sub === null && read ? agent : null;
   for (const out of agent === null ? [] : View.view_switch(v, agent)) {
     View.link_send(v, out);
   }

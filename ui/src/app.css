@@ -45,7 +45,6 @@
   --act-ink: light-dark(color-mix(in oklab, var(--act) 70%, #000), color-mix(in oklab, var(--act) 45%, #fff));
   --act-wash: light-dark(color-mix(in oklab, var(--act) 12%, #f4f3ef), color-mix(in oklab, var(--act) 20%, #0c0c0e));
   --lamp: light-dark(color-mix(in oklab, var(--act) 38%, transparent), color-mix(in oklab, var(--act) 78%, transparent));
-  --bar: 5.75rem;
 }
 
 :root[data-theme="dark"] {
@@ -249,7 +248,7 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* the four places, a floating bar on a phone and a rail beside the page on a wide screen */
+  /* no bar of places: the list is home, each screen goes full height */
   .shell {
     position: relative;
     height: 100%;
@@ -259,68 +258,6 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    padding-bottom: calc(var(--bar) + env(safe-area-inset-bottom));
-  }
-  .bar {
-    position: fixed;
-    z-index: 3;
-    right: 0.75rem;
-    bottom: max(0.875rem, env(safe-area-inset-bottom));
-    left: 0.75rem;
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    align-items: center;
-    max-width: 26rem;
-    height: 4rem;
-    margin-inline: auto;
-    padding: 0 0.375rem;
-    border-radius: 2rem;
-    background: var(--deep);
-    transition: transform 320ms var(--ease-out), opacity 200ms var(--ease-out);
-  }
-  .bar a {
-    display: grid;
-    justify-items: center;
-    gap: 0.25rem;
-    color: var(--mid);
-    font-size: 0.75rem;
-    font-weight: 600;
-    line-height: 1;
-  }
-  .bar a > span {
-    position: relative;
-    display: grid;
-    place-items: center;
-    width: 3.625rem;
-    height: 1.875rem;
-    border-radius: 1rem;
-    transition: background-color 240ms var(--ease-out), box-shadow 240ms var(--ease-out);
-  }
-  .bar a[aria-current="page"] {
-    color: var(--ink);
-  }
-  .bar a[aria-current="page"] > span {
-    background: color-mix(in oklab, var(--act) 42%, transparent);
-    box-shadow: 0 0 22px color-mix(in oklab, var(--act) 50%, transparent);
-  }
-  .bar em {
-    position: absolute;
-    top: -0.25rem;
-    right: 0.375rem;
-    min-width: 1.125rem;
-    height: 1.125rem;
-    padding: 0 0.3125rem;
-    border-radius: 0.5625rem;
-    background: var(--act);
-    color: var(--on-act);
-    font-size: 0.6875rem;
-    font-style: normal;
-    font-weight: 700;
-    line-height: 1.125rem;
-    text-align: center;
-  }
-  /* a chat or a page on top goes full screen: no bar under it */
-  .shell.bare .page {
     padding-bottom: max(0.375rem, env(safe-area-inset-bottom));
   }
   /* an iPhone app's edge swipe drags the chat away */
@@ -335,35 +272,126 @@
     flex-direction: column;
     height: 100%;
   }
-  /* a phone's keyboard takes half the screen: the bar steps aside while one writes */
-  @media (pointer: coarse) {
-    .shell:has(.box:focus-within) .bar {
-      opacity: 0;
-      pointer-events: none;
-      transform: translateY(150%);
-    }
-    .shell:has(.box:focus-within) .page {
-      padding-bottom: 0;
-    }
+  /* how many things work for an agent, on its face */
+  .count {
+    position: absolute;
+    top: -0.25rem;
+    right: -0.375rem;
+    min-width: 1.25rem;
+    height: 1.25rem;
+    padding: 0 0.3125rem;
+    border-radius: 0.625rem;
+    background: var(--act);
+    box-shadow: 0 0 0 2px var(--island);
+    color: var(--on-act);
+    font-size: 0.6875rem;
+    font-style: normal;
+    font-weight: 700;
+    line-height: 1.25rem;
+    text-align: center;
   }
-  @media (min-width: 48rem) {
-    .page {
-      padding-bottom: 0;
-      padding-left: 6.5rem;
-    }
-    .bar {
-      top: 50%;
-      right: auto;
-      bottom: auto;
-      left: 1rem;
-      grid-template-columns: none;
-      grid-auto-rows: 4.25rem;
-      width: 4.5rem;
-      height: auto;
-      padding: 0.5rem 0;
-      transform: translateY(-50%);
-    }
+  .count.static {
+    position: static;
+    align-self: center;
+    box-shadow: none;
   }
+
+  /* one agent's places: a sheet over its chat on a phone */
+  .dim {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    background: #0000008c;
+    cursor: default;
+    animation: fade 200ms var(--ease-out);
+  }
+  .agsheet {
+    position: fixed;
+    z-index: 6;
+    right: 0.5rem;
+    bottom: max(0.5rem, env(safe-area-inset-bottom));
+    left: 0.5rem;
+    max-width: 30rem;
+    max-height: calc(100dvh - 4rem);
+    margin-inline: auto;
+    padding: 0.5rem 0.25rem 0.75rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--edge);
+    border-radius: 1.75rem;
+    background: var(--solid);
+    box-shadow: 0 -12px 48px #00000066;
+    outline: none;
+    animation: up 260ms var(--ease-out);
+    transition: transform 180ms var(--ease-out);
+  }
+  .agsheet.dragged {
+    transition: none;
+  }
+  .grip {
+    display: block;
+    width: 2.5rem;
+    height: 0.3125rem;
+    margin: 0 auto 0.5rem;
+    border-radius: 1rem;
+    background: var(--edge);
+  }
+  .who {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    padding: 0.5rem 1.375rem 0.75rem 1rem;
+  }
+  .who > div {
+    min-width: 0;
+  }
+  .who h2 {
+    overflow: hidden;
+    color: var(--ink);
+    font-size: 1.625rem;
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: -0.025em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .who p {
+    color: var(--mid);
+    font-size: 0.875rem;
+    line-height: 1.35;
+  }
+  .who i {
+    color: var(--act-ink);
+    font-style: normal;
+    font-weight: 600;
+  }
+  .places {
+    display: grid;
+    padding: 0 0.375rem;
+  }
+  .item.go {
+    align-items: center;
+    min-height: 3.5rem;
+    padding-inline: 1rem;
+    border-radius: 1.125rem;
+    transition: background-color 160ms var(--ease-out);
+  }
+  .item.go > svg:first-child {
+    margin-top: 0;
+    color: var(--act-ink);
+  }
+  .item.go > svg:last-child {
+    flex: none;
+    color: var(--dim);
+  }
+  .item.go:active, .item.go:hover {
+    background: var(--raise);
+  }
+  .isl {
+    cursor: pointer;
+    text-align: left;
+  }
+
   /* wide enough: the agents stay in a column beside the open chat */
   @media (min-width: 64rem) {
     .side {
@@ -371,7 +399,7 @@
       z-index: 2;
       top: 0;
       bottom: 0;
-      left: 6.5rem;
+      left: 0;
       width: 22rem;
       border-right: 1px solid var(--edge);
     }
@@ -382,10 +410,28 @@
       background: var(--raise);
     }
     .split .page {
-      padding-left: 29.5rem;
+      padding-left: 22rem;
     }
     .split .back {
       display: none;
+    }
+  }
+  /* wider still: the agent's own column on the chat's other side */
+  @media (min-width: 80rem) {
+    .page.paned {
+      padding-right: 22rem;
+    }
+    .panel {
+      position: fixed;
+      z-index: 2;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 22rem;
+      padding: max(1rem, env(safe-area-inset-top)) 0.25rem 1rem;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      border-left: 1px solid var(--edge);
     }
   }
 
@@ -785,7 +831,7 @@
     letter-spacing: -0.015em;
   }
 
-  /* the message box floats over the ground, above the bar */
+  /* the message box floats over the ground */
   .box {
     position: relative;
     z-index: 2;
@@ -1640,5 +1686,17 @@
   from {
     opacity: 0;
     transform: translateY(0.5rem);
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes up {
+  from {
+    transform: translateY(100%);
   }
 }

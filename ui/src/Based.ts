@@ -1,8 +1,8 @@
 // runs before the router reads the history, so it comes first among
 // the client's imports
 
-// the screens the bar leads to; any other one sits on top of them
-export const TOP = /^\/(running|memory|tree|settings|team)?$/;
+// the home screen, the agent list; every other one sits on top of it
+export const TOP = /^\/(team)?$/;
 
 // opened straight on a chat (a notification's tap, a link), the list sits
 // under it, so back lands there instead of leaving the app; once per tab

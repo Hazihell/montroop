@@ -6,7 +6,7 @@ import { get, text_of } from "../../Json.ts";
 import * as View from "../../View.ts";
 import { Avatar, Face, look_of, look_text } from "./Avatar.tsx";
 import { Back } from "./Back.tsx";
-import { holds, note, useKi } from "./Ki.ts";
+import { act, holds, note, show, useKi } from "./Ki.ts";
 
 const Importer = lazy(() => import("./Importer.tsx"));
 
@@ -55,6 +55,31 @@ function Set({ name, about, children }: { name: string; about?: string; children
       <span>{name}{about === undefined ? null : <small>{about}</small>}</span>
       {children}
     </label>
+  );
+}
+
+// the MCP servers of the devices, each on or off for this agent; the client
+// holds the agent while its settings are open, to know which are on
+function Plugs({ agent }: { agent: string }): ReactNode {
+  const held = useKi((s) => s.agent === agent && s.loaded);
+  const plugs = useKi((s) => s.plugs);
+  useEffect(() => {
+    show(agent, null, false);
+    return () => show(null);
+  }, [agent]);
+  if (!held) {
+    return null;
+  }
+  return (
+    <>
+      <h2 className="label">MCP servers</h2>
+      {plugs.length === 0 ? <p className="lede">None set up. Add them as <code className="font-mono text-[0.84em]">mcp</code> in a device's own config.json: they run on that device.</p> : plugs.map((p) => (
+        <label key={p.name} className="set">
+          <span>{p.name}</span>
+          <input type="checkbox" role="switch" className="switch" checked={p.on} onChange={() => act({ $: "Plug", name: p.name })} />
+        </label>
+      ))}
+    </>
   );
 }
 
@@ -169,6 +194,7 @@ function Fields({ a, all }: { a: Agent | null; all: All }): ReactNode {
               <input className="field" type="number" inputMode="numeric" min={1} max={View.LINES_MOST} step={1} value={form.lines} onChange={(ev) => set({ lines: ev.target.value })} onBlur={left} />
             </Set>
           ) : null}
+          {a === null ? null : <Plugs agent={a.id} />}
           {why === "" ? null : <p className="px-5.5 pt-3 text-[0.9375rem] text-bad" role="alert">{why}</p>}
           {a === null ? <div className="px-3.5 pt-5"><button type="submit" className="pillbtn go w-full">Create</button></div> : (
             <>

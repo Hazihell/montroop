@@ -1,13 +1,14 @@
-import { PlayIcon, SlidersHorizontalIcon, TreeStructureIcon, UsersThreeIcon, XIcon } from "@phosphor-icons/react";
-import { createRootRoute, createRoute, createRouter, lazyRouteComponent, Link, Outlet, redirect, useLocation, useNavigate } from "@tanstack/react-router";
-import { lazy, Suspense, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { XIcon } from "@phosphor-icons/react";
+import { createRootRoute, createRoute, createRouter, lazyRouteComponent, Outlet, redirect, useLocation, useNavigate, useRouter, useSearch } from "@tanstack/react-router";
+import { lazy, Suspense, useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import * as View from "../../View.ts";
 import { Avatar, Face, look_of } from "./Avatar.tsx";
 import { Composer } from "./Composer.tsx";
 import { intro_end, MOODS, mood_of, noted, show, useKi, welcomed } from "./Ki.ts";
 import { Back, useBack, useEdgeBack } from "./Back.tsx";
-import { TOP } from "./Based.ts";
 import { Agents, Memory, Running } from "./Pages.tsx";
+import { Panel, Sheet, useGoing } from "./Panel.tsx";
+import { panel_set, usePrefs } from "./Prefs.ts";
 import { Timeline } from "./Timeline.tsx";
 import { Viewer } from "./Viewer.tsx";
 
@@ -91,47 +92,39 @@ function Intro(): ReactNode {
   );
 }
 
-// a screen wide enough for the list beside the open chat
+// a screen wide enough for the list beside the open chat, and one wider
+// still for the agent's own column beside that
 const WIDE = matchMedia("(min-width: 64rem)");
-const wide_on = (then: () => void) => {
-  WIDE.addEventListener("change", then);
-  return () => WIDE.removeEventListener("change", then);
-};
+const WIDER = matchMedia("(min-width: 80rem)");
 
-function useWide(): boolean {
-  return useSyncExternalStore(wide_on, () => WIDE.matches);
+function useMedia(query: MediaQueryList): boolean {
+  const on = useCallback((then: () => void) => {
+    query.addEventListener("change", then);
+    return () => query.removeEventListener("change", then);
+  }, [query]);
+  return useSyncExternalStore(on, () => query.matches);
 }
 
-// the four places: the agents, what runs, what is kept, how Ki works; a
-// chat or a page on top of them goes full screen without it
-function Bar(): ReactNode {
-  const going = useKi((s) => s.team.filter((m) => m.archived === 0 && (m.busy || (m.asks ?? 0) > 0)).length);
-  const path = useLocation().pathname;
-  const home = path === "/" || path.startsWith("/a/") || path === "/new";
-  return (
-    <nav className="bar gl" aria-label="Places">
-      <Link to="/" aria-current={home ? "page" : undefined}><span><UsersThreeIcon size={23} weight={home ? "fill" : "regular"} /></span>Agents</Link>
-      <Link to="/running">{({ isActive }) => <><span><PlayIcon size={23} weight={isActive ? "fill" : "bold"} />{going > 0 ? <em aria-label={going + " at work"}>{going}</em> : null}</span>Running</>}</Link>
-      <Link to="/memory" aria-current={path === "/tree" ? "page" : undefined}>{({ isActive }) => <><span><TreeStructureIcon size={23} weight={isActive || path === "/tree" ? "fill" : "regular"} /></span>Memory</>}</Link>
-      <Link to="/settings">{({ isActive }) => <><span><SlidersHorizontalIcon size={23} weight={isActive ? "fill" : "regular"} /></span>Settings</>}</Link>
-    </nav>
-  );
+// where the ground's lamps sit for each screen
+function lamps(path: string): string {
+  const own = /^\/a\/[^/]+\/(running|memory|tree)\b/.exec(path)?.[1];
+  return own === "tree" ? "memory" : own ?? (/^\/a\/[^/]+(\/s\/[^/]+)?$/.test(path) ? "chat" : "team");
 }
 
+// no bar of places: the list is home, and all about one agent opens from
+// its chat
 function Shell(): ReactNode {
   const signed = useKi((s) => s.signed);
   const path = useLocation().pathname;
-  const wide = useWide();
-  const at = /^\/(running|memory|settings|tree|new|a)\b/.exec(path)?.[1] ?? "team";
+  const wide = useMedia(WIDE);
   const split = wide && (path === "/" || path.startsWith("/a/") || path === "/new");
-  const bar = wide || TOP.test(path);
   if (signed === null) {
     return null;
   }
   return (
-    <div className={"shell" + (split ? " split" : "") + (bar ? "" : " bare")}>
-      <div className="aurora" data-at={at === "settings" || at === "new" ? "team" : at === "tree" ? "memory" : at === "a" ? "chat" : at}><i /><i /><i /></div>
-      {signed ? <>{split ? <aside className="side"><Agents side /></aside> : null}<Outlet />{bar ? <Bar /> : null}</> : <div className="flex h-full"><SignIn /></div>}
+    <div className={"shell" + (split ? " split" : "")}>
+      <div className="aurora" data-at={lamps(path)}><i /><i /><i /></div>
+      {signed ? <>{split ? <aside className="side"><Agents side /></aside> : null}<Outlet /></> : <div className="flex h-full"><SignIn /></div>}
       <Note />
       <Viewer />
       <Intro />
@@ -141,7 +134,7 @@ function Shell(): ReactNode {
 
 // Ki opens on the agents; a wide screen has them beside, and here what to do
 function Home(): ReactNode {
-  const wide = useWide();
+  const wide = useMedia(WIDE);
   const any = useKi((s) => s.team.some((m) => m.archived === 0));
   if (!wide) {
     return <Agents />;
@@ -156,10 +149,24 @@ function Home(): ReactNode {
   );
 }
 
-function Tree(): ReactNode {
-  const { a } = tree.useSearch();
-  const held = useKi((s) => s.agent || (s.team.find((m) => m.archived === 0)?.id ?? ""));
-  return <Grown agent={a ?? held} view={useLocation().hash === "view"} />;
+function Tree({ agent }: { agent: string }): ReactNode {
+  return <Grown agent={agent} view={useLocation().hash === "view"} />;
+}
+
+// the agent's sheet is a step in the history, so the phone's back closes it
+function useSheet(agent: string): [boolean, () => void, () => void] {
+  const open = useSearch({ strict: false, select: (s: { about?: 1 }) => s.about === 1 });
+  const navigate = useNavigate();
+  const router = useRouter();
+  const show_it = useCallback(() => void navigate({ to: "/a/$agent", params: { agent }, search: { about: 1 } }), [navigate, agent]);
+  const hide = useCallback(() => {
+    if ((router.history.location.state as { __TSR_index?: number }).__TSR_index !== 0) {
+      router.history.back();
+    } else {
+      void navigate({ to: "/a/$agent", params: { agent }, search: {}, replace: true });
+    }
+  }, [router, navigate, agent]);
+  return [open, show_it, hide];
 }
 
 // an agent's chat, or the page of a subagent it spawned: what that one
@@ -177,6 +184,11 @@ function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode 
   const [head, setHead] = useState<HTMLElement | null>(null);
   const [page, setPage] = useState<HTMLElement | null>(null);
   const back = useBack(sub === null ? "/" : "/a/" + agent);
+  const wider = useMedia(WIDER);
+  const shown = usePrefs((s) => s.panel);
+  const going = useGoing(agent);
+  const [sheet, openSheet, closeSheet] = useSheet(agent);
+  const panel = wider && shown && sub === null;
   useEdgeBack(page, back);
   useEffect(() => {
     show(agent, sub);
@@ -190,16 +202,19 @@ function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode 
   }), [agent, navigate]);
   const doing = offline ? "Offline" : sub === null ? MOODS[mood] : row === null ? "Done" : row.doing;
   return (
-    <section ref={setPage} className="page swipe">
+    <section ref={setPage} className={"page swipe" + (panel ? " paned" : "")}>
       <div className="relative flex min-h-0 flex-1 flex-col">
         <header className="top">
           <Back to={sub === null ? "/" : "/a/" + agent} label={sub === null ? "Back to the agents" : "Back to " + (mate?.name ?? "the chat")} className={sub === null ? "back" : ""} />
           {sub === null ? (
-            <Link to="/a/$agent/edit" params={{ agent }} className="isl" aria-label={(mate?.name ?? "This agent") + ": its settings"}>
-              <Face picture={mate?.picture ?? ""} id={agent} mood={mood} size={56} />
+            <button type="button" className="isl" aria-expanded={wider ? panel : sheet} aria-label={(mate?.name ?? "This agent") + ": what runs, its memory and settings"} onClick={() => (wider ? panel_set(!shown) : openSheet())}>
+              <span className="relative">
+                <Face picture={mate?.picture ?? ""} id={agent} mood={mood} size={56} />
+                {going > 0 ? <em className="count" aria-label={going + " at work"}>{going}</em> : null}
+              </span>
               <b>{mate?.name ?? ""}</b>
               {doing === "" ? null : <span>{doing}</span>}
-            </Link>
+            </button>
           ) : (
             <p className="isl">
               <Avatar look={look_of("", agent + "/" + sub)} mood={mood} size={56} />
@@ -218,25 +233,46 @@ function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode 
           </p>
         )}
       </div>
+      {panel ? <Panel agent={agent} /> : null}
+      {sheet && !wider && sub === null ? <Sheet agent={agent} close={closeSheet} /> : null}
     </section>
   );
 }
 
+// the agent the owner had open last, for an old link with no agent in it
+const last = (): string => useKi.getState().agent;
+const own = (where: "running" | "memory" | "tree", hash?: string) => () => {
+  const agent = last();
+  if (agent === "") {
+    redirect({ to: "/", replace: true, throw: true });
+  }
+  redirect({ to: "/a/$agent/" + where, params: { agent }, hash, replace: true, throw: true });
+};
+
 const root     = createRootRoute({ component: Shell });
 const home     = createRoute({ getParentRoute: () => root, path: "/", component: Home });
-const chat     = createRoute({ getParentRoute: () => root, path: "/a/$agent", component: () => <Chat agent={chat.useParams().agent} sub={null} /> });
+const chat     = createRoute({ getParentRoute: () => root, path: "/a/$agent", validateSearch: (s): { about?: 1 } => (s.about === 1 || s.about === "1" ? { about: 1 } : {}), component: () => <Chat agent={chat.useParams().agent} sub={null} /> });
 const sub      = createRoute({ getParentRoute: () => root, path: "/a/$agent/s/$name", component: () => <Chat agent={sub.useParams().agent} sub={sub.useParams().name} /> });
 const fresh    = createRoute({ getParentRoute: () => root, path: "/new", component: () => <AgentPage agent={null} /> });
 const edit     = createRoute({ getParentRoute: () => root, path: "/a/$agent/edit", component: () => <AgentPage agent={edit.useParams().agent} /> });
 const look     = createRoute({ getParentRoute: () => root, path: "/a/$agent/look", component: () => <Look agent={look.useParams().agent} /> });
-const running  = createRoute({ getParentRoute: () => root, path: "/running", component: Running });
-const memory   = createRoute({ getParentRoute: () => root, path: "/memory", component: Memory });
-const tree     = createRoute({ getParentRoute: () => root, path: "/tree", validateSearch: (s): { a?: string } => (typeof s.a === "string" ? { a: s.a } : {}), component: Tree });
-// where the agents were before the list became home
+const running  = createRoute({ getParentRoute: () => root, path: "/a/$agent/running", component: () => <Running agent={running.useParams().agent} /> });
+const memory   = createRoute({ getParentRoute: () => root, path: "/a/$agent/memory", component: () => <Memory agent={memory.useParams().agent} /> });
+const tree     = createRoute({ getParentRoute: () => root, path: "/a/$agent/tree", component: () => <Tree agent={tree.useParams().agent} /> });
+// where these were before they became each agent's own, and the list home
+const runningOld = createRoute({ getParentRoute: () => root, path: "/running", beforeLoad: own("running") });
+const memoryOld  = createRoute({ getParentRoute: () => root, path: "/memory", beforeLoad: own("memory") });
+const treeOld    = createRoute({ getParentRoute: () => root, path: "/tree", beforeLoad: ({ search, location }) => {
+  const a = (search as { a?: unknown }).a;
+  if (typeof a === "string" && a !== "") {
+    redirect({ to: "/a/$agent/tree", params: { agent: a }, hash: location.hash, replace: true, throw: true });
+  }
+  own("tree", location.hash)();
+} });
 const team     = createRoute({ getParentRoute: () => root, path: "/team", beforeLoad: () => redirect({ to: "/", replace: true, throw: true }) });
 const settings = createRoute({ getParentRoute: () => root, path: "/settings", component: Settings });
 
-export const router = createRouter({ routeTree: root.addChildren([home, chat, sub, fresh, edit, look, running, memory, tree, team, settings]) });
+export const router = createRouter({ routeTree: root.addChildren([home, chat, sub, fresh, edit, look, running, memory, tree, runningOld, memoryOld, treeOld, team, settings]) });
 
 declare module "@tanstack/react-router" {
   interface Register {

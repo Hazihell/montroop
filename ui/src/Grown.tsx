@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from "react";
+import { Back } from "./Back.tsx";
 import { tree_hide, tree_show } from "./Tree.ts";
 import { useKi } from "./Ki.ts";
 import { Tabs } from "./Pages.tsx";
@@ -15,7 +16,7 @@ export function Grown({ agent, view }: { agent: string; view: boolean }): ReactN
   useEffect(() => tree_hide, []);
   return (
     <section className="page">
-      <header className="head"><h1 className="truncate">{name === "" ? "Memory" : name + "'s memory"}</h1></header>
+      <header className="head pl-3.5"><Back to={"/a/" + agent} label="Back to the chat" /><h1 className="truncate pl-1.5">{name === "" ? "Memory" : name + "'s memory"}</h1></header>
       <Tabs agent={agent} />
       <main id="tree">
         <nav className="levels"><a className="tab" data-tab="VIEW" /><a className="tab" data-tab="TREE" /><small className="legend" /><button type="button" className="prev" aria-label="Level below">‹</button><button type="button" className="next" aria-label="Level above">›</button></nav>

@@ -3,7 +3,8 @@ import { err_why } from "../../Err.ts";
 import { text_of } from "../../Json.ts";
 import * as View from "../../View.ts";
 import { Archived } from "./Agent.tsx";
-import { act, note, signed_out, useKi } from "./Ki.ts";
+import { Back } from "./Back.tsx";
+import { note, signed_out } from "./Ki.ts";
 import { Owned } from "./Owned.tsx";
 import { ACCENTS, prefs_set, usePrefs, type Theme } from "./Prefs.ts";
 import { push_state, push_sub, push_turn, type Bell, type Notify } from "./Push.ts";
@@ -49,23 +50,6 @@ function Bell(): ReactNode {
   );
 }
 
-// the MCP servers of the devices, on or off for the chat last open
-function Plugs(): ReactNode {
-  const plugs = useKi((s) => s.plugs);
-  const name = useKi((s) => s.team.find((m) => m.id === s.agent)?.name ?? "");
-  return (
-    <>
-      <h2 className="label">{name === "" ? "MCP servers" : "MCP servers for " + name}</h2>
-      {plugs.length === 0 ? <p className="lede">None set up. Add them as <code className="font-mono text-[0.84em]">mcp</code> in a device's own config.json: they run on that device.</p> : plugs.map((p) => (
-        <label key={p.name} className="set">
-          <span>{p.name}</span>
-          <input type="checkbox" role="switch" className="switch" checked={p.on} onChange={() => act({ $: "Plug", name: p.name })} />
-        </label>
-      ))}
-    </>
-  );
-}
-
 export function Settings(): ReactNode {
   const accent = usePrefs((s) => s.accent);
   const theme = usePrefs((s) => s.theme);
@@ -76,7 +60,7 @@ export function Settings(): ReactNode {
   };
   return (
     <section className="page">
-      <header className="head"><h1>Settings</h1></header>
+      <header className="head pl-3.5"><Back to="/" label="Back to the agents" /><h1 className="pl-1.5">Settings</h1></header>
       <div className="scroll pb-6">
         <div className="mx-auto max-w-xl">
           <h2 className="label pt-2">Accent</h2>
@@ -96,7 +80,6 @@ export function Settings(): ReactNode {
           <h2 className="label">This device</h2>
           <Bell />
           <div className="px-3.5 pt-4"><button type="button" className="pillbtn" onClick={() => void out()}>Sign out</button></div>
-          <Plugs />
           <Archived />
           <Owned />
         </div>
