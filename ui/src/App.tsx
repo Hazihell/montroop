@@ -153,6 +153,25 @@ function Tree({ agent }: { agent: string }): ReactNode {
   return <Grown agent={agent} view={useLocation().hash === "view"} />;
 }
 
+// how long a closed sheet takes to leave: .agsheet's transition
+const LEAVE = 180;
+
+// what is shown stays drawn, leaving, a moment after it closes
+function useLeaving(on: boolean): "on" | "leaving" | false {
+  const [kept, setKept] = useState(on);
+  if (on && !kept) {
+    setKept(true);
+  }
+  useEffect(() => {
+    if (on) {
+      return undefined;
+    }
+    const id = setTimeout(() => setKept(false), LEAVE);
+    return () => clearTimeout(id);
+  }, [on]);
+  return on ? "on" : kept ? "leaving" : false;
+}
+
 // the agent's sheet is a step in the history, so the phone's back closes it
 function useSheet(agent: string): [boolean, () => void, () => void] {
   const open = useSearch({ strict: false, select: (s: { about?: 1 }) => s.about === 1 });
@@ -188,6 +207,7 @@ function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode 
   const shown = usePrefs((s) => s.panel);
   const going = useGoing(agent);
   const [sheet, openSheet, closeSheet] = useSheet(agent);
+  const drawn = useLeaving(sheet && !wider && sub === null);
   const panel = wider && shown && sub === null;
   useEdgeBack(page, back);
   useEffect(() => {
@@ -234,7 +254,7 @@ function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode 
         )}
       </div>
       {panel ? <Panel agent={agent} /> : null}
-      {sheet && !wider && sub === null ? <Sheet agent={agent} close={closeSheet} /> : null}
+      {drawn === false ? null : <Sheet agent={agent} close={closeSheet} leaving={drawn === "leaving"} />}
     </section>
   );
 }

@@ -329,6 +329,16 @@
   .agsheet.dragged {
     transition: none;
   }
+  /* closed: it slides away, and taps go to the chat at once */
+  .agsheet.leaving {
+    transform: translateY(110%);
+    pointer-events: none;
+  }
+  .dim.leaving {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 180ms var(--ease-out);
+  }
   .grip {
     display: block;
     width: 2.5rem;
