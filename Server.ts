@@ -43,7 +43,7 @@ import files from "./ui/dist/files.ts";
 type Sock = ServerWebSocket<{ who: string; tab: string; wire: string | null; host: string | null; work: string; scratch: string | null; shell: string | null; device: string | null; seen: Set<string>; active: number; agent: string }>;
 
 // where a chat's messages go: a link, or a page being made (#185)
-type To = { data: { seen: Set<string> }; send: (text: string) => unknown };
+type To = { data: { seen: Set<string> }; send: (text: string, compress?: boolean) => unknown };
 
 type Body = { fh: fs.promises.FileHandle; size: number };
 
@@ -187,6 +187,9 @@ const STAMPED_WITH_BUILD = new Map([[SW, WORKER]]);
 // the scripts and styles, as a browser that takes gzip gets them; one that
 // takes brotli gets the build's NAME.br
 const ZIPPED     = new Map(Object.keys(UI).filter((name) => name.startsWith(NAMED_BY_HASH) && /\.(js|css)$/.test(name)).map((name) => [name, Bun.gzipSync(fs.readFileSync(file_path(UI[name])))]));
+// a message to a page this long or longer goes deflated, if the page takes
+// that: a chat's messages, as it opens, are most of what a page gets
+const WS_ZIP      = 64;
 // a page made at each ask, with its chat's first messages, brotli'd fast
 const PAGE_BROTLI = { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 5 } };
 
@@ -1650,7 +1653,8 @@ export namespace Chat {
   }
 
   export function send(to: To, msg: object): void {
-    to.send(JSON.stringify(msg));
+    const text = JSON.stringify(msg);
+    to.send(text, text.length >= WS_ZIP);
   }
 
   export function state(chat: Chat): Out {
@@ -2754,6 +2758,7 @@ export namespace Main {
         maxPayloadLength         : FRAME,
         backpressureLimit        : BUFFER,
         closeOnBackpressureLimit : true,
+        perMessageDeflate        : { compress: "dedicated", decompress: false },
         idleTimeout              : PING / 1000,
         open(ws: Sock) {
           Main.event("a socket", () => {
