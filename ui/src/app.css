@@ -259,6 +259,7 @@
     flex-direction: column;
     height: 100%;
     padding-bottom: max(0.375rem, env(safe-area-inset-bottom));
+    animation: turn var(--turn-t, 0s) var(--ease-out);
   }
   /* an iPhone app's edge swipe drags the chat away */
   .page.swipe {
@@ -1694,6 +1695,14 @@
   from {
     opacity: 0;
     transform: translateY(0.5rem);
+  }
+}
+
+/* Back.tsx's turn says where a page comes from */
+@keyframes turn {
+  from {
+    opacity: 0;
+    transform: translateX(var(--turn-x, 0));
   }
 }
 

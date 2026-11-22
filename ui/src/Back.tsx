@@ -11,6 +11,47 @@ const FAR = 0.35;
 const FLING = 0.6;
 const OUT = 200;
 
+// how far a page comes from as the owner goes to it, and how long it takes
+const TURN_X = "1.5rem";
+const TURN_T = "200ms";
+
+// the phone's own back gesture, or the edge swipe, moved the page already
+let moved = false;
+window.addEventListener("popstate", (ev) => {
+  moved ||= ev.hasUAVisualTransition;
+});
+
+// a page the owner goes to comes in from where it lies, as .page's turn
+// reads it: a deeper one from the right, one higher up from the left, one
+// beside it in place. None comes at the first paint, nor after a gesture
+// that moved it already; a move that stays on the page (!moves) only uses
+// the gesture up
+export function turn(from: string | undefined, to: string, moves: boolean): void {
+  const gesture = moved;
+  moved = false;
+  if (!moves) {
+    return;
+  }
+  const depth = (path: string) => path.split("/").filter((part) => part !== "").length;
+  const style = document.documentElement.style;
+  const x = from === undefined ? 0 : Math.sign(depth(to) - depth(from));
+  style.setProperty("--turn-t", from === undefined || gesture ? "0s" : TURN_T);
+  style.setProperty("--turn-x", x === 0 ? "0" : x > 0 ? TURN_X : "-" + TURN_X);
+}
+
+// once a page came in, or none did as the move was drawn (one agent's chat
+// giving way to another's keeps its page), a page drawn later on its own,
+// as what it waits for comes, stays in place
+const settle = () => document.documentElement.style.setProperty("--turn-t", "0s");
+document.addEventListener("animationend", (ev) => ev.animationName === "turn" && settle());
+
+export function turned(): void {
+  const turning = document.getAnimations().some((a) => a instanceof CSSAnimation && a.animationName === "turn" && a.playState === "running");
+  if (!turning) {
+    settle();
+  }
+}
+
 // back where the owner came from, else to a fallback, without growing the
 // history: the phone's own back then leaves the same way
 export function useBack(to: string): () => void {
@@ -70,6 +111,7 @@ export function useEdgeBack(el: HTMLElement | null, back: () => void): void {
       el.classList.remove("dragged");
       el.style.transform = away ? "translateX(100%)" : "";
       if (away) {
+        moved = true;
         setTimeout(back, OUT);
       }
       at.x = -1;
