@@ -10,4 +10,4 @@ if (app === null) {
   throw new Error("the page has no #app");
 }
 createRoot(app).render(<StrictMode><RouterProvider router={router} /></StrictMode>);
-void boot();
+void boot((url) => router.history.push(url));

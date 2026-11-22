@@ -8,7 +8,7 @@ import { LABELS, Pick, VENDORS } from "../../Pick.ts";
 import { Rules, SCRATCH, type Rule } from "../../Rules.ts";
 import type { Key, Page, Row } from "../../Settings.ts";
 import * as View from "../../View.ts";
-import { note } from "./Ki.ts";
+import { holds, note } from "./Ki.ts";
 
 // the server's settings as it last gave them, and over them what was
 // changed here and isn't saved yet; bad: what it refused, by setting
@@ -100,7 +100,9 @@ let CHAIN = Promise.resolve();
 
 // one save at a time, each of what is changed by then
 function soon(): void {
-  CHAIN = CHAIN.then(save).catch((err: unknown) => note(err_why(err)));
+  holds("settings", true);
+  const last: Promise<void> = CHAIN.then(save).catch((err: unknown) => note(err_why(err))).then(() => holds("settings", CHAIN !== last));
+  CHAIN = last;
 }
 
 function change(to: Partial<Draft>, key: string | null, now = false): void {

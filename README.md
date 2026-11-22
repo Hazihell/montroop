@@ -54,7 +54,7 @@ Use
 - **Conversation mode:** the mode menu left of the model picker. From then on, your and the agent's messages stay word for word in its context, for a real back-and-forth. It costs more per turn and turns itself off when the model's context window fills up.
 - `ki help` lists every command.
 
-From source (Bun): `bun install`, `bun run web`, `bun Cli.ts <command>`, `bun run build` for a single `ki` program.
+From source (Bun): `bun install`, `bun run ui`, `bun Cli.ts <command>`, `bun run build` for a single `ki` program.
 
 Uninstall
 ---------

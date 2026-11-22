@@ -10,7 +10,7 @@ cmp -s /src/bun.lock /deps/bun.lock || { echo "bun.lock changed since the image 
 rm -rf /app && mkdir /app
 tar -C /src --exclude=./node_modules --exclude=./.git -cf - . | tar -C /app -xf -
 ln -s /deps/node_modules /app/node_modules
-(cd /app && bun run web > $R/logs/web.log 2>&1)
+(cd /app && bun run ui > $R/logs/ui.log 2>&1)
 
 if [ ! -f $R/certs/server.pem ]; then
   mkdir -p $R/certs && cd $R/certs

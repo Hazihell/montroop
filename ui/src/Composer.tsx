@@ -1,7 +1,7 @@
 import { ArrowUpIcon, CheckIcon, FileIcon, MicrophoneIcon, PlusIcon, StopIcon, WarningIcon, XIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import * as View from "../../View.ts";
-import { act, note, useKi, voice } from "./Ki.ts";
+import { act, holds, note, useKi, voice } from "./Ki.ts";
 import { viewer_open } from "./Viewer.tsx";
 
 // on a phone Enter is a new line: its keyboard has no Shift+Enter
@@ -144,6 +144,11 @@ export function Composer({ agent, name }: { agent: string; name: string }): Reac
   const rec = useRef<MediaRecorder | null>(null);
   const after = useRef(false);
   const blank = text.trim() === "" && items.length === 0;
+  const lossy = stream !== null || items.length > 0;
+  useEffect(() => {
+    holds("box", lossy);
+    return () => holds("box", false);
+  }, [lossy]);
   const hint = name === "" ? View.HINT : "Message " + name;
   const pill = knobs.slice(0, 2).map((k) => k.text).join(" · ");
 

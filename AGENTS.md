@@ -3,7 +3,7 @@
 - `bun run check` (tsc, eslint, knip) must finish with 0 errors.
 - **No dead code.** What your change leaves unused (code, a setting, a type's case, a text, a CSS rule, a file) goes in the same commit. Dead code or a bug you come across anywhere is fixed in the version you work on, not left for a later one. knip finds unused exports and namespace members, not an option no caller passes or a rule no page uses: look for those yourself.
 - The first commit of every version updates every dependency to its latest version: `package.json` and `bun.lock`, Bun itself (`testing/Containerfile`, the release builds), and the phone's emulator, platform tools, system image and Chrome (`testing/phone/Containerfile`).
-- `web/app.js` is generated and not committed: run `bun run web` after changing `web/src`.
+- `ui/dist` is generated and not committed: run `bun run ui` after changing `ui/`.
 - Don't write docs into the codebase. The readme and code speak for themselves. The README is for users: what Ki does and how to use it. Don't describe the codebase. Change it only when using the app changes, and keep that to a line or two.
 - Be extremely strict on comments. Only add them if the information is essential and can't be inferred from the code.
 

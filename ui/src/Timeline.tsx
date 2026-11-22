@@ -1,7 +1,7 @@
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { ArrowDownIcon, ArrowUpIcon } from "@phosphor-icons/react";
-import { useRef, useState, type ReactNode } from "react";
-import { earlier, useKi } from "./Ki.ts";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { earlier, holds, useKi } from "./Ki.ts";
 import { items_of, Row, useWork } from "./Rows.tsx";
 
 // the first rows start under the island, the room it takes
@@ -16,6 +16,10 @@ export function Timeline({ sub }: { sub: boolean }): ReactNode {
   const list = useRef<LegendListRef>(null);
   const [away, setAway] = useState(false);
   const [above, setAbove] = useState(false);
+  useEffect(() => {
+    holds("place", away);
+    return () => holds("place", false);
+  }, [away]);
   const items = items_of(rows, open);
   const mine = items.findLastIndex((i) => i.row.$ === "Msg" && i.row.kind === "user");
   const scrolled = () => {

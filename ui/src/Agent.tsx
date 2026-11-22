@@ -5,7 +5,7 @@ import { err_why } from "../../Err.ts";
 import { get, text_of } from "../../Json.ts";
 import * as View from "../../View.ts";
 import { Avatar, Face, look_of, look_text } from "./Avatar.tsx";
-import { note, useKi } from "./Ki.ts";
+import { holds, note, useKi } from "./Ki.ts";
 
 const Importer = lazy(() => import("./Importer.tsx"));
 
@@ -83,14 +83,16 @@ function Fields({ a, all }: { a: Agent | null; all: All }): ReactNode {
   const accounts = all.accounts.includes(form.claude) || form.claude === "" ? all.accounts : [...all.accounts, form.claude];
 
   const send = (next: Form) => {
-    saves.current = saves.current.then(async () => {
+    holds("agent", true);
+    const last = saves.current.then(async () => {
       const out = await View.post("/api/agents" + (a === null ? "" : "/" + a.id), { ...next, ...(accounts.length < 2 ? { claude: undefined } : {}) });
       setWhy(out.error === undefined ? "" : text_of(out.error));
       if (out.error === undefined && a === null) {
         void navigate({ to: "/a/$agent", params: { agent: text_of(get(out.agent, "id")) } });
       }
-    });
-    return saves.current;
+    }).finally(() => holds("agent", saves.current !== last));
+    saves.current = last;
+    return last;
   };
   // typed fields save when left, switches and picks at once
   const set = (to: Partial<Form>, now = false) => {

@@ -1,17 +1,22 @@
 import { ArrowLeftIcon, ChatCircleIcon, PlayIcon, TreeStructureIcon, UsersThreeIcon, XIcon } from "@phosphor-icons/react";
 import { createRootRoute, createRoute, createRouter, Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import * as View from "../../View.ts";
 import { AgentPage } from "./Agent.tsx";
 import { Avatar, Face, look_of } from "./Avatar.tsx";
 import { Composer } from "./Composer.tsx";
-import { MOODS, mood_of, noted, show, useKi } from "./Ki.ts";
+import { intro_end, MOODS, mood_of, noted, show, useKi, welcomed } from "./Ki.ts";
 import { Look } from "./Look.tsx";
 import { Grown, Memory, Running, Settings, Team } from "./Pages.tsx";
 import { Timeline } from "./Timeline.tsx";
 import { Viewer } from "./Viewer.tsx";
 
+const Importer = lazy(() => import("./Importer.tsx"));
+
 const NOTE = 6000;
+// the intro's two scenes, then its fade
+const INTRO = 3050;
+const FADE = 600;
 
 function SignIn(): ReactNode {
   return (
@@ -32,18 +37,52 @@ function Wait(): ReactNode {
 
 function Note(): ReactNode {
   const note = useKi((s) => s.note);
+  const stale = useKi((s) => s.stale);
   useEffect(() => {
-    const timer = note === "" ? undefined : setTimeout(noted, NOTE);
+    const timer = note === "" || stale ? undefined : setTimeout(noted, NOTE);
     return () => clearTimeout(timer);
-  }, [note]);
+  }, [note, stale]);
   if (note === "") {
     return null;
   }
   return (
     <p role="status" className="toast gl">
       <span className="min-w-0 flex-1">{note}</span>
+      {stale ? <button type="button" className="pillbtn go min-h-9 px-4 text-[0.875rem]" onClick={() => location.reload()}>Reload</button> : null}
       <button type="button" className="round small" aria-label="Dismiss" onClick={noted}><XIcon size={16} weight="bold" /></button>
     </p>
+  );
+}
+
+// the first open of this browser: what Ki is, in two scenes, gone at a tap
+function Intro(): ReactNode {
+  const on = useKi((s) => s.intro);
+  const [out, setOut] = useState(false);
+  useEffect(() => {
+    if (!on) {
+      return undefined;
+    }
+    const end = () => {
+      setOut(true);
+      setTimeout(intro_end, FADE);
+    };
+    const timer = setTimeout(end, INTRO);
+    window.addEventListener("keydown", end);
+    window.addEventListener("pointerdown", end);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("keydown", end);
+      window.removeEventListener("pointerdown", end);
+    };
+  }, [on]);
+  if (!on) {
+    return null;
+  }
+  return (
+    <div className={"intro" + (out ? " out" : "")}>
+      <div><p>Your entire life.</p><p>One single chat.</p></div>
+      <div><Avatar look={look_of("", "ki")} mood="idle" size={88} lit /><h1>Ki</h1></div>
+    </div>
   );
 }
 
@@ -78,6 +117,7 @@ function Shell(): ReactNode {
       {signed ? <><Outlet /><Bar /></> : <div className="flex h-full"><SignIn /></div>}
       <Note />
       <Viewer />
+      <Intro />
     </div>
   );
 }
@@ -111,6 +151,7 @@ function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode 
   const row = useKi((s) => s.sub);
   const meter = useKi((s) => s.meter);
   const knobs = useKi((s) => s.knobs);
+  const welcome = useKi((s) => s.welcome);
   useEffect(() => {
     show(agent, sub);
     return () => show(null);
@@ -144,6 +185,7 @@ function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode 
           )}
         </header>
         {loaded ? <Timeline key={agent + "/" + (sub ?? "")} sub={sub !== null} /> : <Wait />}
+        {welcome && sub === null ? <Suspense><Importer agent={agent} shut={welcomed} /></Suspense> : null}
         {sub === null ? <Composer key={agent} agent={agent} name={mate?.name ?? ""} /> : (
           <p className="under">
             {knobs.map((k) => k.text).join(" · ")}

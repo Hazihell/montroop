@@ -10,6 +10,8 @@ type Prefs = { accent: string; theme: Theme };
 export const ACCENTS = ["6e56f8", "2f6fed", "13a3b8", "1fa971", "d9a116", "d9683f", "e0457b", "8b8b96"];
 
 const KEY = "ki.look";
+// app.css's --ground
+const GROUND = { light: "#f4f3ef", dark: "#08080a" };
 const HEX = /^[0-9a-f]{6}$/;
 
 function read(): Prefs {
@@ -34,6 +36,12 @@ function apply(p: Prefs): void {
     delete root.dataset.theme;
   } else {
     root.dataset.theme = p.theme;
+  }
+  // the browser's own bars take the ground's color: the system's, or the
+  // one chosen here
+  for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) {
+    const dark = p.theme === "system" ? meta.media.includes("dark") : p.theme === "dark";
+    meta.content = dark ? GROUND.dark : GROUND.light;
   }
 }
 

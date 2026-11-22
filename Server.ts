@@ -37,18 +37,7 @@ import * as config from "./Config.ts";
 import { err_code, err_stack, err_why } from "./Err.ts";
 import { get, rec, text_of } from "./Json.ts";
 import hello_md from "./prompts/hello.md" with { type: "text" };
-import app_js from "./web/app.js" with { type: "file" };
-import index_html from "./web/index.html" with { type: "file" };
-import mark_svg from "./web/mark.svg" with { type: "file" };
-import style_css from "./web/style.css" with { type: "file" };
-import manifest from "./web/manifest.webmanifest" with { type: "file" };
-import sw_js from "./web/sw.js" with { type: "file" };
-import icon_192 from "./web/icon-192.png" with { type: "file" };
-import icon_512 from "./web/icon-512.png" with { type: "file" };
-import icon_mask_192 from "./web/icon-maskable-192.png" with { type: "file" };
-import icon_mask from "./web/icon-maskable-512.png" with { type: "file" };
-import icon_apple from "./web/apple-touch-icon.png" with { type: "file" };
-import badge from "./web/badge.png" with { type: "file" };
+import files from "./ui/dist/files.ts";
 
 // agent: the chat a browser shows, by its agent's id
 type Sock = ServerWebSocket<{ who: string; tab: string; wire: string | null; host: string | null; work: string; scratch: string | null; shell: string | null; device: string | null; seen: Set<string>; active: number; agent: string }>;
@@ -168,40 +157,36 @@ const OWN        = ["/ws"];
 const HELLO      = hello_md.trim().replace("{install}", install_cmd(false));
 const HELLO_LINE = "reply: hello: Ki, one endless chat kept in a memory tree, recent days in more detail; build anything for years; recalls the past (ad2cat.py); a chatbot with a memory system; ki device on the user's computers.";
 
-// the site's page, index.html: imported as a file, a path (Bun's types
-// take any .html for an HTML bundle)
-const PAGE       = file_path(index_html);
+// the app's files as vite built them (bun run ui), each path a browser
+// asks with its file: imported as files, paths
+const UI         = Object.fromEntries(Object.entries(files).map(([name, file]) => [name, file_path(file)]));
+const PAGE       = file_path(UI["/index.html"]);
+const SW         = file_path(UI["/sw.js"]);
 
-const WEB: Record<string, string> = {
-  "/"               : PAGE,
-  "/account"        : PAGE,
-  "/app.js"         : app_js,
-  "/apple-touch-icon.png": icon_apple,
-  "/badge.png"      : badge,
-  "/favicon.svg"    : mark_svg,
-  "/icon-192.png"   : icon_192,
-  "/icon-512.png"   : icon_512,
-  "/icon-maskable-192.png": icon_mask_192,
-  "/icon-maskable-512.png": icon_mask,
-  "/manifest.webmanifest": manifest,
-  "/mark.svg"       : mark_svg,
-  "/style.css"      : style_css,
-  "/sw.js"          : sw_js,
-};
+const WEB: Record<string, string> = { ...UI, "/": PAGE };
 
-WEB["/settings"] = WEB["/"];
-WEB["/tree"]     = WEB["/"];
-WEB["/new"]      = WEB["/"];
+// the app's own places, each the page; an agent's are AGENT_PAGE's
+for (const place of ["/settings", "/tree", "/new", "/running", "/memory", "/team"]) {
+  WEB[place] = PAGE;
+}
 Object.assign(WEB, HEADS);
 
-// an agent's pages: /a/<id>, /a/<id>/edit, /a/<id>/s/<Name> (a subagent's chat)
-const AGENT_PAGE = /^\/a\/[a-z0-9]{1,16}(\/edit|\/s\/[A-Za-z]{2,40})?$/;
+// an agent's pages: /a/<id>, /a/<id>/edit, /a/<id>/look, /a/<id>/s/<Name>
+// (a subagent's chat)
+const AGENT_PAGE = /^\/a\/[a-z0-9]{1,16}(\/edit|\/look|\/s\/[A-Za-z]{2,40})?$/;
 
-const HASHED_INTO_BUILD = [app_js, style_css, PAGE, sw_js, manifest];
-const BUILD      = Bun.hash(HASHED_INTO_BUILD.map((f) => fs.readFileSync(f, "utf8")).join("\0")).toString(36);
+// vite names these by what is in them, so one never changes
+const NAMED_BY_HASH = "/assets/";
+// asked again each time, and answered "the same" while the build is
+const ASKED_AGAIN = [PAGE, SW, file_path(UI["/manifest.webmanifest"])];
+// what a page needs to open with no network: the service worker keeps them
+const SHELL      = ["/", ...Object.keys(UI).filter((name) => name.startsWith(NAMED_BY_HASH)), "/mark.svg", "/manifest.webmanifest", "/icon-192.png"];
+const BUILD      = Bun.hash(Buffer.concat(Object.keys(UI).sort().map((name) => fs.readFileSync(file_path(UI[name]))))).toString(36);
 const INDEX      = fs.readFileSync(PAGE, "utf8").replace("<html ", `<html data-build="${BUILD}" `);
-const WORKER     = fs.readFileSync(sw_js, "utf8").replace("{build}", BUILD);
-const STAMPED_WITH_BUILD = new Map([[sw_js, WORKER]]);
+const WORKER     = fs.readFileSync(SW, "utf8").replace("{build}", BUILD).replace("{shell}", SHELL.join(" "));
+const STAMPED_WITH_BUILD = new Map([[SW, WORKER]]);
+// the scripts and styles, as a browser that takes gzip gets them
+const ZIPPED     = new Map(Object.keys(UI).filter((name) => name.startsWith(NAMED_BY_HASH) && /\.(js|css)$/.test(name)).map((name) => [name, Bun.gzipSync(fs.readFileSync(file_path(UI[name])))]));
 
 let held = 0;
 
@@ -2480,7 +2465,15 @@ export namespace Main {
     if (file === undefined) {
       return new Response("not found", { status: 404 });
     }
-    if (!HASHED_INTO_BUILD.includes(file)) {
+    if (pathname.startsWith(NAMED_BY_HASH)) {
+      const headers = { "cache-control": "public, max-age=31536000, immutable", vary: "accept-encoding" };
+      const zipped = ZIPPED.get(pathname);
+      if (zipped !== undefined && /\bgzip\b/.test(req.headers.get("accept-encoding") ?? "")) {
+        return new Response(zipped, { headers: { ...headers, "content-encoding": "gzip", "content-type": Bun.file(file).type } });
+      }
+      return new Response(Bun.file(file), { headers });
+    }
+    if (!ASKED_AGAIN.includes(file)) {
       return new Response(Bun.file(file));
     }
     // the page also names the first agent in the list, so a page cached for another goes

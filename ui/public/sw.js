@@ -1,6 +1,7 @@
 const CACHE = "ki-shell-{build}";
-const SHELL = ["/", "/app.js", "/style.css", "/favicon.svg", "/mark.svg", "/manifest.webmanifest", "/icon-192.png"];
-const PAGES = ["/", "/settings", "/account", "/tree", "/new"];
+// the files a page needs to open offline, as the server names this build's
+const SHELL = "{shell}".split(" ");
+const PAGES = ["/", "/settings", "/tree", "/new", "/running", "/memory", "/team"];
 // an agent's replies in its one notification, newest first (#178)
 const SHOWN = 5;
 
@@ -15,7 +16,7 @@ self.addEventListener("activate", (ev) => {
 self.addEventListener("fetch", (ev) => {
   const req = ev.request;
   const url = new URL(req.url);
-  const page = req.mode === "navigate" && (PAGES.includes(url.pathname) || /^\/a\/[a-z0-9]+(\/edit|\/s\/[A-Za-z]+)?$/.test(url.pathname));
+  const page = req.mode === "navigate" && (PAGES.includes(url.pathname) || /^\/a\/[a-z0-9]+(\/edit|\/look|\/s\/[A-Za-z]+)?$/.test(url.pathname));
   if (req.method !== "GET" || url.origin !== location.origin || !(page || SHELL.includes(url.pathname))) {
     return;
   }
