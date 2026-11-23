@@ -8,15 +8,12 @@ import { Face } from "./Avatar.tsx";
 import { act, MOODS, mood_of, useKi } from "./Ki.ts";
 
 // everything about one agent past its chat: what goes on for it, its memory,
-// its settings; a sheet over the chat on a phone, a column beside it on a
-// screen wide enough
+// its settings; a menu dropped from its face on a phone, a column beside the
+// chat on a screen wide enough
 
 const NO_JOBS: View.BgJob[] = [];
 const NO_TIMERS: Timer[] = [];
 const NO_SUBS: NonNullable<View.Mate["subs"]> = [];
-// how far a finger drags the sheet down, or how fast, to close it
-const DOWN = 96;
-const FLING = 0.5;
 
 // the client holds one agent at a time: its jobs, timers and context are
 // known only while it is that one
@@ -92,13 +89,13 @@ export function Context({ agent, label = false }: { agent: string; label?: boole
   );
 }
 
-// the agent as the head of its sheet or column: its face, name, mood, about
-function Who({ agent, size }: { agent: string; size: number }): ReactNode {
+// the agent as the head of its column: its face, name, mood, about
+function Who({ agent }: { agent: string }): ReactNode {
   const mate = useKi((s) => s.team.find((m) => m.id === agent));
   const mood = useKi((s) => (mate === undefined ? "idle" : mood_of(mate, s)));
   return (
     <div className="who">
-      <Face picture={mate?.picture ?? ""} id={agent} mood={mood} size={size} />
+      <Face picture={mate?.picture ?? ""} id={agent} mood={mood} size={64} />
       <div>
         <h2>{mate?.name ?? ""}</h2>
         <p>{MOODS[mood] === "" ? mate?.about ?? "" : <><i>{MOODS[mood]}</i>{mate?.about ? " · " + mate.about : ""}</>}</p>
@@ -107,40 +104,27 @@ function Who({ agent, size }: { agent: string; size: number }): ReactNode {
   );
 }
 
-// where to go from the agent; in the sheet each place takes the sheet's
-// place in the history, so back from it lands on the chat
-function Places({ agent, replace, running }: { agent: string; replace: boolean; running: boolean }): ReactNode {
-  const going = useGoing(agent);
+// where to go from the agent, past what runs for it, which the column shows
+function Places({ agent }: { agent: string }): ReactNode {
   const full = useContext(agent);
-  const held = useHeld(agent);
-  const timers = useKi((s) => (s.agent === agent ? s.timers.length : 0));
-  const run = [going > 0 ? going + " at work" : "", timers > 0 ? timers + (timers === 1 ? " timer" : " timers") : ""].filter((x) => x !== "").join(" · ");
   return (
     <nav className="places" aria-label="The agent">
-      {running ? (
-        <Link to="/a/$agent/running" params={{ agent }} replace={replace} className="item go">
-          <PlayIcon size={20} weight={going > 0 ? "fill" : "regular"} />
-          <p>Running<small>{held ? (run === "" ? "Nothing right now" : run) : "Subagents, jobs and timers"}</small></p>
-          {going > 0 ? <em className="count static">{going}</em> : null}
-          <CaretRightIcon size={16} className="self-center" />
-        </Link>
-      ) : null}
-      <Link to="/a/$agent/memory" params={{ agent }} replace={replace} className="item go">
+      <Link to="/a/$agent/memory" params={{ agent }} className="item go">
         <BrainIcon size={20} />
         <p>Memory<small>{full === null ? "Context and pins" : full + "% of its context · pins"}</small></p>
         <CaretRightIcon size={16} className="self-center" />
       </Link>
-      <Link to="/a/$agent/tree" params={{ agent }} replace={replace} className="item go">
+      <Link to="/a/$agent/tree" params={{ agent }} className="item go">
         <TreeStructureIcon size={20} />
         <p>Tree<small>All it remembers, as summaries of summaries</small></p>
         <CaretRightIcon size={16} className="self-center" />
       </Link>
-      <Link to="/a/$agent/edit" params={{ agent }} replace={replace} className="item go">
+      <Link to="/a/$agent/edit" params={{ agent }} className="item go">
         <GearSixIcon size={20} />
         <p>Agent settings<small>Prompt, account, MCP servers, history</small></p>
         <CaretRightIcon size={16} className="self-center" />
       </Link>
-      <Link to="/a/$agent/look" params={{ agent }} replace={replace} className="item go">
+      <Link to="/a/$agent/look" params={{ agent }} className="item go">
         <PaintBrushIcon size={20} />
         <p>Its look<small>Draw its avatar</small></p>
         <CaretRightIcon size={16} className="self-center" />
@@ -149,81 +133,77 @@ function Places({ agent, replace, running }: { agent: string; replace: boolean; 
   );
 }
 
-// a phone's sheet over the chat; back, a tap beside it, Escape or a drag
-// down close it. Leaving: closed, it slides away and takes nothing more,
-// then says it is gone
-export function Sheet({ agent, close, leaving, gone }: { agent: string; close: () => void; leaving: boolean; gone: () => void }): ReactNode {
+// a phone's menu of the agent's places, dropped from its face over the chat.
+// Each place takes the menu's step in the history, so back from it lands on
+// the chat. Leaving: it takes nothing more, and says when it is gone
+export function Menu({ agent, face, close, leaving, gone }: { agent: string; face: HTMLElement | null; close: () => void; leaving: boolean; gone: () => void }): ReactNode {
   const box = useRef<HTMLDivElement>(null);
-  const dim = useRef<HTMLButtonElement>(null);
+  const mate = useKi((s) => s.team.find((m) => m.id === agent));
+  const mood = useKi((s) => (mate === undefined ? "idle" : mood_of(mate, s)));
+  const going = useGoing(agent);
+  const full = useContext(agent);
+  const state = useKi((s) => (s.offline ? "Offline" : MOODS[mood]));
   useEffect(() => {
     if (!leaving) {
       return undefined;
     }
+    face?.focus({ preventScroll: true });
     let on = true;
-    const moves = [box.current, dim.current].flatMap((el) => el?.getAnimations() ?? []);
-    void Promise.allSettled(moves.map((move) => move.finished)).then(() => on && gone());
+    void Promise.allSettled((box.current?.getAnimations() ?? []).map((move) => move.finished)).then(() => on && gone());
     return () => {
       on = false;
     };
-  }, [leaving, gone]);
+  }, [leaving, gone, face]);
   useEffect(() => {
     const el = box.current;
     if (el === null || leaving) {
       return undefined;
     }
-    el.style.transform = "";
-    el.focus({ preventScroll: true });
-    const key = (ev: KeyboardEvent) => ev.key === "Escape" && close();
-    const at = { y: -1, t: 0, dy: 0 };
-    const start = (ev: TouchEvent) => {
-      at.y = el.scrollTop <= 0 && ev.touches.length === 1 ? ev.touches[0]?.clientY ?? -1 : -1;
-      at.t = ev.timeStamp;
-      at.dy = 0;
-    };
-    const move = (ev: TouchEvent) => {
-      const t = ev.touches[0];
-      if (at.y < 0 || t === undefined) {
-        return;
-      }
-      at.dy = Math.max(0, t.clientY - at.y);
-      if (at.dy > 0) {
+    const items = () => [...el.querySelectorAll<HTMLElement>("[role=menuitem]")];
+    items()[0]?.focus({ preventScroll: true });
+    const key = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape" || ev.key === "Tab") {
         ev.preventDefault();
-        el.classList.add("dragged");
-        el.style.transform = "translateY(" + at.dy + "px)";
-      }
-    };
-    const end = (ev: TouchEvent) => {
-      if (at.y < 0) {
+        close();
         return;
       }
-      el.classList.remove("dragged");
-      const away = at.dy > DOWN || at.dy / Math.max(1, ev.timeStamp - at.t) > FLING;
-      el.style.transform = away ? "translateY(110%)" : "";
-      if (away) {
-        close();
+      const all = items();
+      const at = all.indexOf(document.activeElement as HTMLElement);
+      const from = at < 0 && ev.key === "ArrowUp" ? all.length : at;
+      const to = { ArrowDown: from + 1, ArrowUp: from - 1, Home: 0, End: all.length - 1 }[ev.key];
+      if (to !== undefined) {
+        ev.preventDefault();
+        all[(to + all.length) % all.length]?.focus();
       }
-      at.y = -1;
     };
     window.addEventListener("keydown", key);
-    el.addEventListener("touchstart", start, { passive: true });
-    el.addEventListener("touchmove", move, { passive: false });
-    el.addEventListener("touchend", end);
-    el.addEventListener("touchcancel", end);
-    return () => {
-      window.removeEventListener("keydown", key);
-      el.removeEventListener("touchstart", start);
-      el.removeEventListener("touchmove", move);
-      el.removeEventListener("touchend", end);
-      el.removeEventListener("touchcancel", end);
-    };
+    return () => window.removeEventListener("keydown", key);
   }, [close, leaving]);
   return (
     <>
-      <button ref={dim} type="button" className={"dim" + (leaving ? " leaving" : "")} aria-label="Close" inert={leaving} onClick={close} />
-      <div ref={box} className={"agsheet" + (leaving ? " leaving" : "")} inert={leaving} role="dialog" aria-modal="true" aria-label="The agent" tabIndex={-1}>
-        <i className="grip" aria-hidden />
-        <Who agent={agent} size={72} />
-        <Places agent={agent} replace running />
+      <button type="button" className="veil" tabIndex={-1} aria-hidden inert={leaving} onClick={close} />
+      <div ref={box} className={"menu" + (leaving ? " leaving" : "")} inert={leaving}>
+        <p>{mate?.name ?? ""}{state === "" ? null : <i>{state}</i>}</p>
+        <div role="menu" aria-label={mate?.name ?? "The agent"}>
+          <Link role="menuitem" to="/a/$agent/running" params={{ agent }} replace>
+            <PlayIcon size={20} weight={going > 0 ? "fill" : "regular"} />Running
+            {going > 0 ? <em className="count static">{going}</em> : null}
+          </Link>
+          <Link role="menuitem" to="/a/$agent/memory" params={{ agent }} replace>
+            <BrainIcon size={20} />Memory
+            {full === null ? null : <small>{full}%</small>}
+          </Link>
+          <Link role="menuitem" to="/a/$agent/tree" params={{ agent }} replace>
+            <TreeStructureIcon size={20} />Tree
+          </Link>
+          <hr />
+          <Link role="menuitem" to="/a/$agent/edit" params={{ agent }} replace>
+            <GearSixIcon size={20} />Agent settings
+          </Link>
+          <Link role="menuitem" to="/a/$agent/look" params={{ agent }} replace>
+            <PaintBrushIcon size={20} />Its look
+          </Link>
+        </div>
       </div>
     </>
   );
@@ -234,11 +214,11 @@ export function Sheet({ agent, close, leaving, gone }: { agent: string; close: (
 export function Panel({ agent }: { agent: string }): ReactNode {
   return (
     <aside className="panel" aria-label="The agent">
-      <Who agent={agent} size={64} />
+      <Who agent={agent} />
       <Context agent={agent} />
       <h2 className="label pt-3">Running</h2>
       <RunList agent={agent} />
-      <Places agent={agent} replace={false} running={false} />
+      <Places agent={agent} />
     </aside>
   );
 }

@@ -5,8 +5,6 @@ import { createPortal } from "react-dom";
 import { earlier, holds, useKi } from "./Ki.ts";
 import { items_of, rose_keep, Row, useWork, type Item } from "./Rows.tsx";
 
-// the room the island takes over the list, in rem: .talk-top's height
-const ROOM = 5.5;
 // more items than this coming at once stay still
 const FEW = 3;
 
@@ -17,7 +15,7 @@ function said_at(items: Item[], from: number): number[] {
   return items.flatMap((item, at) => (said(item) ? [from + at] : []));
 }
 
-// the first rows start under the island, the room it takes
+// the first rows start under the face and its name, the room they take
 function Top(): ReactNode {
   return <div className="talk-top" />;
 }
@@ -25,7 +23,7 @@ function Top(): ReactNode {
 // sub: a subagent's page, which loads its earlier entries near its top;
 // head: the header's end, where the way up shows, out of the last row's way.
 // Each tap goes one of the user's messages further up, and the way shows as
-// long as one of them is above the island.
+// long as one of them is above the face's room.
 export function Timeline({ sub, head }: { sub: boolean; head: HTMLElement | null }): ReactNode {
   const rows = useKi((s) => s.rows);
   const tail = useKi((s) => s.tail);
@@ -63,8 +61,8 @@ export function Timeline({ sub, head }: { sub: boolean; head: HTMLElement | null
     setCame({ keys, greeted, fresh: new Set(fresh.length > FEW ? [] : fresh.map((item) => item.key)), waited: live.some(said) });
   }
   useEffect(() => rose_keep(new Set(keys.split("\n"))), [keys]);
-  const room = () => ROOM * parseFloat(getComputedStyle(document.documentElement).fontSize);
-  // the last of the user's messages that starts above the island's room: a
+  const room = () => talk.current?.querySelector<HTMLElement>(".talk-top")?.offsetHeight ?? 0;
+  // the last of the user's messages that starts above the face's room: a
   // drawn row says where it is, one not drawn is above when before the drawn
   const higher = (): number => {
     const state = list.current?.getState();
@@ -137,8 +135,8 @@ export function Timeline({ sub, head }: { sub: boolean; head: HTMLElement | null
         style={{ height: "100%" }}
       />
       {above && head !== null ? createPortal(
-        <button type="button" className="round small gl" aria-label="Up to your message" onClick={up}>
-          <ArrowUpIcon size={18} weight="bold" />
+        <button type="button" className="mine" aria-label="Up to your message" onClick={up}>
+          <ArrowUpIcon size={14} weight="bold" /><span>Your message</span>
         </button>,
         head,
       ) : null}

@@ -40,11 +40,15 @@
   --deep: light-dark(#ffffffd9, #0d0d11d9);
   --solid: light-dark(#fffffff5, #131317f7);
   --island: light-dark(#ffffffd9, #000000b8);
+  --float: light-dark(#ffffffd9, #2a2a30d9);
+  --float-edge: light-dark(#0000000f, #ffffff1f);
   --ok: light-dark(#12754a, #4cc38a);
   --bad: light-dark(#bf3328, #f0766a);
   --act-ink: light-dark(color-mix(in oklab, var(--act) 70%, #000), color-mix(in oklab, var(--act) 45%, #fff));
   --act-wash: light-dark(color-mix(in oklab, var(--act) 12%, #f4f3ef), color-mix(in oklab, var(--act) 20%, #0c0c0e));
   --lamp: light-dark(color-mix(in oklab, var(--act) 38%, transparent), color-mix(in oklab, var(--act) 78%, transparent));
+  /* how far a status bar over the page pushes a chat's face down, past the room above it anyway */
+  --lift: max(0px, env(safe-area-inset-top) - 0.5rem);
 }
 
 :root[data-theme="dark"] {
@@ -279,11 +283,11 @@
     flex-direction: column;
     height: 100%;
   }
-  /* how many things work for an agent, on its face */
+  /* how many things work for an agent, on its face's shoulder */
   .count {
     position: absolute;
-    top: -0.25rem;
-    right: -0.375rem;
+    top: 0.625rem;
+    right: 0.3125rem;
     min-width: 1.25rem;
     height: 1.25rem;
     padding: 0 0.3125rem;
@@ -303,64 +307,99 @@
     box-shadow: none;
   }
 
-  /* one agent's places: a sheet over its chat on a phone */
-  .dim {
-    position: fixed;
-    inset: 0;
-    z-index: 5;
-    background: #0000008c;
-    cursor: default;
-    transition: opacity 260ms var(--ease-out);
+  /* one agent's places: a menu dropped from its face on a phone, over the chat, which stays in
+     sight; a tap beside it closes it and goes no further */
+  .top > .veil {
+    z-index: 1;
   }
-  .agsheet {
-    position: fixed;
-    z-index: 6;
-    right: 0.5rem;
-    bottom: max(0.5rem, env(safe-area-inset-bottom));
-    left: 0.5rem;
-    max-width: 30rem;
-    max-height: calc(100dvh - 4rem);
-    margin-inline: auto;
-    padding: 0.5rem 0.25rem 0.75rem;
+  .menu {
+    position: absolute;
+    z-index: 2;
+    top: calc(100% - 0.875rem);
+    left: 50%;
+    width: min(17.5rem, 100%);
+    max-height: calc(100dvh - 7.5rem - var(--lift));
+    padding: 0.375rem;
     overflow-y: auto;
     overscroll-behavior: contain;
-    border: 1px solid var(--edge);
-    border-radius: 1.75rem;
-    background: var(--solid);
-    box-shadow: 0 -12px 48px #00000066;
-    outline: none;
-    transition: transform 260ms var(--ease-out);
+    border: 1px solid var(--float-edge);
+    border-radius: 1.25rem;
+    background: var(--float);
+    box-shadow: 0 16px 48px light-dark(#00000026, #00000080);
+    backdrop-filter: blur(24px) saturate(1.6);
+    translate: -50% 0;
+    transform-origin: 50% -2.5rem;
+    transition: transform 180ms var(--ease-out), opacity 180ms var(--ease-out);
   }
-  /* it rises as it opens, and from wherever it is, it goes back */
   @starting-style {
-    .dim {
+    .menu {
       opacity: 0;
-    }
-    .agsheet {
-      transform: translateY(100%);
+      transform: scale(0.92);
     }
   }
-  .agsheet.dragged {
-    transition: none;
-  }
-  /* closed: it slides away, and taps go to the chat at once */
-  .agsheet.leaving {
-    transform: translateY(110%);
-    pointer-events: none;
-    transition-duration: 200ms;
-  }
-  .dim.leaving {
+  /* closed: it shrinks back into the face, faster than it came, and taps go to the chat at once */
+  .menu.leaving {
     opacity: 0;
-    pointer-events: none;
-    transition-duration: 200ms;
+    transform: scale(0.96);
+    transition-duration: 130ms;
   }
-  .grip {
-    display: block;
-    width: 2.5rem;
-    height: 0.3125rem;
-    margin: 0 auto 0.5rem;
-    border-radius: 1rem;
-    background: var(--edge);
+  .menu > p {
+    overflow: hidden;
+    padding: 0.625rem 0.75rem 0.375rem;
+    color: var(--mid);
+    font-size: 0.875rem;
+    font-weight: 550;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .menu > p i {
+    color: var(--act-ink);
+    font-style: normal;
+  }
+  .menu > p i::before {
+    content: " · ";
+    color: var(--mid);
+  }
+  .menu a {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    height: 3.25rem;
+    padding: 0 0.75rem;
+    border-radius: 0.875rem;
+    font-weight: 550;
+    outline: none;
+    transition: background-color 160ms var(--ease-out);
+  }
+  .menu a > svg {
+    flex: none;
+    color: var(--act-ink);
+  }
+  .menu a > :is(em, small) {
+    margin-left: auto;
+  }
+  .menu small {
+    color: var(--mid);
+    font-size: 0.875rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .menu a:active, .menu a:focus-visible {
+    background: var(--raise);
+  }
+  @media (hover: hover) {
+    .menu a:hover {
+      background: var(--raise);
+    }
+  }
+  .menu hr {
+    margin: 0.25rem 0.75rem;
+    border-color: var(--edge);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .menu, .menu.leaving {
+      transform: none;
+      transition: opacity 160ms !important;
+    }
   }
   .who {
     display: flex;
@@ -568,18 +607,30 @@
     font-size: 0.875rem;
   }
 
-  /* the chat: the agent's face above, bare, the talk fading under it */
+  /* the chat: the agent's face floats above, its name on a pill at its chin, the talk fading
+     under them */
   .top {
     position: absolute;
     z-index: 3;
-    top: max(0.75rem, env(safe-area-inset-top));
-    right: 0.875rem;
-    left: 0.875rem;
+    top: calc(1.25rem + var(--lift));
+    right: 1rem;
+    left: 1rem;
     display: grid;
-    grid-template-columns: minmax(3.25rem, 1fr) minmax(0, auto) minmax(3.25rem, 1fr);
-    align-items: start;
+    grid-template-columns: minmax(2.75rem, 1fr) minmax(0, auto) minmax(2.75rem, 1fr);
+    align-items: center;
     gap: 0.5rem;
     pointer-events: none;
+  }
+  /* the face's sides, its pill and the up button, one glass */
+  .top .round, .tag, .mine {
+    border: 1px solid var(--float-edge);
+    background: var(--float);
+    box-shadow: 0 4px 16px light-dark(#0000001a, #00000059);
+    backdrop-filter: blur(16px) saturate(1.6);
+  }
+  .top .round {
+    width: 2.75rem;
+    height: 2.75rem;
   }
   .top > * {
     pointer-events: auto;
@@ -596,28 +647,77 @@
     position: relative;
     display: grid;
     justify-items: center;
-    min-width: 3.5rem;
-    margin-top: -0.125rem;
+    height: 4.75rem;
   }
-  /* what it does, under its face, where the talk has faded */
-  .isl .doing {
+  /* centred under the face whatever its width, which Tag sets */
+  .tag {
     position: absolute;
-    top: calc(100% - 0.5rem);
-    max-width: min(16rem, 100vw - 9.5rem);
+    top: calc(100% - 0.875rem);
+    left: 50%;
+    display: flex;
+    align-items: center;
+    max-width: min(16rem, 100vw - 8.5rem);
+    height: 2rem;
+    padding: 0 0.875rem;
     overflow: hidden;
-    color: var(--act-ink);
-    font-size: 0.8125rem;
-    font-weight: 600;
-    line-height: 1rem;
-    text-overflow: ellipsis;
+    border-radius: 1rem;
+    font-size: 0.9375rem;
+    line-height: 1;
     white-space: nowrap;
-    text-shadow: 0 0 0.5rem var(--ground), 0 0 0.25rem var(--ground);
+    transform: translateX(-50%);
+    transition: width 280ms var(--ease-out), opacity 160ms var(--ease-out);
+  }
+  /* the open menu says the name in its place */
+  .isl[aria-haspopup][aria-expanded="true"] .tag {
+    opacity: 0;
+  }
+  .tag b {
+    flex: none;
+    max-width: 100%;
+    overflow: hidden;
+    font-weight: 650;
+    text-overflow: ellipsis;
+  }
+  .tag i {
+    min-width: 0;
+    padding-left: 0.4375rem;
+    overflow: hidden;
+    color: var(--mid);
+    font-style: normal;
+    font-weight: 550;
+    text-overflow: ellipsis;
+    opacity: 0;
+    transition: opacity 140ms var(--ease-out);
+  }
+  .tag i.on {
+    opacity: 1;
+    transition: opacity 220ms var(--ease-out) 60ms;
+  }
+  .tag.long b {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+  .tag.long i {
+    flex: none;
+  }
+  .tag i::before {
+    content: "";
+    display: inline-block;
+    width: 0.3125rem;
+    height: 0.3125rem;
+    margin: 0 0.4375rem 0.125rem 0;
+    border-radius: 50%;
+    background: var(--act);
+    vertical-align: middle;
+  }
+  .tag i.off::before {
+    background: var(--bad);
   }
   .talk {
     position: relative;
     flex: 1;
     min-height: 0;
-    mask-image: linear-gradient(#0000 4rem, #000 7.5rem, #000 calc(100% - 1rem), #0000);
+    mask-image: linear-gradient(#0000 calc(4.75rem + var(--lift)), #0004 calc(5.75rem + var(--lift)), #000b calc(6.75rem + var(--lift)), #000 calc(7.25rem + var(--lift)), #000 calc(100% - 1rem), #0000);
   }
   /* a phone shows its scrollbar at each jump of a chat that holds its end on its own */
   @media (pointer: coarse) {
@@ -626,7 +726,7 @@
     }
   }
   .talk-top {
-    height: 5.5rem;
+    height: calc(7.75rem + var(--lift));
   }
   .jump {
     position: absolute;
@@ -639,12 +739,36 @@
   .jump button, .top-end button {
     animation: rise 220ms var(--ease-out);
   }
+  /* back up to the owner's last message above */
+  .mine {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    height: 2.75rem;
+    padding: 0 0.75rem 0 0.625rem;
+    border-radius: 1.375rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    white-space: nowrap;
+    transition: transform 180ms var(--ease-out);
+  }
+  .mine:active {
+    transform: scale(0.96);
+  }
+  /* too narrow for its words beside the face */
+  @media (max-width: 22.45rem) {
+    .mine {
+      padding: 0 0.875rem;
+    }
+    .mine span {
+      display: none;
+    }
+  }
   .top-end {
     display: flex;
     grid-column: 3;
     justify-self: end;
     align-items: center;
-    height: 3.25rem;
   }
   .under {
     z-index: 2;

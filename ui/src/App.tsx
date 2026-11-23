@@ -1,13 +1,13 @@
 import { XIcon } from "@phosphor-icons/react";
 import { createRootRoute, createRoute, createRouter, lazyRouteComponent, Outlet, redirect, useLocation, useNavigate, useRouter, useSearch } from "@tanstack/react-router";
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import * as View from "../../View.ts";
 import { Avatar, Face, look_of } from "./Avatar.tsx";
 import { Composer } from "./Composer.tsx";
 import { intro_end, MOODS, mood_of, noted, show, useKi, welcomed } from "./Ki.ts";
 import { Back, turn, TURNS, useBack, useEdgeBack } from "./Back.tsx";
 import { Agents, Memory, Running, usePop } from "./Pages.tsx";
-import { Panel, Sheet, useGoing } from "./Panel.tsx";
+import { Menu, Panel, useGoing } from "./Panel.tsx";
 import { panel_set, usePrefs } from "./Prefs.ts";
 import { Timeline } from "./Timeline.tsx";
 import { Viewer } from "./Viewer.tsx";
@@ -20,6 +20,8 @@ const Grown     = lazyRouteComponent(() => import("./Grown.tsx"), "Grown");
 const Settings  = lazyRouteComponent(() => import("./Settings.tsx"), "Settings");
 
 const NOTE = 6000;
+// the face over a chat, in px: .isl's height
+const FACE = 76;
 // the intro's two scenes, then its fade
 const INTRO = 3050;
 const FADE = 600;
@@ -201,8 +203,8 @@ function useLeaving(on: boolean): ["on" | "leaving" | false, () => void] {
   return [on ? "on" : kept ? "leaving" : false, gone];
 }
 
-// the agent's sheet is a step in the history, so the phone's back closes it
-function useSheet(agent: string): [boolean, () => void, () => void] {
+// the agent's menu is a step in the history, so the phone's back closes it
+function useMenu(agent: string): [boolean, () => void, () => void] {
   const open = useSearch({ strict: false, select: (s: { about?: 1 }) => s.about === 1 });
   const navigate = useNavigate();
   const router = useRouter();
@@ -215,6 +217,52 @@ function useSheet(agent: string): [boolean, () => void, () => void] {
     }
   }, [router, navigate, agent]);
   return [open, show_it, hide];
+}
+
+// what a face acts out, which no word repeats beside it; idle acts out
+// nothing, and its "" among them leaves no note
+const ACTED = new Set(Object.values(MOODS).map((m) => m.toLowerCase()));
+
+// the name on a glass pill over the face's chin, and after it what the face
+// can't show (Ki offline, a subagent's tool, its usage limit, it done). The
+// pill's width follows its words; a note gone stays in it, fading, as it
+// narrows back to the name, which gives way first when both don't fit
+function Tag({ name, note }: { name: string; note: string }): ReactNode {
+  const pill = useRef<HTMLSpanElement>(null);
+  const named = useRef<HTMLElement>(null);
+  const told = useRef<HTMLElement>(null);
+  const [said, setSaid] = useState(note);
+  if (note !== "" && note !== said) {
+    setSaid(note);
+  }
+  useLayoutEffect(() => {
+    const [el, b, i] = [pill.current, named.current, told.current];
+    if (el === null || b === null || i === null) {
+      return undefined;
+    }
+    // the words' own widths, rounded down, so each gets a pixel more
+    const fit = () => {
+      const style = getComputedStyle(el);
+      const full = Math.ceil(parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) + parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth) + b.scrollWidth + 1 + (note === "" ? 0 : i.scrollWidth + 1));
+      const most = parseFloat(style.maxWidth);
+      el.style.width = Math.min(full, most) + "px";
+      el.classList.toggle("long", note !== "" && full > most);
+    };
+    fit();
+    let on = true;
+    void document.fonts.ready.then(() => on && fit());
+    addEventListener("resize", fit);
+    return () => {
+      on = false;
+      removeEventListener("resize", fit);
+    };
+  }, [name, note, said]);
+  return (
+    <span ref={pill} className="tag">
+      <b ref={named}>{name}</b>
+      <i ref={told} className={(note === "" ? "" : "on") + (said === "Offline" ? " off" : "")}>{said}</i>
+    </span>
+  );
 }
 
 // an agent's chat, or the page of a subagent it spawned: what that one
@@ -236,8 +284,9 @@ function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode 
   const shown = usePrefs((s) => s.panel);
   const going = useGoing(agent);
   const pop = usePop(going, agent);
-  const [sheet, openSheet, closeSheet] = useSheet(agent);
-  const [drawn, gone] = useLeaving(sheet && !wider && sub === null);
+  const [menu, openMenu, closeMenu] = useMenu(agent);
+  const [drawn, gone] = useLeaving(menu && !wider && sub === null);
+  const [face, setFace] = useState<HTMLButtonElement | null>(null);
   const panel = wider && shown && sub === null;
   useEdgeBack(page, back);
   useEffect(() => {
@@ -251,26 +300,28 @@ function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode 
     }
   }), [agent, navigate]);
   const doing = offline ? "Offline" : sub === null ? MOODS[mood] : row === null ? "Done" : row.doing;
+  const note = offline || (sub !== null && !ACTED.has(doing.toLowerCase())) ? doing : "";
   return (
     <section ref={setPage} className={"page swipe" + (panel ? " paned" : "")}>
       <div className="relative flex min-h-0 flex-1 flex-col">
         <header className="top">
           <Back to={sub === null ? "/" : "/a/" + agent} label={sub === null ? "Back to the agents" : "Back to " + (mate?.name ?? "the chat")} className={sub === null ? "back" : ""} />
           {sub === null ? (
-            <button type="button" className="isl" aria-expanded={wider ? panel : sheet} aria-label={[mate?.name ?? "This agent", doing, going > 0 ? going + " at work" : ""].filter((t) => t !== "").join(", ")} onClick={() => (wider ? panel_set(!shown) : openSheet())}>
+            <button ref={setFace} type="button" className="isl" aria-haspopup={wider ? undefined : "menu"} aria-expanded={wider ? panel : menu} aria-label={[mate?.name ?? "This agent", doing, going > 0 ? going + " at work" : ""].filter((t) => t !== "").join(", ")} onClick={() => (wider ? panel_set(!shown) : openMenu())}>
               <span className="relative">
-                <Face picture={mate?.picture ?? ""} id={agent} mood={mood} size={56} />
+                <Face picture={mate?.picture ?? ""} id={agent} mood={mood} size={FACE} />
                 {going > 0 ? <em key={going} className={"count" + pop}>{going}</em> : null}
               </span>
-              {doing === "" ? null : <span className="doing">{doing}</span>}
+              <Tag name={mate?.name ?? ""} note={note} />
             </button>
           ) : (
             <p className="isl" role="img" aria-label={[sub, doing].filter((t) => t !== "").join(", ")}>
-              <Avatar look={look_of("", agent + "/" + sub)} mood={mood} size={56} />
-              {doing === "" ? null : <span className="doing">{doing}</span>}
+              <Avatar look={look_of("", agent + "/" + sub)} mood={mood} size={FACE} />
+              <Tag name={sub} note={note} />
             </p>
           )}
           <span ref={setHead} className="top-end" />
+          {drawn === false ? null : <Menu agent={agent} face={face} close={closeMenu} leaving={drawn === "leaving"} gone={gone} />}
         </header>
         {loaded ? <Timeline key={agent + "/" + (sub ?? "")} sub={sub !== null} head={head} /> : <Wait />}
         {welcome && sub === null ? <Suspense><Importer agent={agent} shut={welcomed} /></Suspense> : null}
@@ -282,7 +333,6 @@ function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode 
         )}
       </div>
       {panel ? <Panel agent={agent} /> : null}
-      {drawn === false ? null : <Sheet agent={agent} close={closeSheet} leaving={drawn === "leaving"} gone={gone} />}
     </section>
   );
 }
