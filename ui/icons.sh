@@ -2,36 +2,34 @@
 set -eu
 cd "$(dirname "$0")/public"
 
-INK="#111111"
-BG="#ffffff"
-CX=31.75
-CY=30.15
-RIM=2.5
+TILE="#6e56f8"
+# the loop's width on mark.svg's grid: 49.4 plus its stroke of 8, centred on 32
+LOOP_W=57.4
 
-INNER=$(sed -e '/^<svg[ >]/d' -e '/^<\/svg>/d' mark.svg)
-BUBBLE=$(sed -n 's/.*class="ink".* d="\([^"]*\)".*/\1/p' mark.svg)
-[ -n "$INNER" ] && [ -n "$BUBBLE" ] || { echo "icons.sh: mark.svg not as expected" >&2; exit 1; }
+LOOP=$(sed -n 's/.*class="ink" d="\([^"]*\)".*/\1/p' mark.svg)
+[ -n "$LOOP" ] || { echo "icons.sh: mark.svg not as expected" >&2; exit 1; }
 
 icon() {
-  side=$(awk -v w="$3" 'BEGIN { printf "%.4f", 51 / w }')
-  x0=$(awk -v s="$side" -v c="$CX" 'BEGIN { printf "%.4f", c - s / 2 }')
-  y0=$(awk -v s="$side" -v c="$CY" 'BEGIN { printf "%.4f", c - s / 2 }')
+  side=$(awk -v w="$LOOP_W" -v s="$3" 'BEGIN { printf "%.4f", w / s }')
+  o=$(awk -v w="$side" 'BEGIN { printf "%.4f", 32 - w / 2 }')
+  r=$(awk -v w="$side" -v k="$4" 'BEGIN { printf "%.4f", k == "round" ? w * 0.225 : 0 }')
   {
-    echo "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$2\" height=\"$2\" viewBox=\"$x0 $y0 $side $side\">"
-    [ "$4" = none ] || echo "<rect x=\"$x0\" y=\"$y0\" width=\"$side\" height=\"$side\" fill=\"$4\"/>"
-    [ "$5" = 0 ] || echo "<path d=\"$BUBBLE\" fill=\"#fff\" stroke=\"#fff\" stroke-width=\"$(awk -v r="$RIM" 'BEGIN { print 3 + 2 * r }')\" stroke-linejoin=\"round\"/>"
-    echo "$INNER"
-    echo "<style>.ink{fill:$INK;stroke:$INK}</style>"
+    echo "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$2\" height=\"$2\" viewBox=\"$o $o $side $side\">"
+    [ "$4" = none ] || echo "<rect x=\"$o\" y=\"$o\" width=\"$side\" height=\"$side\" rx=\"$r\" fill=\"$TILE\"/>"
+    echo "<path d=\"$LOOP\" fill=\"none\" stroke=\"#fff\" stroke-width=\"8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>"
     echo "</svg>"
   } > "$1.svg"
   rsvg-convert -w "$2" -h "$2" "$1.svg" -o "$1"
   rm -f "$1.svg"
 }
 
-icon icon-192.png          192 0.80 none  1
-icon icon-512.png          512 0.80 none  1
-icon icon-maskable-192.png 192 0.65 "$BG" 0
-icon icon-maskable-512.png 512 0.65 "$BG" 0
-icon apple-touch-icon.png  180 0.60 "$BG" 0
-icon badge.png              96 0.80 none  0
+# "any" icons keep transparent corners: Windows, Linux and Edge draw them unmasked
+icon icon-192.png          192 0.66 round
+icon icon-512.png          512 0.66 round
+# an Android launcher shows a maskable icon's middle two-thirds
+icon icon-maskable-192.png 192 0.44 square
+icon icon-maskable-512.png 512 0.44 square
+
+icon apple-touch-icon.png  180 0.66 square
+icon badge.png              96 0.90 none
 echo "icons.sh: icon-192.png icon-512.png icon-maskable-192.png icon-maskable-512.png apple-touch-icon.png badge.png"

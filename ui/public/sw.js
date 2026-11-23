@@ -68,7 +68,7 @@ async function show(msg) {
   const text = String(msg.text ?? "");
   const had = (await self.registration.getNotifications({ tag })).flatMap((n) => n.body.split("\n")).filter((line) => line !== text);
   const body = [text, ...had].slice(0, SHOWN).join("\n");
-  await self.registration.showNotification(String(msg.title ?? "Ki"), { body, tag, renotify: true, requireInteraction: tag.startsWith("ask-"), badge: "/badge.png", data: { url } });
+  await self.registration.showNotification(String(msg.title ?? "Ki"), { body, tag, renotify: true, requireInteraction: tag.startsWith("ask-"), badge: "/badge.png?v=4", data: { url } });
 }
 
 // the push service renewed the subscription: the server gets the new one
