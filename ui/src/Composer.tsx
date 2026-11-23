@@ -1,4 +1,4 @@
-import { ArrowUpIcon, CheckIcon, FileIcon, MicrophoneIcon, PlusIcon, StopIcon, WarningIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowUpIcon, CaretDownIcon, CheckIcon, FileIcon, MicrophoneIcon, PlusIcon, StopIcon, WarningIcon, XIcon } from "@phosphor-icons/react";
 import { useEffect, useId, useRef, useState, type ClipboardEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import * as View from "../../View.ts";
 import { useStep } from "./Back.tsx";
@@ -8,6 +8,8 @@ import { viewer_open } from "./Viewer.tsx";
 
 // on a phone Enter is a new line: its keyboard has no Shift+Enter
 const TOUCH = matchMedia("(pointer: coarse)").matches;
+// with a mouse the box stays open: no keyboard takes its room
+const FULL = matchMedia("(hover: hover) and (pointer: fine)").matches;
 
 const FAILED = "A file didn't upload: remove it, then send.";
 
@@ -203,7 +205,7 @@ export function Composer({ agent, name }: { agent: string; name: string }): Reac
   const id = useId();
   useLetGo(area);
   const blank = text.trim() === "" && items.length === 0;
-  const open = focused || kept || text !== "" || items.length > 0 || stream !== null || menu === "on";
+  const open = FULL || focused || kept || text !== "" || items.length > 0 || stream !== null || menu === "on";
   const lossy = stream !== null || items.length > 0;
   useEffect(() => {
     holds("box", lossy);
@@ -418,7 +420,7 @@ export function Composer({ agent, name }: { agent: string; name: string }): Reac
           <span className="mid">
             <label htmlFor={id} aria-hidden>{hint}</label>
             {pill === "" ? null : page === null
-              ? <button ref={opener} type="button" className="knob" aria-haspopup="menu" aria-expanded={menu === "on"} onClick={pick}>{pill}</button>
+              ? <button ref={opener} type="button" className="knob" aria-haspopup="menu" aria-expanded={menu === "on"} onClick={pick}><span>{pill}</span><CaretDownIcon size={12} weight="bold" /></button>
               : <span className="knob">{pill}</span>}
           </span>
           <button type="button" className={stream === null ? "" : "live"} aria-label={stream === null ? "Dictate" : "Stop recording"} aria-pressed={stream !== null} disabled={hearing} onClick={() => void mic()}>
