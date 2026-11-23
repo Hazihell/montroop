@@ -4,7 +4,6 @@ import { useEffect, useRef, type ReactNode } from "react";
 import type { Timer } from "../../Timer.ts";
 import { timer_when } from "../../Timer.ts";
 import * as View from "../../View.ts";
-import { Face } from "./Avatar.tsx";
 import { act, MOODS, mood_of, useKi } from "./Ki.ts";
 
 // everything about one agent past its chat: what goes on for it, its memory,
@@ -89,18 +88,16 @@ export function Context({ agent, label = false }: { agent: string; label?: boole
   );
 }
 
-// the agent as the head of its column: its face, name, mood, about
+// the agent as the head of its column, in words: the chat's header beside
+// it already shows its face
 function Who({ agent }: { agent: string }): ReactNode {
   const mate = useKi((s) => s.team.find((m) => m.id === agent));
   const mood = useKi((s) => (mate === undefined ? "idle" : mood_of(mate, s)));
   return (
-    <div className="who">
-      <Face picture={mate?.picture ?? ""} id={agent} mood={mood} size={64} />
-      <div>
-        <h2>{mate?.name ?? ""}</h2>
-        <p>{MOODS[mood] === "" ? mate?.about ?? "" : <><i>{MOODS[mood]}</i>{mate?.about ? " · " + mate.about : ""}</>}</p>
-      </div>
-    </div>
+    <header className="mast">
+      <h2>{mate?.name ?? ""}</h2>
+      <p>{MOODS[mood] === "" ? mate?.about ?? "" : <><i>{MOODS[mood]}</i>{mate?.about ? " · " + mate.about : ""}</>}</p>
+    </header>
   );
 }
 
