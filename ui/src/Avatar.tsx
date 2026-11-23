@@ -223,8 +223,24 @@ export function Outline({ shape, size }: { shape: string; size: number }): React
   return <svg viewBox="0 0 120 120" width={size} height={size} aria-hidden="true"><path d={(SHAPES[shape]).d} fill="currentColor" stroke="currentColor" strokeWidth="4" strokeLinejoin="round" /></svg>;
 }
 
-// an agent's face wherever it shows: its uploaded picture, else its avatar
+// the loop of public/mark.svg, on its 64 grid
+const LOOP = "M32 32c-4.73-7.27-9.47-10.5-14.2-10.5a10.5 10.5 0 0 0 0 21c4.73 0 9.47-3.23 14.2-10.5s9.47-10.5 14.2-10.5a10.5 10.5 0 0 1 0 21c-4.73 0-9.47-3.23-14.2-10.5z";
+
+// the picture "logo": Ki's mark as a launcher shows the app's icon
+function Logo({ size }: { size: number }): ReactNode {
+  return (
+    <svg className="face" style={{ background: "none" }} width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
+      <circle cx="32" cy="32" r="28" fill="#6e56f8" />
+      <path d={LOOP} transform="translate(11.39 11.39) scale(0.644)" fill="none" stroke="#fff" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// an agent's face wherever it shows: its uploaded picture, Ki's mark, else its avatar
 export function Face({ picture, id, mood, size, lit }: { picture: string; id: string; mood?: Mood; size: number; lit?: boolean }): ReactNode {
+  if (picture === "logo") {
+    return <Logo size={size} />;
+  }
   if (picture.startsWith("/media/")) {
     return <img className="face" style={{ width: size, height: size }} src={picture} alt="" />;
   }
