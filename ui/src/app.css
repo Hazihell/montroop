@@ -50,6 +50,7 @@
   /* where every page's top controls start: a little below the top, or below a status bar drawn
      over the page in an installed app */
   --head-top: calc(env(safe-area-inset-top) + 0.75rem);
+  --shade: light-dark(#18183a47, #000);
 }
 
 :root[data-theme="dark"] {
@@ -692,13 +693,42 @@
   }
   .isl {
     position: relative;
+    isolation: isolate;
     display: grid;
     justify-items: center;
     height: 4.75rem;
   }
+  /* the face's shadow on the talk below: a blurred disc drawn as a gradient rather than a filter,
+     so a mood that moves the face costs no blur; it fades out by the box's top, under any status bar */
+  .isl::before {
+    --body-r: 1.4375rem;
+    --body-y: 2.6875rem;
+    --spread: 1.5rem;
+    --from: calc(var(--body-y) + 0.25rem - var(--body-r) - var(--spread));
+    content: "";
+    position: absolute;
+    z-index: -1;
+    top: var(--from);
+    left: 50%;
+    width: calc(2 * (var(--body-r) + var(--spread)));
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: radial-gradient(closest-side, var(--shade) 30%, color-mix(in srgb, var(--shade) 62%, transparent) 52%, color-mix(in srgb, var(--shade) 28%, transparent) 70%, color-mix(in srgb, var(--shade) 8%, transparent) 86%, transparent);
+    translate: -50% 0;
+    mask-image: linear-gradient(transparent max(0px, -1 * var(--from)), #000 calc(max(0px, -1 * var(--from)) + 1rem));
+    pointer-events: none;
+  }
   /* the face's box starts right at the top or under the status bar, so its ring draws inside it */
   .top > .isl:focus-visible {
     outline-offset: -2px;
+  }
+  /* a picture fills its round box, the mark most of it */
+  .isl:has(.face)::before {
+    --body-r: 2.375rem;
+    --body-y: 2.375rem;
+  }
+  .isl:has(svg.face)::before {
+    --body-r: 2.0625rem;
   }
   /* centred under the face whatever its width, which Tag sets */
   .tag {
