@@ -20,8 +20,7 @@ function Top(): ReactNode {
   return <div className="talk-top" />;
 }
 
-// the last row rests clear of the box, over the band where the talk fades
-// out into it
+// the last row rests a little clear of the box, never under it
 function End(): ReactNode {
   return <div className="talk-end" />;
 }
@@ -134,7 +133,7 @@ export function Timeline({ sub, head }: { sub: boolean; head: HTMLElement | null
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per row count: higher reads the list as it is then
   }, [count]);
   return (
-    <div className={"talk" + (held ? " held" : "") + (away ? " away" : "")} ref={talk} onTouchStart={touched} onWheel={touched} onPointerDown={touched} onKeyDown={touched}>
+    <div className={"talk" + (held ? " held" : "")} ref={talk} onTouchStart={touched} onWheel={touched} onPointerDown={touched} onKeyDown={touched}>
       <LegendList
         ref={list}
         data={items}
