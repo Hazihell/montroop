@@ -289,7 +289,7 @@
     padding: 0 0.3125rem;
     border-radius: 0.625rem;
     background: var(--act);
-    box-shadow: 0 0 0 2px var(--island);
+    box-shadow: 0 0 0 2px var(--ground);
     color: var(--on-act);
     font-size: 0.6875rem;
     font-style: normal;
@@ -420,7 +420,6 @@
   }
   .isl {
     cursor: pointer;
-    text-align: left;
     transition: transform 180ms var(--ease-out);
   }
   button.isl:active {
@@ -574,7 +573,7 @@
     font-size: 0.875rem;
   }
 
-  /* the chat: the agent's island above, the talk fading under it */
+  /* the chat: the agent's face above, bare, the talk fading under it */
   .top {
     position: absolute;
     z-index: 3;
@@ -594,49 +593,36 @@
     grid-column: 1;
     justify-self: start;
   }
-  /* the island sits in the middle whatever the sides hold */
+  /* the face sits in the middle whatever the sides hold */
   .top > .isl {
     grid-column: 2;
   }
   .isl {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    min-width: 0;
-    height: 3.25rem;
-    padding: 0 1.125rem 0 0.25rem;
-    border: 1px solid var(--edge);
-    border-radius: 1.625rem;
-    background: var(--island);
-    backdrop-filter: blur(24px);
+    position: relative;
+    display: grid;
+    justify-items: center;
+    min-width: 3.5rem;
+    margin-top: -0.125rem;
   }
-  .isl .av, .isl .face {
-    margin: -0.5rem -0.125rem -0.25rem -0.125rem;
-  }
-  .isl b {
+  /* what it does, under its face, where the talk has faded */
+  .isl .doing {
+    position: absolute;
+    top: calc(100% - 0.5rem);
+    max-width: min(16rem, 100vw - 9.5rem);
     overflow: hidden;
-    font-family: var(--font-display);
-    font-size: 1.125rem;
-    font-weight: 700;
-    line-height: 1.2;
-    letter-spacing: -0.01em;
+    color: var(--act-ink);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1rem;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-  .isl > span:last-child {
-    flex: none;
-    padding-left: 0.625rem;
-    border-left: 1px solid var(--edge);
-    color: var(--act-ink);
-    font-size: 0.875rem;
-    font-weight: 550;
-    line-height: 1.25rem;
+    text-shadow: 0 0 0.5rem var(--ground), 0 0 0.25rem var(--ground);
   }
   .talk {
     position: relative;
     flex: 1;
     min-height: 0;
-    mask-image: linear-gradient(#0000 3.5rem, #000 7.5rem, #000 calc(100% - 1rem), #0000);
+    mask-image: linear-gradient(#0000 4rem, #000 7.5rem, #000 calc(100% - 1rem), #0000);
   }
   /* a phone shows its scrollbar at each jump of a chat that holds its end on its own */
   @media (pointer: coarse) {

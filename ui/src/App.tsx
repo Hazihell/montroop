@@ -220,19 +220,17 @@ function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode 
         <header className="top">
           <Back to={sub === null ? "/" : "/a/" + agent} label={sub === null ? "Back to the agents" : "Back to " + (mate?.name ?? "the chat")} className={sub === null ? "back" : ""} />
           {sub === null ? (
-            <button type="button" className="isl" aria-expanded={wider ? panel : sheet} aria-label={(mate?.name ?? "This agent") + ": what runs, its memory and settings"} onClick={() => (wider ? panel_set(!shown) : openSheet())}>
+            <button type="button" className="isl" aria-expanded={wider ? panel : sheet} aria-label={[mate?.name ?? "This agent", doing, going > 0 ? going + " at work" : ""].filter((t) => t !== "").join(", ")} onClick={() => (wider ? panel_set(!shown) : openSheet())}>
               <span className="relative">
                 <Face picture={mate?.picture ?? ""} id={agent} mood={mood} size={56} />
-                {going > 0 ? <em key={going} className={"count" + pop} aria-label={going + " at work"}>{going}</em> : null}
+                {going > 0 ? <em key={going} className={"count" + pop}>{going}</em> : null}
               </span>
-              <b>{mate?.name ?? ""}</b>
-              {doing === "" ? null : <span>{doing}</span>}
+              {doing === "" ? null : <span className="doing">{doing}</span>}
             </button>
           ) : (
-            <p className="isl">
+            <p className="isl" role="img" aria-label={[sub, doing].filter((t) => t !== "").join(", ")}>
               <Avatar look={look_of("", agent + "/" + sub)} mood={mood} size={56} />
-              <b>{sub}</b>
-              {doing === "" ? null : <span>{doing}</span>}
+              {doing === "" ? null : <span className="doing">{doing}</span>}
             </p>
           )}
           <span ref={setHead} className="top-end" />
