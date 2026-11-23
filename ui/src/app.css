@@ -253,9 +253,12 @@
   }
 
   /* no bar of places: the list is home, each screen goes full height */
+  /* clipped: a page moved past the edge would make the screen scrollable, and a phone then shows
+     its scrollbars */
   .shell {
     position: relative;
     height: 100%;
+    overflow: clip;
     isolation: isolate;
   }
   .page {
@@ -629,6 +632,12 @@
     flex: 1;
     min-height: 0;
     mask-image: linear-gradient(#0000 3.5rem, #000 7.5rem, #000 calc(100% - 1rem), #0000);
+  }
+  /* a phone shows its scrollbar at each jump of a chat that holds its end on its own */
+  @media (pointer: coarse) {
+    .talk.held > * {
+      scrollbar-width: none;
+    }
   }
   .talk-top {
     height: 5.5rem;
