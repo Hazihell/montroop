@@ -125,6 +125,21 @@ export namespace Pick {
     return hit === undefined ? null : hit[1];
   }
 
+  // a pick with one part moved, as /model, /effort and /fast ask, or why not
+  export function moved(from: Pick, move: Move, offer: Offer, to: string): Pick | string {
+    if (move === "speed" && Pick.options(from, "speed", offer).length === 1) {
+      return from.model + " has no fast.";
+    }
+    if (move === "effort" && Pick.options(from, "effort", offer).length === 0) {
+      return from.model + " has no effort to set.";
+    }
+    return Pick.move(from, move, offer, to) ?? "No " + move + " " + to + (move === "effort" ? " on " + from.model : "") + "; one of: " + Pick.parts(from, move, offer).join(", ") + ".";
+  }
+
+  export function parts(pick: Pick, move: Move, offer: Offer): string[] {
+    return [...new Set(Pick.options(pick, move, offer).map(([part]) => part))];
+  }
+
   export function to_model(pick: Pick, label: string, vendors: Vendor[], { models }: Offer): Pick | null {
     const all = Pick.models(vendors, models).filter(([, m]) => m.label === label);
     const hit = all.find(([v]) => v === pick.vendor) ?? all[0];

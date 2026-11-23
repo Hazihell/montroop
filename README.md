@@ -49,7 +49,7 @@ Use
 ---
 
 - **Web UI:** open the server's address. Install it as an app from your browser to get notifications when Ki replies.
-- **Agents:** **+** in the chat list makes another agent, with its own chat, memory and editable system prompt.
+- **Agents:** **+** in the chat list makes another agent, with its own chat, memory and editable system prompt; its settings keep the prompt's earlier versions, to revert to.
 - **Leader:** If you want an agent that automatically knows where the other agents are at, go to the agent's settings and enable Leader Mode. A leader will see the most recent memory of each agent.
 - **Conversation mode:** the mode menu left of the model picker. From then on, your and the agent's messages stay word for word in its context, for a real back-and-forth. It costs more per turn and turns itself off when the model's context window fills up.
 - `ki help` lists every command.

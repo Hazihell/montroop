@@ -628,18 +628,9 @@ export function view_act(v: View, act: Act): Client[] {
       if (from === null) {
         return [];
       }
-      const to = Pick.move(from, act.move, v, act.to);
-      if (act.move === "speed" && Pick.options(from, "speed", v).length === 1) {
-        v.notes.push(from.model + " has no fast.");
-        return [];
-      }
-      if (act.move === "effort" && Pick.options(from, "effort", v).length === 0) {
-        v.notes.push(from.model + " has no effort to set.");
-        return [];
-      }
-      if (to === null) {
-        const parts = Pick.options(from, act.move, v).map(([part]) => part);
-        v.notes.push("No " + act.move + " " + act.to + (act.move === "effort" ? " on " + from.model : "") + "; one of: " + [...new Set(parts)].join(", ") + ".");
+      const to = Pick.moved(from, act.move, v, act.to);
+      if (typeof to === "string") {
+        v.notes.push(to);
         return [];
       }
       return [{ $: "pick", to }];
@@ -859,7 +850,7 @@ export function limit_note(vendor: Vendor, does: string, until: number | null, n
   return "Usage limit on " + vendor + (since === null ? "" : " since " + clock(since, now)) + ", " + (until === null ? "reset time unknown" : does + " at " + clock(until, now));
 }
 
-function clock(at: number, now = Date.now()): string {
+export function clock(at: number, now = Date.now()): string {
   const day = new Date(at).toDateString() === new Date(now).toDateString() ? {} : { weekday: "short", day: "numeric", month: "short" } as const;
   return new Date(at).toLocaleString(undefined, { ...day, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 }

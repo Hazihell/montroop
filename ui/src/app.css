@@ -1306,6 +1306,61 @@
     padding-top: 0.5rem;
   }
 
+  /* an agent's earlier system prompts, and one beside the prompt now */
+  .versions .item {
+    width: 100%;
+    text-align: left;
+  }
+  .versions p > span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .versions .more {
+    min-height: 2.75rem;
+    padding: 0 1rem;
+    color: var(--act-ink);
+    font-size: 0.9375rem;
+    font-weight: 600;
+    text-align: left;
+  }
+  .diff {
+    display: grid;
+    gap: 0.5rem;
+    padding: 0.5rem 0;
+    border-radius: 1rem;
+    background: var(--raise);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    line-height: 1.5;
+  }
+  .diff p {
+    position: relative;
+    padding: 0 0.75rem 0 1.75rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .diff p i {
+    position: absolute;
+    left: 0.75rem;
+    color: var(--dim);
+    font-style: normal;
+  }
+  .diff .at {
+    color: var(--dim);
+    font-family: var(--font-sans);
+  }
+  .diff .del {
+    background: color-mix(in oklab, var(--bad) 16%, transparent);
+  }
+  .diff .add {
+    background: color-mix(in oklab, var(--ok) 16%, transparent);
+  }
+  .diff .del i, .diff .add i {
+    color: inherit;
+  }
+
   /* the avatar's editor */
   .seg {
     display: grid;
