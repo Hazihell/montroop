@@ -19,8 +19,8 @@ export function usePop(n: number, of = ""): string {
   return last.changed ? " pop" : "";
 }
 
-// an agent as a row: its avatar acts out its mood, the line under its name
-// says it, then its last words
+// an agent as a row: its avatar acts out its mood, which only a screen
+// reader hears said, and the line under its name holds its last words
 function Mate({ m, size }: { m: View.Mate; size: number }): ReactNode {
   const mood = useKi((s) => mood_of(m, s));
   const said = m.last === "" ? m.about : m.last;
@@ -30,7 +30,7 @@ function Mate({ m, size }: { m: View.Mate; size: number }): ReactNode {
       <Face picture={m.picture} id={m.id} mood={mood} size={size} />
       <div>
         <b>{m.name}</b>
-        <small>{MOODS[mood] === "" ? said : <><i>{MOODS[mood]}</i>{said === "" ? "" : " · " + said}</>}</small>
+        <small>{MOODS[mood] === "" ? null : <span className="sr-only">{MOODS[mood] + ". "}</span>}{said}</small>
       </div>
       {mood === "asking"
         ? <HandPalmIcon size={24} weight="fill" className="hand" aria-label="Waits for your answer" />
