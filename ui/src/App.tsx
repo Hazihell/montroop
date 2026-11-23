@@ -1,5 +1,5 @@
-import { XIcon } from "@phosphor-icons/react";
-import { createRootRoute, createRoute, createRouter, lazyRouteComponent, Outlet, redirect, useLocation, useNavigate, useRouter } from "@tanstack/react-router";
+import { SidebarSimpleIcon, XIcon } from "@phosphor-icons/react";
+import { createRootRoute, createRoute, createRouter, lazyRouteComponent, Outlet, redirect, useLocation, useMatches, useNavigate, useRouter } from "@tanstack/react-router";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import * as View from "../../View.ts";
 import { Avatar, Face, look_of } from "./Avatar.tsx";
@@ -8,7 +8,7 @@ import { intro_end, MOODS, mood_of, noted, show, useKi, welcomed } from "./Ki.ts
 import { Back, steps_of, turn, TURNS, useBack, useEdgeBack, useStep } from "./Back.tsx";
 import { Agents, Memory, Running, useLeaving, usePop } from "./Pages.tsx";
 import { Menu, Panel, useGoing } from "./Panel.tsx";
-import { panel_set, usePrefs } from "./Prefs.ts";
+import { list_set, panel_set, usePrefs } from "./Prefs.ts";
 import { Timeline } from "./Timeline.tsx";
 import { Viewer } from "./Viewer.tsx";
 
@@ -148,22 +148,58 @@ function useLamps(el: HTMLElement | null): void {
   }, [el, router]);
 }
 
+const MAC = /Mac|iPhone|iPad/.test(navigator.userAgent);
+
+// hides the agents' column and brings it back; a focus in the column as it
+// goes stays on the button
+function Tuck({ shown }: { shown: boolean }): ReactNode {
+  const button = useRef<HTMLButtonElement>(null);
+  const flip = useCallback(() => {
+    const on = !usePrefs.getState().list;
+    if (!on && document.getElementById("agents")?.contains(document.activeElement) === true) {
+      button.current?.focus({ preventScroll: true });
+    }
+    list_set(on);
+  }, []);
+  useEffect(() => {
+    const key = (ev: KeyboardEvent) => {
+      if (ev.key.toLowerCase() === "b" && (MAC ? ev.metaKey : ev.ctrlKey) && !ev.altKey && !ev.shiftKey) {
+        ev.preventDefault();
+        ev.repeat || flip();
+      }
+    };
+    addEventListener("keydown", key);
+    return () => removeEventListener("keydown", key);
+  }, [flip]);
+  return (
+    <button ref={button} type="button" className="tuck round gl" aria-label="Agents" aria-controls="agents" aria-expanded={shown} aria-keyshortcuts={MAC ? "Meta+B" : "Control+B"} title={(shown ? "Hide" : "Show") + " the agents (" + (MAC ? "⌘B" : "Ctrl+B") + ")"} onClick={flip}>
+      <SidebarSimpleIcon size={22} />
+    </button>
+  );
+}
+
 // no bar of places: the list is home, and all about one agent opens from
 // its chat
 function Shell(): ReactNode {
   const signed = useKi((s) => s.signed);
   const path = useLocation().pathname;
+  const at = useMatches({ select: (all) => all.at(-1)?.routeId });
   const wide = useMedia(WIDE);
+  const listed = usePrefs((s) => s.list);
   const split = wide && (path === "/" || path.startsWith("/a/") || path === "/new");
+  // with the column away the button takes the top left corner: a chat's floating
+  // head has it level with its own buttons, and a page with a back button of
+  // its own moves over for it
+  const tucked = !split || listed ? "" : " tucked" + (at === chat.id || at === sub.id ? " headed" : "") + (at === home.id || at === chat.id ? "" : " backed");
   const [aurora, setAurora] = useState<HTMLElement | null>(null);
   useLamps(aurora);
   if (signed === null) {
     return null;
   }
   return (
-    <div className={"shell" + (split ? " split" : "")}>
+    <div className={"shell" + (split ? " split" : "") + tucked}>
       <div ref={setAurora} className="aurora"><i /><i /><i /></div>
-      {signed ? <>{split ? <aside className="side"><Agents side /></aside> : null}<Outlet /></> : <div className="flex h-full"><SignIn /></div>}
+      {signed ? <>{split ? <aside id="agents" className="side" inert={!listed}><Agents side /></aside> : null}<Outlet />{split ? <Tuck shown={listed} /> : null}</> : <div className="flex h-full"><SignIn /></div>}
       <Note />
       <Viewer />
       <Intro />
@@ -175,6 +211,7 @@ function Shell(): ReactNode {
 function Home(): ReactNode {
   const wide = useMedia(WIDE);
   const any = useKi((s) => s.team.some((m) => m.archived === 0));
+  const listed = usePrefs((s) => s.list);
   if (!wide) {
     return <Agents />;
   }
@@ -182,7 +219,7 @@ function Home(): ReactNode {
     <section className="page">
       <div className="m-auto grid max-w-xs justify-items-center gap-3 p-6 text-center">
         <Avatar look={look_of("", "ki")} mood="idle" size={88} lit />
-        <p className="text-mid">{any ? "Pick an agent to open its chat." : "Make your first agent with the + button."}</p>
+        <p className="text-mid">{!listed ? "Show the agents to open a chat." : any ? "Pick an agent to open its chat." : "Make your first agent with the + button."}</p>
       </div>
     </section>
   );
