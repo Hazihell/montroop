@@ -20,6 +20,12 @@ function Top(): ReactNode {
   return <div className="talk-top" />;
 }
 
+// the last row rests clear of the box, over the band where the talk fades
+// out into it
+function End(): ReactNode {
+  return <div className="talk-end" />;
+}
+
 // sub: a subagent's page, which loads its earlier entries near its top;
 // head: the header's end, where the way up shows, out of the last row's way.
 // Each tap goes one of the user's messages further up, and the way shows as
@@ -124,6 +130,7 @@ export function Timeline({ sub, head }: { sub: boolean; head: HTMLElement | null
         keyExtractor={(item) => item.key}
         renderItem={({ item }) => <Row item={item} rise={came.fresh.has(item.key)} />}
         ListHeaderComponent={Top}
+        ListFooterComponent={End}
         estimatedItemSize={72}
         recycleItems={false}
         alignItemsAtEnd
