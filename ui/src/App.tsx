@@ -1,4 +1,4 @@
-import { XIcon } from "@phosphor-icons/react";
+import { SidebarSimpleIcon, XIcon } from "@phosphor-icons/react";
 import { createRootRoute, createRoute, createRouter, lazyRouteComponent, Outlet, redirect, useLocation, useNavigate, useRouter } from "@tanstack/react-router";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import * as View from "../../View.ts";
@@ -8,7 +8,7 @@ import { intro_end, MOODS, mood_of, noted, show, useKi, welcomed } from "./Ki.ts
 import { Back, steps_of, turn, TURNS, useBack, useEdgeBack, useStep } from "./Back.tsx";
 import { Agents, Memory, Running, useLeaving, usePop } from "./Pages.tsx";
 import { Menu, Panel, useGoing } from "./Panel.tsx";
-import { panel_set, usePrefs } from "./Prefs.ts";
+import { list_set, panel_set, usePrefs } from "./Prefs.ts";
 import { Timeline } from "./Timeline.tsx";
 import { Viewer } from "./Viewer.tsx";
 
@@ -148,12 +148,35 @@ function useLamps(el: HTMLElement | null): void {
   }, [el, router]);
 }
 
+const MAC = /Mac|iPhone|iPad/.test(navigator.userAgent);
+
+// hides the agents' column beside the chat and brings it back, as ⌘B or
+// Ctrl+B does; it holds its place while the column slides away from under it
+function Tuck({ shown }: { shown: boolean }): ReactNode {
+  useEffect(() => {
+    const key = (ev: KeyboardEvent) => {
+      if (ev.key.toLowerCase() === "b" && (MAC ? ev.metaKey : ev.ctrlKey) && !ev.altKey && !ev.shiftKey) {
+        ev.preventDefault();
+        list_set(!usePrefs.getState().list);
+      }
+    };
+    addEventListener("keydown", key);
+    return () => removeEventListener("keydown", key);
+  }, []);
+  return (
+    <button type="button" className="tuck round gl" aria-label="Agents" aria-controls="agents" aria-expanded={shown} aria-keyshortcuts={MAC ? "Meta+B" : "Control+B"} title={(shown ? "Hide" : "Show") + " the agents (" + (MAC ? "⌘B" : "Ctrl+B") + ")"} onClick={() => list_set(!shown)}>
+      <SidebarSimpleIcon size={22} />
+    </button>
+  );
+}
+
 // no bar of places: the list is home, and all about one agent opens from
 // its chat
 function Shell(): ReactNode {
   const signed = useKi((s) => s.signed);
   const path = useLocation().pathname;
   const wide = useMedia(WIDE);
+  const listed = usePrefs((s) => s.list);
   const split = wide && (path === "/" || path.startsWith("/a/") || path === "/new");
   const [aurora, setAurora] = useState<HTMLElement | null>(null);
   useLamps(aurora);
@@ -161,9 +184,9 @@ function Shell(): ReactNode {
     return null;
   }
   return (
-    <div className={"shell" + (split ? " split" : "")}>
+    <div className={"shell" + (split ? " split" : "") + (split && !listed ? " tucked" : "")}>
       <div ref={setAurora} className="aurora"><i /><i /><i /></div>
-      {signed ? <>{split ? <aside className="side"><Agents side /></aside> : null}<Outlet /></> : <div className="flex h-full"><SignIn /></div>}
+      {signed ? <>{split ? <aside id="agents" className="side" inert={!listed}><Agents side /></aside> : null}<Outlet />{split ? <Tuck shown={listed} /> : null}</> : <div className="flex h-full"><SignIn /></div>}
       <Note />
       <Viewer />
       <Intro />
@@ -175,6 +198,7 @@ function Shell(): ReactNode {
 function Home(): ReactNode {
   const wide = useMedia(WIDE);
   const any = useKi((s) => s.team.some((m) => m.archived === 0));
+  const listed = usePrefs((s) => s.list);
   if (!wide) {
     return <Agents />;
   }
@@ -182,7 +206,7 @@ function Home(): ReactNode {
     <section className="page">
       <div className="m-auto grid max-w-xs justify-items-center gap-3 p-6 text-center">
         <Avatar look={look_of("", "ki")} mood="idle" size={88} lit />
-        <p className="text-mid">{any ? "Pick an agent to open its chat." : "Make your first agent with the + button."}</p>
+        <p className="text-mid">{!listed ? "Show the agents to open a chat." : any ? "Pick an agent to open its chat." : "Make your first agent with the + button."}</p>
       </div>
     </section>
   );

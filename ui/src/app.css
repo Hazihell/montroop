@@ -484,6 +484,16 @@
       left: 0;
       width: 22rem;
       border-right: 1px solid var(--edge);
+      transition: transform 240ms var(--ease-out);
+    }
+    /* tucked away: the column slides out and the chat widens back into its room */
+    .tucked .side {
+      visibility: hidden;
+      transform: translateX(-100%);
+      transition: transform 240ms var(--ease-out), visibility 0s 240ms;
+    }
+    .side .head {
+      padding-left: 4.625rem;
     }
     .side .head h1 {
       font-size: 2rem;
@@ -493,6 +503,30 @@
     }
     .split .page {
       padding-left: 22rem;
+      transition: padding-left 240ms var(--ease-out), transform 200ms var(--ease-out);
+    }
+    .tucked .page {
+      padding-left: 0;
+    }
+    /* level with the list's own buttons while it shows; with it away, it settles into the chat's
+       head as the round button facing the one on its right */
+    .tuck {
+      position: fixed;
+      z-index: 3;
+      top: max(1.25rem, env(safe-area-inset-top));
+      left: 0.875rem;
+      color: var(--mid);
+      transform-origin: 0 0;
+      transition-property: transform, background-color, border-color, box-shadow, color;
+      transition-duration: 240ms;
+      transition-timing-function: var(--ease-out);
+    }
+    .tucked .tuck {
+      border-color: var(--float-edge);
+      background: var(--float);
+      box-shadow: 0 4px 16px light-dark(#0000001a, #00000059);
+      color: var(--ink);
+      transform: translate(0.125rem, calc(1rem + var(--lift))) scale(calc(44 / 52));
     }
     .split .back {
       display: none;

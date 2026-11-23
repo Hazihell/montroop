@@ -5,20 +5,22 @@ import { create } from "zustand";
 
 export type Theme = "system" | "dark" | "light";
 
-type Prefs = { accent: string; theme: Theme; panel: boolean };
+type Prefs = { accent: string; theme: Theme; panel: boolean; list: boolean };
 
 export const ACCENTS = ["6e56f8", "2f6fed", "13a3b8", "1fa971", "d9a116", "d9683f", "e0457b", "8b8b96"];
 
 const KEY = "ki.look";
 // the agent's column beside its chat on a wide screen, shown or hidden
 const PANEL = "ki.panel";
+// the agents' column on a wide screen, shown or hidden
+const LIST = "ki.list";
 // app.css's --ground
 const GROUND = { light: "#f4f3ef", dark: "#08080a" };
 const HEX = /^[0-9a-f]{6}$/;
 
 function read(): Prefs {
   const [accent, theme] = (localStorage.getItem(KEY) ?? "").split(" ");
-  return { accent: accent !== undefined && HEX.test(accent) ? accent : (ACCENTS[0]), theme: theme === "dark" || theme === "light" ? theme : "system", panel: localStorage.getItem(PANEL) !== "off" };
+  return { accent: accent !== undefined && HEX.test(accent) ? accent : (ACCENTS[0]), theme: theme === "dark" || theme === "light" ? theme : "system", panel: localStorage.getItem(PANEL) !== "off", list: localStorage.getItem(LIST) !== "off" };
 }
 
 // the ink that reads on the accent: dark on a light one
@@ -62,6 +64,11 @@ export function prefs_set(next: Partial<Prefs>): void {
 export function panel_set(on: boolean): void {
   localStorage.setItem(PANEL, on ? "on" : "off");
   usePrefs.setState({ panel: on });
+}
+
+export function list_set(on: boolean): void {
+  localStorage.setItem(LIST, on ? "on" : "off");
+  usePrefs.setState({ list: on });
 }
 
 apply(usePrefs.getState());
