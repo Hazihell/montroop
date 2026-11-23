@@ -234,6 +234,10 @@
     background: var(--raise);
     object-fit: cover;
   }
+  /* a count that changed as it was in sight */
+  .pop {
+    animation: pop 240ms var(--ease-out);
+  }
   .badge {
     min-width: 1.5rem;
     height: 1.5rem;
@@ -259,6 +263,7 @@
     flex-direction: column;
     height: 100%;
     padding-bottom: max(0.375rem, env(safe-area-inset-bottom));
+    animation: turn var(--turn-t, 0s) var(--ease-out);
   }
   /* an iPhone app's edge swipe drags the chat away */
   .page.swipe {
@@ -328,6 +333,16 @@
   .agsheet.dragged {
     transition: none;
   }
+  /* closed: it slides away, and taps go to the chat at once */
+  .agsheet.leaving {
+    transform: translateY(110%);
+    pointer-events: none;
+  }
+  .dim.leaving {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 180ms var(--ease-out);
+  }
   .grip {
     display: block;
     width: 2.5rem;
@@ -390,6 +405,10 @@
   .isl {
     cursor: pointer;
     text-align: left;
+    transition: transform 180ms var(--ease-out);
+  }
+  button.isl:active {
+    transform: scale(0.97);
   }
 
   /* wide enough: the agents stay in a column beside the open chat */
@@ -639,6 +658,9 @@
   }
   .row.thin {
     padding-block: 0.125rem;
+  }
+  .row.rise {
+    animation: rise 200ms var(--ease-out);
   }
   .who {
     display: flex;
@@ -1496,10 +1518,11 @@
     min-height: 2.75rem;
     border-radius: 50%;
     color: var(--dim);
-    transition: color 180ms var(--ease-out);
+    transition: color 180ms var(--ease-out), transform 180ms var(--ease-out);
   }
   .copy:active {
     color: var(--ink);
+    transform: scale(0.9);
   }
   .msg > .copy {
     margin: -0.125rem 0 -0.625rem -0.8125rem;
@@ -1694,6 +1717,20 @@
   from {
     opacity: 0;
     transform: translateY(0.5rem);
+  }
+}
+
+@keyframes pop {
+  from {
+    transform: scale(0.6);
+  }
+}
+
+/* Back.tsx's turn says where a page comes from */
+@keyframes turn {
+  from {
+    opacity: 0;
+    transform: translateX(var(--turn-x, 0));
   }
 }
 

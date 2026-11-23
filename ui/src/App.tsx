@@ -5,8 +5,8 @@ import * as View from "../../View.ts";
 import { Avatar, Face, look_of } from "./Avatar.tsx";
 import { Composer } from "./Composer.tsx";
 import { intro_end, MOODS, mood_of, noted, show, useKi, welcomed } from "./Ki.ts";
-import { Back, useBack, useEdgeBack } from "./Back.tsx";
-import { Agents, Memory, Running } from "./Pages.tsx";
+import { Back, turn, turned, useBack, useEdgeBack } from "./Back.tsx";
+import { Agents, Memory, Running, usePop } from "./Pages.tsx";
 import { Panel, Sheet, useGoing } from "./Panel.tsx";
 import { panel_set, usePrefs } from "./Prefs.ts";
 import { Timeline } from "./Timeline.tsx";
@@ -153,6 +153,25 @@ function Tree({ agent }: { agent: string }): ReactNode {
   return <Grown agent={agent} view={useLocation().hash === "view"} />;
 }
 
+// how long a closed sheet takes to leave: .agsheet's transition
+const LEAVE = 180;
+
+// what is shown stays drawn, leaving, a moment after it closes
+function useLeaving(on: boolean): "on" | "leaving" | false {
+  const [kept, setKept] = useState(on);
+  if (on && !kept) {
+    setKept(true);
+  }
+  useEffect(() => {
+    if (on) {
+      return undefined;
+    }
+    const id = setTimeout(() => setKept(false), LEAVE);
+    return () => clearTimeout(id);
+  }, [on]);
+  return on ? "on" : kept ? "leaving" : false;
+}
+
 // the agent's sheet is a step in the history, so the phone's back closes it
 function useSheet(agent: string): [boolean, () => void, () => void] {
   const open = useSearch({ strict: false, select: (s: { about?: 1 }) => s.about === 1 });
@@ -187,7 +206,9 @@ function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode 
   const wider = useMedia(WIDER);
   const shown = usePrefs((s) => s.panel);
   const going = useGoing(agent);
+  const pop = usePop(going, agent);
   const [sheet, openSheet, closeSheet] = useSheet(agent);
+  const drawn = useLeaving(sheet && !wider && sub === null);
   const panel = wider && shown && sub === null;
   useEdgeBack(page, back);
   useEffect(() => {
@@ -210,7 +231,7 @@ function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode 
             <button type="button" className="isl" aria-expanded={wider ? panel : sheet} aria-label={(mate?.name ?? "This agent") + ": what runs, its memory and settings"} onClick={() => (wider ? panel_set(!shown) : openSheet())}>
               <span className="relative">
                 <Face picture={mate?.picture ?? ""} id={agent} mood={mood} size={56} />
-                {going > 0 ? <em className="count" aria-label={going + " at work"}>{going}</em> : null}
+                {going > 0 ? <em key={going} className={"count" + pop} aria-label={going + " at work"}>{going}</em> : null}
               </span>
               <b>{mate?.name ?? ""}</b>
               {doing === "" ? null : <span>{doing}</span>}
@@ -234,7 +255,7 @@ function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode 
         )}
       </div>
       {panel ? <Panel agent={agent} /> : null}
-      {sheet && !wider && sub === null ? <Sheet agent={agent} close={closeSheet} /> : null}
+      {drawn === false ? null : <Sheet agent={agent} close={closeSheet} leaving={drawn === "leaving"} />}
     </section>
   );
 }
@@ -273,6 +294,8 @@ const team     = createRoute({ getParentRoute: () => root, path: "/team", before
 const settings = createRoute({ getParentRoute: () => root, path: "/settings", component: Settings });
 
 export const router = createRouter({ routeTree: root.addChildren([home, chat, sub, fresh, edit, look, running, memory, tree, runningOld, memoryOld, treeOld, team, settings]) });
+router.subscribe("onBeforeNavigate", ({ fromLocation, toLocation, pathChanged }) => turn(fromLocation?.pathname, toLocation.pathname, pathChanged));
+router.subscribe("onRendered", turned);
 
 declare module "@tanstack/react-router" {
   interface Register {

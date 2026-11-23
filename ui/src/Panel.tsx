@@ -150,14 +150,15 @@ function Places({ agent, replace, running }: { agent: string; replace: boolean; 
 }
 
 // a phone's sheet over the chat; back, a tap beside it, Escape or a drag
-// down close it
-export function Sheet({ agent, close }: { agent: string; close: () => void }): ReactNode {
+// down close it. Leaving: closed, it slides away and takes nothing more
+export function Sheet({ agent, close, leaving }: { agent: string; close: () => void; leaving: boolean }): ReactNode {
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = box.current;
-    if (el === null) {
+    if (el === null || leaving) {
       return undefined;
     }
+    el.style.transform = "";
     el.focus({ preventScroll: true });
     const key = (ev: KeyboardEvent) => ev.key === "Escape" && close();
     const at = { y: -1, t: 0, dy: 0 };
@@ -186,7 +187,7 @@ export function Sheet({ agent, close }: { agent: string; close: () => void }): R
       const away = at.dy > DOWN || at.dy / Math.max(1, ev.timeStamp - at.t) > FLING;
       el.style.transform = away ? "translateY(110%)" : "";
       if (away) {
-        setTimeout(close, 180);
+        close();
       }
       at.y = -1;
     };
@@ -202,11 +203,11 @@ export function Sheet({ agent, close }: { agent: string; close: () => void }): R
       el.removeEventListener("touchend", end);
       el.removeEventListener("touchcancel", end);
     };
-  }, [close]);
+  }, [close, leaving]);
   return (
     <>
-      <button type="button" className="dim" aria-label="Close" onClick={close} />
-      <div ref={box} className="agsheet" role="dialog" aria-modal="true" aria-label="The agent" tabIndex={-1}>
+      <button type="button" className={"dim" + (leaving ? " leaving" : "")} aria-label="Close" inert={leaving} onClick={close} />
+      <div ref={box} className={"agsheet" + (leaving ? " leaving" : "")} inert={leaving} role="dialog" aria-modal="true" aria-label="The agent" tabIndex={-1}>
         <i className="grip" aria-hidden />
         <Who agent={agent} size={72} />
         <Places agent={agent} replace running />

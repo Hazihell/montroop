@@ -8,11 +8,23 @@ import { Back } from "./Back.tsx";
 import { MOODS, mood_of, show, useKi } from "./Ki.ts";
 import { Context, RunList } from "./Panel.tsx";
 
+// " pop" once a count changed since it was first drawn, so its badge, keyed
+// by the count, pops in at each change in sight: not as a page first draws
+// it, nor as the same badge starts counting another agent's (of: whose)
+export function usePop(n: number, of = ""): string {
+  const [last, setLast] = useState({ n, of, changed: false });
+  if (last.of !== of || last.n !== n) {
+    setLast({ n, of, changed: last.of === of });
+  }
+  return last.changed ? " pop" : "";
+}
+
 // an agent as a row: its avatar acts out its mood, the line under its name
 // says it, then its last words
 function Mate({ m, size }: { m: View.Mate; size: number }): ReactNode {
   const mood = useKi((s) => mood_of(m, s));
   const said = m.last === "" ? m.about : m.last;
+  const pop = usePop(m.unread);
   return (
     <Link to="/a/$agent" params={{ agent: m.id }} className="ag">
       <Face picture={m.picture} id={m.id} mood={mood} size={size} />
@@ -22,7 +34,7 @@ function Mate({ m, size }: { m: View.Mate; size: number }): ReactNode {
       </div>
       {mood === "asking"
         ? <HandPalmIcon size={24} weight="fill" className="hand" aria-label="Waits for your answer" />
-        : m.unread > 0 ? <span className="badge" aria-label={m.unread + " unread"}>{m.unread}</span> : null}
+        : m.unread > 0 ? <span key={m.unread} className={"badge" + pop} aria-label={m.unread + " unread"}>{m.unread}</span> : null}
     </Link>
   );
 }

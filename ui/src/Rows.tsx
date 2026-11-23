@@ -2,7 +2,7 @@ import {
   AlarmIcon, BookOpenTextIcon, CalendarBlankIcon, CaretDownIcon, CaretRightIcon, ChatCircleTextIcon, FilePlusIcon, HandPalmIcon, type Icon, MagnifyingGlassIcon,
   MagnifyingGlassPlusIcon, PencilSimpleLineIcon, TerminalWindowIcon, UsersThreeIcon, WrenchIcon, XCircleIcon,
 } from "@phosphor-icons/react";
-import { memo, useState, type CSSProperties, type ReactNode } from "react";
+import { memo, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { create } from "zustand";
 import * as Call from "../../Call.ts";
 import * as Md from "../../Md.ts";
@@ -34,8 +34,10 @@ function work_toggle(id: string): void {
   useWork.setState({ open });
 }
 
-export function items_of(rows: View.Row[], open: ReadonlySet<string>): Item[] {
-  const seen = new Map<string, number>();
+// after: the counts of the keys of the items before these, which a key
+// made here goes on from
+export function items_of(rows: View.Row[], open: ReadonlySet<string>, after?: Map<string, number>): { items: Item[]; seen: Map<string, number> } {
+  const seen = new Map(after);
   const out: Item[] = [];
   const key = (base: string) => {
     const n = seen.get(base) ?? 0;
@@ -65,7 +67,7 @@ export function items_of(rows: View.Row[], open: ReadonlySet<string>): Item[] {
     }
   };
   walk(rows, 0);
-  return out;
+  return { items: out, seen };
 }
 
 const TOOLS: Record<string, Icon> = {
@@ -269,8 +271,9 @@ function Ask({ row }: { row: Of<"Ask"> }): ReactNode {
 }
 
 // the view makes a tool line anew at each draw, around the same call and
-// result: it is the same line while those are
-function same(a: { item: Item }, b: { item: Item }): boolean {
+// result: it is the same line while those are. Rise counts only as a row is
+// first drawn
+function same(a: { item: Item; rise: boolean }, b: { item: Item; rise: boolean }): boolean {
   const [x, y] = [a.item.row, b.item.row];
   if (a.item.depth !== b.item.depth) {
     return false;
@@ -287,10 +290,24 @@ function same(a: { item: Item }, b: { item: Item }): boolean {
   return x === y;
 }
 
-export const Row = memo(function Row({ item }: { item: Item }): ReactNode {
+// the keys of the rows that rose in, so one drawn again, as the list
+// scrolls back to it, stays still; a key gone from the end is forgotten,
+// and the next row to take it rises in
+const ROSE = new Set<string>();
+
+export function rose_keep(keys: ReadonlySet<string>): void {
+  [...ROSE].filter((key) => !keys.has(key)).forEach((key) => ROSE.delete(key));
+}
+
+// rise: it just came, and comes in moving as it is first drawn
+export const Row = memo(function Row({ item, rise }: { item: Item; rise: boolean }): ReactNode {
   const row = item.row;
+  const [rose] = useState(() => rise && !ROSE.has(item.key));
+  useEffect(() => {
+    rose && ROSE.add(item.key);
+  }, [rose, item.key]);
   return (
-    <div className={"row" + (row.$ === "Line" || row.$ === "Work" ? " thin" : "")} style={{ "--depth": item.depth } as CSSProperties}>
+    <div className={"row" + (row.$ === "Line" || row.$ === "Work" ? " thin" : "") + (rose ? " rise" : "")} style={{ "--depth": item.depth } as CSSProperties}>
       {row.$ === "Work" ? <WorkHead row={row} />
         : row.$ === "Sum" ? <Sum row={row} />
         : row.$ === "Box" ? <BoxHead row={row} />
