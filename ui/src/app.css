@@ -817,7 +817,8 @@
     margin-top: 0.25rem;
     color: var(--dim);
   }
-  .count {
+  .fold .count {
+    position: static;
     flex: none;
     padding: 0 0.5rem;
     border-radius: 0.6875rem;
