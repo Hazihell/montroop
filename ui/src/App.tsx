@@ -1,12 +1,12 @@
 import { XIcon } from "@phosphor-icons/react";
-import { createRootRoute, createRoute, createRouter, lazyRouteComponent, Outlet, redirect, useLocation, useNavigate, useRouter, useSearch } from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter, lazyRouteComponent, Outlet, redirect, useLocation, useNavigate, useRouter } from "@tanstack/react-router";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import * as View from "../../View.ts";
 import { Avatar, Face, look_of } from "./Avatar.tsx";
 import { Composer } from "./Composer.tsx";
 import { intro_end, MOODS, mood_of, noted, show, useKi, welcomed } from "./Ki.ts";
-import { Back, turn, TURNS, useBack, useEdgeBack } from "./Back.tsx";
-import { Agents, Memory, Running, usePop } from "./Pages.tsx";
+import { Back, steps_of, turn, TURNS, useBack, useEdgeBack, useStep } from "./Back.tsx";
+import { Agents, Memory, Running, useLeaving, usePop } from "./Pages.tsx";
 import { Menu, Panel, useGoing } from "./Panel.tsx";
 import { panel_set, usePrefs } from "./Prefs.ts";
 import { Timeline } from "./Timeline.tsx";
@@ -192,33 +192,6 @@ function Tree({ agent }: { agent: string }): ReactNode {
   return <Grown agent={agent} view={useLocation().hash === "view"} />;
 }
 
-// what is shown stays drawn, leaving, after it closes, until it says it
-// is gone
-function useLeaving(on: boolean): ["on" | "leaving" | false, () => void] {
-  const [kept, setKept] = useState(on);
-  if (on && !kept) {
-    setKept(true);
-  }
-  const gone = useCallback(() => setKept(false), []);
-  return [on ? "on" : kept ? "leaving" : false, gone];
-}
-
-// the agent's menu is a step in the history, so the phone's back closes it
-function useMenu(agent: string): [boolean, () => void, () => void] {
-  const open = useSearch({ strict: false, select: (s: { about?: 1 }) => s.about === 1 });
-  const navigate = useNavigate();
-  const router = useRouter();
-  const show_it = useCallback(() => void navigate({ to: "/a/$agent", params: { agent }, search: { about: 1 } }), [navigate, agent]);
-  const hide = useCallback(() => {
-    if ((router.history.location.state as { __TSR_index?: number }).__TSR_index !== 0) {
-      router.history.back();
-    } else {
-      void navigate({ to: "/a/$agent", params: { agent }, search: {}, replace: true });
-    }
-  }, [router, navigate, agent]);
-  return [open, show_it, hide];
-}
-
 // what a face acts out, which no word repeats beside it; idle acts out
 // nothing, and its "" among them leaves no note
 const ACTED = new Set(Object.values(MOODS).map((m) => m.toLowerCase()));
@@ -284,7 +257,7 @@ function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode 
   const shown = usePrefs((s) => s.panel);
   const going = useGoing(agent);
   const pop = usePop(going, agent);
-  const [menu, openMenu, closeMenu] = useMenu(agent);
+  const [menu, openMenu, closeMenu] = useStep(agent, "about");
   const [drawn, gone] = useLeaving(menu && !wider && sub === null);
   const [face, setFace] = useState<HTMLButtonElement | null>(null);
   const panel = wider && shown && sub === null;
@@ -349,7 +322,7 @@ const own = (where: "running" | "memory" | "tree", hash?: string) => () => {
 
 const root     = createRootRoute({ component: Shell });
 const home     = createRoute({ getParentRoute: () => root, path: "/", component: Home });
-const chat     = createRoute({ getParentRoute: () => root, path: "/a/$agent", validateSearch: (s): { about?: 1 } => (s.about === 1 || s.about === "1" ? { about: 1 } : {}), component: () => <Chat agent={chat.useParams().agent} sub={null} /> });
+const chat     = createRoute({ getParentRoute: () => root, path: "/a/$agent", validateSearch: steps_of, component: () => <Chat agent={chat.useParams().agent} sub={null} /> });
 const sub      = createRoute({ getParentRoute: () => root, path: "/a/$agent/s/$name", component: () => <Chat agent={sub.useParams().agent} sub={sub.useParams().name} /> });
 const fresh    = createRoute({ getParentRoute: () => root, path: "/new", component: () => <AgentPage agent={null} /> });
 const edit     = createRoute({ getParentRoute: () => root, path: "/a/$agent/edit", component: () => <AgentPage agent={edit.useParams().agent} /> });

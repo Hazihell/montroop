@@ -1,5 +1,5 @@
 import { CaretLeftIcon } from "@phosphor-icons/react";
-import { useCanGoBack, useNavigate, useRouter } from "@tanstack/react-router";
+import { useCanGoBack, useNavigate, useRouter, useSearch } from "@tanstack/react-router";
 import { useCallback, useEffect, type ReactNode } from "react";
 
 // an iPhone's home-screen app has no back gesture of its own: a swipe from
@@ -43,6 +43,30 @@ export function useBack(to: string): () => void {
   const can = useCanGoBack();
   const navigate = useNavigate();
   return useCallback(() => (can ? router.history.back() : void navigate({ to, replace: true })), [can, router, navigate, to]);
+}
+
+// what opens over a chat as a step in its history, so the phone's back
+// closes it
+export type Steps = { about?: 1; knobs?: 1 };
+
+export function steps_of(s: Record<string, unknown>): Steps {
+  const on = (step: keyof Steps) => s[step] === 1 || s[step] === "1";
+  return { ...(on("about") ? { about: 1 } : {}), ...(on("knobs") ? { knobs: 1 } : {}) };
+}
+
+export function useStep(agent: string, step: keyof Steps): [boolean, () => void, () => void] {
+  const open = useSearch({ strict: false, select: (s: Steps) => s[step] === 1 });
+  const navigate = useNavigate();
+  const router = useRouter();
+  const show_it = useCallback(() => void navigate({ to: "/a/$agent", params: { agent }, search: step === "about" ? { about: 1 } : { knobs: 1 } }), [navigate, agent, step]);
+  const hide = useCallback(() => {
+    if ((router.history.location.state as { __TSR_index?: number }).__TSR_index !== 0) {
+      router.history.back();
+    } else {
+      void navigate({ to: "/a/$agent", params: { agent }, search: {}, replace: true });
+    }
+  }, [router, navigate, agent]);
+  return [open, show_it, hide];
 }
 
 export function Back({ to, label, className = "" }: { to: string; label: string; className?: string }): ReactNode {

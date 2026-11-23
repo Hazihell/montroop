@@ -1,12 +1,23 @@
 import { GearSixIcon, HandPalmIcon, PlusIcon, PushPinIcon } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { Pin } from "../../Pins.ts";
 import type * as View from "../../View.ts";
 import { Face } from "./Avatar.tsx";
 import { Back } from "./Back.tsx";
 import { MOODS, mood_of, show, useKi } from "./Ki.ts";
 import { Context, RunList } from "./Panel.tsx";
+
+// what is shown stays drawn, leaving, after it closes, until it says it
+// is gone
+export function useLeaving(on: boolean): ["on" | "leaving" | false, () => void] {
+  const [kept, setKept] = useState(on);
+  if (on && !kept) {
+    setKept(true);
+  }
+  const gone = useCallback(() => setKept(false), []);
+  return [on ? "on" : kept ? "leaving" : false, gone];
+}
 
 // " pop" once a count changed since it was first drawn, so its badge, keyed
 // by the count, pops in at each change in sight: not as a page first draws

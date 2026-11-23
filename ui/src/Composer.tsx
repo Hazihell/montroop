@@ -1,13 +1,19 @@
 import { ArrowUpIcon, CheckIcon, FileIcon, MicrophoneIcon, PlusIcon, StopIcon, WarningIcon, XIcon } from "@phosphor-icons/react";
 import { useEffect, useId, useRef, useState, type ClipboardEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import * as View from "../../View.ts";
+import { useStep } from "./Back.tsx";
 import { act, holds, note, useKi, voice } from "./Ki.ts";
+import { useLeaving } from "./Pages.tsx";
 import { viewer_open } from "./Viewer.tsx";
 
 // on a phone Enter is a new line: its keyboard has no Shift+Enter
 const TOUCH = matchMedia("(pointer: coarse)").matches;
 
 const FAILED = "A file didn't upload: remove it, then send.";
+
+// the longest a phone's keyboard takes to go down and give the page back its
+// height, in ms; past it the picker opens all the same
+const SETTLE = 2000;
 
 const MODES: Array<[string, string]> = [
   ["Standard", "Each message is summarized for the agent's memory. Cheapest, good for long working sessions."],
@@ -112,23 +118,34 @@ function Meter({ stream }: { stream: MediaStream }): ReactNode {
   );
 }
 
-// the model, effort, speed and memory mode of the chat, behind one pill;
-// closed, it stays drawn until it has slid away
-function Knobs({ shut, leaving, gone }: { shut: () => void; leaving: boolean; gone: () => void }): ReactNode {
+// the model, effort, speed and memory mode of the chat, behind one pill.
+// Escape closes it; closed, it stays drawn until it has slid away, and a
+// focus in it goes back to the pill
+function Knobs({ opener, shut, leaving, gone }: { opener: React.RefObject<HTMLButtonElement | null>; shut: () => void; leaving: boolean; gone: () => void }): ReactNode {
   const knobs = useKi((s) => s.knobs);
   const talk = useKi((s) => s.talk);
   const used = talk === null ? 0 : View.talk_percent(talk);
   const sheet = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!leaving) {
-      return undefined;
+      const esc = (ev: globalThis.KeyboardEvent) => {
+        if (ev.key === "Escape") {
+          ev.preventDefault();
+          shut();
+        }
+      };
+      addEventListener("keydown", esc);
+      return () => removeEventListener("keydown", esc);
+    }
+    if (sheet.current?.contains(document.activeElement)) {
+      opener.current?.focus({ preventScroll: true });
     }
     let on = true;
     void Promise.allSettled((sheet.current?.getAnimations() ?? []).map((move) => move.finished)).then(() => on && gone());
     return () => {
       on = false;
     };
-  }, [leaving, gone]);
+  }, [leaving, gone, shut, opener]);
   return (
     <div ref={sheet} className={"sheet" + (leaving ? " leaving" : "")} inert={leaving} role="menu" aria-label="Model and memory">
       {knobs.filter((k) => k.choices.length > 1).map((k) => (
@@ -169,9 +186,16 @@ export function Composer({ agent, name }: { agent: string; name: string }): Reac
   const [text, setText] = useState(() => sessionStorage.getItem(draft) ?? "");
   const [items, setItems] = useState<Item[]>([]);
   const [stream, setStream] = useState<MediaStream | null>(null);
-  const [menu, setMenu] = useState<"on" | "leaving" | false>(false);
+  const [shown, show_knobs, shut] = useStep(agent, "knobs");
+  const [menu, gone] = useLeaving(shown);
   const [focused, setFocused] = useState(false);
+  // opened with the picker on a phone, the box stays open, its keyboard put
+  // away, until the text is touched again or a tap lands outside it
+  const [kept, setKept] = useState(false);
   const area = useRef<HTMLTextAreaElement>(null);
+  const box = useRef<HTMLFormElement>(null);
+  const opener = useRef<HTMLButtonElement>(null);
+  const unwait = useRef(() => {});
   const file = useRef<HTMLInputElement>(null);
   const ups = useRef(new Map<number, XMLHttpRequest>());
   const rec = useRef<MediaRecorder | null>(null);
@@ -179,7 +203,7 @@ export function Composer({ agent, name }: { agent: string; name: string }): Reac
   const id = useId();
   useLetGo(area);
   const blank = text.trim() === "" && items.length === 0;
-  const open = focused || text !== "" || items.length > 0 || stream !== null || menu === "on";
+  const open = focused || kept || text !== "" || items.length > 0 || stream !== null || menu === "on";
   const lossy = stream !== null || items.length > 0;
   useEffect(() => {
     holds("box", lossy);
@@ -321,12 +345,54 @@ export function Composer({ agent, name }: { agent: string; name: string }): Reac
     };
   });
 
-  const shut = () => setMenu((m) => m && "leaving");
+  // on a phone the keyboard goes down first, and the picker opens as the page
+  // grows back under it, from where the box has landed: never from where the
+  // box was over the keyboard
+  const pick = () => {
+    unwait.current();
+    if (menu === "on") {
+      shut();
+      return;
+    }
+    if (!TOUCH || document.activeElement !== area.current) {
+      show_knobs();
+      return;
+    }
+    setKept(true);
+    area.current?.blur();
+    const go = () => {
+      unwait.current();
+      show_knobs();
+    };
+    const wait = setTimeout(go, SETTLE);
+    addEventListener("resize", go);
+    unwait.current = () => {
+      clearTimeout(wait);
+      removeEventListener("resize", go);
+      unwait.current = () => {};
+    };
+  };
+  useEffect(() => () => unwait.current(), []);
+
+  // only once the picker is gone, so the tap that closed it doesn't fold the box
+  useEffect(() => {
+    if (!kept || menu !== false) {
+      return undefined;
+    }
+    const tapped = (ev: globalThis.MouseEvent) => {
+      if (ev.target instanceof Node && box.current !== null && !box.current.contains(ev.target)) {
+        setKept(false);
+      }
+    };
+    addEventListener("click", tapped, true);
+    return () => removeEventListener("click", tapped, true);
+  }, [kept, menu]);
+
   return (
     <>
       {menu === "on" ? <button type="button" className="veil" aria-label="Close" onMouseDown={hold} onClick={shut} /> : null}
-      <form className={"box gl" + (open ? " open" : "") + (menu === false ? "" : " up")} onSubmit={(ev) => { ev.preventDefault(); send(); }} onMouseDown={hold} onFocus={() => setFocused(true)} onBlur={(ev) => ev.currentTarget.contains(ev.relatedTarget) || setFocused(false)}>
-        {menu === false ? null : <Knobs shut={shut} leaving={menu === "leaving"} gone={() => setMenu((m) => (m === "leaving" ? false : m))} />}
+      <form ref={box} className={"box gl" + (open ? " open" : "") + (menu === false ? "" : " up")} onSubmit={(ev) => { ev.preventDefault(); send(); }} onMouseDown={hold} onFocus={() => { setFocused(true); setKept(false); }} onBlur={(ev) => ev.currentTarget.contains(ev.relatedTarget) || setFocused(false)}>
+        {menu === false ? null : <Knobs opener={opener} shut={shut} leaving={menu === "leaving"} gone={gone} />}
         <div className="words">
           {items.length === 0 ? null : (
             <ul>
@@ -352,7 +418,7 @@ export function Composer({ agent, name }: { agent: string; name: string }): Reac
           <span className="mid">
             <label htmlFor={id} aria-hidden>{hint}</label>
             {pill === "" ? null : page === null
-              ? <button type="button" className="knob" aria-haspopup="menu" aria-expanded={menu === "on"} onClick={() => setMenu(menu === "on" ? "leaving" : "on")}>{pill}</button>
+              ? <button ref={opener} type="button" className="knob" aria-haspopup="menu" aria-expanded={menu === "on"} onClick={pick}>{pill}</button>
               : <span className="knob">{pill}</span>}
           </span>
           <button type="button" className={stream === null ? "" : "live"} aria-label={stream === null ? "Dictate" : "Stop recording"} aria-pressed={stream !== null} disabled={hearing} onClick={() => void mic()}>
