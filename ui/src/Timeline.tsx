@@ -1,5 +1,5 @@
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
-import { ArrowDownIcon, ArrowUpIcon } from "@phosphor-icons/react";
+import { ArrowDownIcon } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { earlier, holds, useKi } from "./Ki.ts";
@@ -24,6 +24,17 @@ function Top(): ReactNode {
 // out into it
 function End(): ReactNode {
   return <div className="talk-end" />;
+}
+
+// the way up to the owner's message: a bubble tailed on the right, as theirs
+// are, with an arrow up in it, so it reads as neither send nor the top
+function MineIcon(): ReactNode {
+  return (
+    <svg width="22" height="22" viewBox="0 0 256 256" fill="none" stroke="currentColor" strokeWidth="22" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M72 40H184A32 32 0 0 1 216 72V216L180 184H72A32 32 0 0 1 40 152V72A32 32 0 0 1 72 40Z" />
+      <path d="M128 150V78M96 110L128 78L160 110" />
+    </svg>
+  );
 }
 
 // sub: a subagent's page, which loads its earlier entries near its top;
@@ -123,7 +134,7 @@ export function Timeline({ sub, head }: { sub: boolean; head: HTMLElement | null
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per row count: higher reads the list as it is then
   }, [count]);
   return (
-    <div className={"talk" + (held ? " held" : "")} ref={talk} onTouchStart={touched} onWheel={touched} onPointerDown={touched} onKeyDown={touched}>
+    <div className={"talk" + (held ? " held" : "") + (away ? " away" : "")} ref={talk} onTouchStart={touched} onWheel={touched} onPointerDown={touched} onKeyDown={touched}>
       <LegendList
         ref={list}
         data={items}
@@ -141,12 +152,12 @@ export function Timeline({ sub, head }: { sub: boolean; head: HTMLElement | null
         onStartReached={sub ? earlier : undefined}
         style={{ height: "100%" }}
       />
-      {above && head !== null ? createPortal(
-        <button type="button" className="mine" aria-label="Up to your message" onClick={up}>
-          <ArrowUpIcon size={14} weight="bold" /><span>Your message</span>
+      {head === null ? null : createPortal(
+        <button type="button" className={"round gl mine" + (above ? " on" : "")} aria-label="Up to your message" title="Up to your message" inert={!above} onClick={up}>
+          <MineIcon />
         </button>,
         head,
-      ) : null}
+      )}
       <div className="jump">
         {away ? (
           <button type="button" className="round small gl" aria-label="Latest messages" onClick={down}>
