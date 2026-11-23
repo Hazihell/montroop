@@ -9,7 +9,7 @@ type Shown = { head: string; blocks: Md.Code[] };
 
 const SHORT = 60;
 
-const CALL = /^(\S+) (\{[\s\S]*)$/;
+const CALL = /^(\S+)(?: (\{[\s\S]*))?$/;
 
 const MCP = /^mcp__.+?__/;
 
@@ -37,9 +37,10 @@ export function report_read(text: string): Report | null {
   return m === null ? null : { name: m[1], text: m[2] };
 }
 
+// a call streaming in names its tool before its input comes
 export function call_parse(text: string): Call {
   const m     = CALL.exec(text);
-  const input = m === null ? null : input_parse(m[2]);
+  const input = m === null ? null : input_parse(m[2] ?? "{}");
   if (m === null || input === null) {
     return { name: "", head: text, device: "", blocks: [] };
   }
