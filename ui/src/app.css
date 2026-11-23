@@ -521,7 +521,6 @@
       top: max(1.25rem, env(safe-area-inset-top));
       left: 0.875rem;
       color: var(--mid);
-      transform-origin: 0 0;
       transition-property: transform, background-color, border-color, box-shadow, color;
       transition-duration: 240ms;
       transition-timing-function: var(--ease-out);
@@ -530,7 +529,7 @@
       color: var(--ink);
     }
     .headed .tuck {
-      --dock: translate(0.125rem, calc(1rem + var(--lift))) scale(calc(44 / 52));
+      --dock: translate(-0.125rem, calc(0.75rem + var(--lift))) scale(calc(44 / 52));
       border-color: var(--float-edge);
       background: var(--float);
       box-shadow: 0 4px 16px light-dark(#0000001a, #00000059);

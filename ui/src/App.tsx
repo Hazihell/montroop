@@ -1,5 +1,5 @@
 import { SidebarSimpleIcon, XIcon } from "@phosphor-icons/react";
-import { createRootRoute, createRoute, createRouter, lazyRouteComponent, Outlet, redirect, useLocation, useNavigate, useRouter } from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter, lazyRouteComponent, Outlet, redirect, useLocation, useMatches, useNavigate, useRouter } from "@tanstack/react-router";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import * as View from "../../View.ts";
 import { Avatar, Face, look_of } from "./Avatar.tsx";
@@ -183,13 +183,14 @@ function Tuck({ shown }: { shown: boolean }): ReactNode {
 function Shell(): ReactNode {
   const signed = useKi((s) => s.signed);
   const path = useLocation().pathname;
+  const at = useMatches({ select: (all) => all.at(-1)?.routeId });
   const wide = useMedia(WIDE);
   const listed = usePrefs((s) => s.list);
   const split = wide && (path === "/" || path.startsWith("/a/") || path === "/new");
   // with the column away the button takes the top left corner: a chat's floating
   // head has it level with its own buttons, and a page with a back button of
   // its own moves over for it
-  const tucked = !split || listed ? "" : " tucked" + (/^\/a\/[^/]+(\/s\/[^/]+)?$/.test(path) ? " headed" : "") + (/^\/(a\/[^/]+)?$/.test(path) ? "" : " backed");
+  const tucked = !split || listed ? "" : " tucked" + (at === chat.id || at === sub.id ? " headed" : "") + (at === home.id || at === chat.id ? "" : " backed");
   const [aurora, setAurora] = useState<HTMLElement | null>(null);
   useLamps(aurora);
   if (signed === null) {
