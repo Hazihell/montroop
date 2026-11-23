@@ -150,21 +150,29 @@ function useLamps(el: HTMLElement | null): void {
 
 const MAC = /Mac|iPhone|iPad/.test(navigator.userAgent);
 
-// hides the agents' column beside the chat and brings it back, as ⌘B or
-// Ctrl+B does; it holds its place while the column slides away from under it
+// hides the agents' column and brings it back; a focus in the column as it
+// goes stays on the button
 function Tuck({ shown }: { shown: boolean }): ReactNode {
+  const button = useRef<HTMLButtonElement>(null);
+  const flip = useCallback(() => {
+    const on = !usePrefs.getState().list;
+    if (!on && document.getElementById("agents")?.contains(document.activeElement) === true) {
+      button.current?.focus({ preventScroll: true });
+    }
+    list_set(on);
+  }, []);
   useEffect(() => {
     const key = (ev: KeyboardEvent) => {
       if (ev.key.toLowerCase() === "b" && (MAC ? ev.metaKey : ev.ctrlKey) && !ev.altKey && !ev.shiftKey) {
         ev.preventDefault();
-        list_set(!usePrefs.getState().list);
+        ev.repeat || flip();
       }
     };
     addEventListener("keydown", key);
     return () => removeEventListener("keydown", key);
-  }, []);
+  }, [flip]);
   return (
-    <button type="button" className="tuck round gl" aria-label="Agents" aria-controls="agents" aria-expanded={shown} aria-keyshortcuts={MAC ? "Meta+B" : "Control+B"} title={(shown ? "Hide" : "Show") + " the agents (" + (MAC ? "⌘B" : "Ctrl+B") + ")"} onClick={() => list_set(!shown)}>
+    <button ref={button} type="button" className="tuck round gl" aria-label="Agents" aria-controls="agents" aria-expanded={shown} aria-keyshortcuts={MAC ? "Meta+B" : "Control+B"} title={(shown ? "Hide" : "Show") + " the agents (" + (MAC ? "⌘B" : "Ctrl+B") + ")"} onClick={flip}>
       <SidebarSimpleIcon size={22} />
     </button>
   );
@@ -178,13 +186,17 @@ function Shell(): ReactNode {
   const wide = useMedia(WIDE);
   const listed = usePrefs((s) => s.list);
   const split = wide && (path === "/" || path.startsWith("/a/") || path === "/new");
+  // with the column away the button takes the top left corner: a chat's floating
+  // head has it level with its own buttons, and a page with a back button of
+  // its own moves over for it
+  const tucked = !split || listed ? "" : " tucked" + (/^\/a\/[^/]+(\/s\/[^/]+)?$/.test(path) ? " headed" : "") + (/^\/(a\/[^/]+)?$/.test(path) ? "" : " backed");
   const [aurora, setAurora] = useState<HTMLElement | null>(null);
   useLamps(aurora);
   if (signed === null) {
     return null;
   }
   return (
-    <div className={"shell" + (split ? " split" : "") + (split && !listed ? " tucked" : "")}>
+    <div className={"shell" + (split ? " split" : "") + tucked}>
       <div ref={setAurora} className="aurora"><i /><i /><i /></div>
       {signed ? <>{split ? <aside id="agents" className="side" inert={!listed}><Agents side /></aside> : null}<Outlet />{split ? <Tuck shown={listed} /> : null}</> : <div className="flex h-full"><SignIn /></div>}
       <Note />
