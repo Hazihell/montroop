@@ -410,8 +410,13 @@
     flex: none;
     color: var(--dim);
   }
-  .item.go:active, .item.go:hover {
+  .item.go:active {
     background: var(--raise);
+  }
+  @media (hover: hover) {
+    .item.go:hover {
+      background: var(--raise);
+    }
   }
   .isl {
     cursor: pointer;
