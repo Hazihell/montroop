@@ -1,5 +1,5 @@
 import { ArrowUpIcon, CheckIcon, FileIcon, MicrophoneIcon, PlusIcon, StopIcon, WarningIcon, XIcon } from "@phosphor-icons/react";
-import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ClipboardEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import * as View from "../../View.ts";
 import { act, holds, note, useKi, voice } from "./Ki.ts";
 import { viewer_open } from "./Viewer.tsx";
@@ -18,12 +18,35 @@ type Item = { key: number; name: string; kind: string; size: number; state: "up"
 
 let KEYS = 0;
 
-// a press on one of the box's buttons leaves the caret in the text: the
-// keyboard stays up, and the box does not move under the finger
+// a press on one of the box's buttons, or in its menu, leaves the caret in
+// the text: the keyboard stays up, and the box does not move under the finger
 function hold(ev: MouseEvent): void {
-  if (ev.target instanceof Element && ev.target.closest("button") !== null) {
+  if (ev.target instanceof Element && ev.target.closest("button, [role=menu]") !== null) {
     ev.preventDefault();
   }
+}
+
+// a phone's keyboard hidden by its own key leaves the text focused, and the
+// next tap on the box would bring it back: the text lets go of the focus
+// instead, as the page grows back to its height (a turned phone changes its
+// width too)
+function useLetGo(area: React.RefObject<HTMLTextAreaElement | null>): void {
+  useEffect(() => {
+    if (!TOUCH) {
+      return undefined;
+    }
+    let tall = innerHeight;
+    let wide = innerWidth;
+    const resized = () => {
+      if (innerHeight > tall + 100 && innerWidth === wide && document.activeElement === area.current) {
+        area.current?.blur();
+      }
+      tall = innerHeight;
+      wide = innerWidth;
+    };
+    addEventListener("resize", resized);
+    return () => removeEventListener("resize", resized);
+  }, [area]);
 }
 
 function answer_of(xhr: XMLHttpRequest): { url: string } | { error: string } {
@@ -89,42 +112,51 @@ function Meter({ stream }: { stream: MediaStream }): ReactNode {
   );
 }
 
-// the model, effort, speed and memory mode of the chat, behind one pill
-function Knobs({ shut }: { shut: () => void }): ReactNode {
+// the model, effort, speed and memory mode of the chat, behind one pill;
+// closed, it stays drawn until it has slid away
+function Knobs({ shut, leaving, gone }: { shut: () => void; leaving: boolean; gone: () => void }): ReactNode {
   const knobs = useKi((s) => s.knobs);
   const talk = useKi((s) => s.talk);
   const used = talk === null ? 0 : View.talk_percent(talk);
+  const sheet = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!leaving) {
+      return undefined;
+    }
+    let on = true;
+    void Promise.allSettled((sheet.current?.getAnimations() ?? []).map((move) => move.finished)).then(() => on && gone());
+    return () => {
+      on = false;
+    };
+  }, [leaving, gone]);
   return (
-    <>
-      <button type="button" className="veil" aria-label="Close" onClick={shut} />
-      <div className="sheet gl" role="menu" aria-label="Model and memory">
-        {knobs.filter((k) => k.choices.length > 1).map((k) => (
-          <section key={k.move}>
-            <h3>{k.move}</h3>
-            <div className={k.move === "model" ? "list" : "seg"}>
-              {k.choices.map((c) => (
-                <span key={c.to} className="contents">
-                  {c.vendor === null ? null : <p>{c.vendor}</p>}
-                  <button type="button" role="menuitemradio" aria-checked={c.here} aria-pressed={c.here} onClick={() => { c.here || act({ $: "Move", move: c.move, to: c.to }); k.move === "model" && shut(); }}>
-                    <span>{c.text}</span>
-                    {c.here && k.move === "model" ? <CheckIcon size={17} weight="bold" /> : null}
-                  </button>
-                </span>
-              ))}
-            </div>
-          </section>
-        ))}
-        <section>
-          <h3>memory</h3>
-          <div className="seg">
-            {MODES.map(([name], k) => (
-              <button key={name} type="button" role="menuitemradio" aria-checked={(talk !== null) === (k === 1)} aria-pressed={(talk !== null) === (k === 1)} onClick={() => (talk !== null) === (k === 1) || act({ $: "Talk", on: k === 1 })}>{name}</button>
+    <div ref={sheet} className={"sheet" + (leaving ? " leaving" : "")} inert={leaving} role="menu" aria-label="Model and memory">
+      {knobs.filter((k) => k.choices.length > 1).map((k) => (
+        <section key={k.move}>
+          <h3>{k.move}</h3>
+          <div className={k.move === "model" ? "list" : "seg"}>
+            {k.choices.map((c) => (
+              <span key={c.to} className="contents">
+                {c.vendor === null ? null : <p>{c.vendor}</p>}
+                <button type="button" role="menuitemradio" aria-checked={c.here} aria-pressed={c.here} onClick={() => { c.here || act({ $: "Move", move: c.move, to: c.to }); k.move === "model" && shut(); }}>
+                  <span>{c.text}</span>
+                  {c.here && k.move === "model" ? <CheckIcon size={17} weight="bold" /> : null}
+                </button>
+              </span>
             ))}
           </div>
-          <p className="hint">{MODES[talk === null ? 0 : 1][1]}{talk === null ? "" : " Context " + used + "% used."}</p>
         </section>
-      </div>
-    </>
+      ))}
+      <section>
+        <h3>memory</h3>
+        <div className="seg">
+          {MODES.map(([name], k) => (
+            <button key={name} type="button" role="menuitemradio" aria-checked={(talk !== null) === (k === 1)} aria-pressed={(talk !== null) === (k === 1)} onClick={() => (talk !== null) === (k === 1) || act({ $: "Talk", on: k === 1 })}>{name}</button>
+          ))}
+        </div>
+        <p className="hint">{MODES[talk === null ? 0 : 1][1]}{talk === null ? "" : " Context " + used + "% used."}</p>
+      </section>
+    </div>
   );
 }
 
@@ -137,13 +169,17 @@ export function Composer({ agent, name }: { agent: string; name: string }): Reac
   const [text, setText] = useState(() => sessionStorage.getItem(draft) ?? "");
   const [items, setItems] = useState<Item[]>([]);
   const [stream, setStream] = useState<MediaStream | null>(null);
-  const [menu, setMenu] = useState(false);
+  const [menu, setMenu] = useState<"on" | "leaving" | false>(false);
+  const [focused, setFocused] = useState(false);
   const area = useRef<HTMLTextAreaElement>(null);
   const file = useRef<HTMLInputElement>(null);
   const ups = useRef(new Map<number, XMLHttpRequest>());
   const rec = useRef<MediaRecorder | null>(null);
   const after = useRef(false);
+  const id = useId();
+  useLetGo(area);
   const blank = text.trim() === "" && items.length === 0;
+  const open = focused || text !== "" || items.length > 0 || stream !== null || menu === "on";
   const lossy = stream !== null || items.length > 0;
   useEffect(() => {
     holds("box", lossy);
@@ -250,6 +286,7 @@ export function Composer({ agent, name }: { agent: string; name: string }): Reac
         said === "" ? note(out.error ?? "No words heard.") : heard(said);
       });
     };
+    area.current?.blur();
     made.start();
     rec.current = made;
     setStream(got);
@@ -284,39 +321,48 @@ export function Composer({ agent, name }: { agent: string; name: string }): Reac
     };
   });
 
+  const shut = () => setMenu((m) => m && "leaving");
   return (
-    <form className={"box gl" + (stream === null ? "" : " rec")} onSubmit={(ev) => { ev.preventDefault(); send(); }} onMouseDown={hold}>
-      {menu ? <Knobs shut={() => setMenu(false)} /> : null}
-      {items.length === 0 ? null : (
-        <ul>
-          {items.map((item) => (
-            <li key={item.key} data-state={item.state} title={item.name} style={{ "--part": item.part.toFixed(2) } as React.CSSProperties}>
-              {item.peek !== "" ? <img src={item.peek} alt={item.name} onClick={(ev) => viewer_open(ev.currentTarget)} /> : item.state === "bad" ? <WarningIcon size={18} weight="fill" /> : <FileIcon size={18} />}
-              <span>
-                <b>{item.name}</b>
-                <small>{item.state === "up" ? Math.round(item.part * 100) + "%" : item.state === "bad" ? "Failed" : View.size_show(item.size)}</small>
-              </span>
-              <button type="button" aria-label={"Remove " + item.name} onClick={() => drop(item)}><XIcon size={14} weight="bold" /></button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {stream === null
-        ? <textarea ref={area} rows={1} placeholder={hint} aria-label={hint} enterKeyHint={TOUCH ? "enter" : "send"} value={text} onChange={(ev) => type(ev.target.value)} onKeyDown={key} onPaste={paste} />
-        : <Meter stream={stream} />}
-      <div>
-        <button type="button" aria-label="Attach files" onClick={() => file.current?.click()}><PlusIcon size={21} weight="bold" /></button>
-        <input ref={file} type="file" multiple hidden onChange={(ev) => { attach([...(ev.target.files ?? [])]); ev.target.value = ""; }} />
-        {pill === "" ? <span className="grow" /> : page === null
-          ? <button type="button" className="knob" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>{pill}</button>
-          : <span className="knob">{pill}</span>}
-        <button type="button" className={stream === null ? "" : "live"} aria-label={stream === null ? "Dictate" : "Stop recording"} aria-pressed={stream !== null} disabled={hearing} onClick={() => void mic()}>
-          {stream === null ? <MicrophoneIcon size={21} /> : <StopIcon size={17} weight="fill" />}
-        </button>
-        {blank && stoppable
-          ? <button type="submit" className="snd" aria-label="Stop"><StopIcon size={18} weight="fill" /></button>
-          : <button type="submit" className="snd" aria-label="Send" disabled={blank}><ArrowUpIcon size={20} weight="bold" /></button>}
-      </div>
-    </form>
+    <>
+      {menu === "on" ? <button type="button" className="veil" aria-label="Close" onMouseDown={hold} onClick={shut} /> : null}
+      <form className={"box gl" + (open ? " open" : "") + (menu === false ? "" : " up")} onSubmit={(ev) => { ev.preventDefault(); send(); }} onMouseDown={hold} onFocus={() => setFocused(true)} onBlur={(ev) => ev.currentTarget.contains(ev.relatedTarget) || setFocused(false)}>
+        {menu === false ? null : <Knobs shut={shut} leaving={menu === "leaving"} gone={() => setMenu((m) => (m === "leaving" ? false : m))} />}
+        <div className="words">
+          {items.length === 0 ? null : (
+            <ul>
+              {items.map((item) => (
+                <li key={item.key} data-state={item.state} title={item.name} style={{ "--part": item.part.toFixed(2) } as React.CSSProperties}>
+                  {item.peek !== "" ? <img src={item.peek} alt={item.name} onClick={(ev) => viewer_open(ev.currentTarget)} /> : item.state === "bad" ? <WarningIcon size={18} weight="fill" /> : <FileIcon size={18} />}
+                  <span>
+                    <b>{item.name}</b>
+                    <small>{item.state === "up" ? Math.round(item.part * 100) + "%" : item.state === "bad" ? "Failed" : View.size_show(item.size)}</small>
+                  </span>
+                  <button type="button" aria-label={"Remove " + item.name} onClick={() => drop(item)}><XIcon size={14} weight="bold" /></button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {stream === null
+            ? <textarea ref={area} id={id} rows={1} placeholder={hint} aria-label={hint} enterKeyHint={TOUCH ? "enter" : "send"} value={text} onChange={(ev) => type(ev.target.value)} onKeyDown={key} onPaste={paste} />
+            : <Meter stream={stream} />}
+        </div>
+        <div className="bar">
+          <button type="button" aria-label="Attach files" onClick={() => file.current?.click()}><PlusIcon size={21} weight="bold" /></button>
+          <input ref={file} type="file" multiple hidden onChange={(ev) => { attach([...(ev.target.files ?? [])]); ev.target.value = ""; }} />
+          <span className="mid">
+            <label htmlFor={id} aria-hidden>{hint}</label>
+            {pill === "" ? null : page === null
+              ? <button type="button" className="knob" aria-haspopup="menu" aria-expanded={menu === "on"} onClick={() => setMenu(menu === "on" ? "leaving" : "on")}>{pill}</button>
+              : <span className="knob">{pill}</span>}
+          </span>
+          <button type="button" className={stream === null ? "" : "live"} aria-label={stream === null ? "Dictate" : "Stop recording"} aria-pressed={stream !== null} disabled={hearing} onClick={() => void mic()}>
+            {stream === null ? <MicrophoneIcon size={21} /> : <StopIcon size={17} weight="fill" />}
+          </button>
+          {blank && stoppable
+            ? <button type="submit" className="snd" aria-label="Stop"><StopIcon size={18} weight="fill" /></button>
+            : <button type="submit" className="snd" aria-label="Send" disabled={blank}><ArrowUpIcon size={20} weight="bold" /></button>}
+        </div>
+      </form>
+    </>
   );
 }
