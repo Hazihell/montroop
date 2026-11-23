@@ -1,6 +1,6 @@
 import { XIcon } from "@phosphor-icons/react";
 import { createRootRoute, createRoute, createRouter, lazyRouteComponent, Outlet, redirect, useLocation, useNavigate, useRouter, useSearch } from "@tanstack/react-router";
-import { lazy, Suspense, useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import * as View from "../../View.ts";
 import { Avatar, Face, look_of } from "./Avatar.tsx";
 import { Composer } from "./Composer.tsx";
@@ -111,6 +111,41 @@ function lamps(path: string): string {
   return own === "tree" ? "memory" : own ?? (/^\/a\/[^/]+(\/s\/[^/]+)?$/.test(path) ? "chat" : "team");
 }
 
+// the view transition's own animations, once they have started: a phone
+// can hold them a while after the transition is ready
+function turned(): Promise<unknown> {
+  return Promise.all(document.getAnimations().filter((a) => a.effect instanceof KeyframeEffect && a.effect.pseudoElement?.startsWith("::view-transition") === true).map((a) => a.ready));
+}
+
+// the lamps set off with the page's move: the router shows the next place
+// before it has the page, and takes the page in inside its view transition,
+// which holds the screen meanwhile; lamps set off before its animations
+// start would show far along their way, or at its end, at its first frame
+function useLamps(el: HTMLElement | null): void {
+  const router = useRouter();
+  useLayoutEffect(() => el?.setAttribute("data-at", lamps(router.state.location.pathname)), [el, router]);
+  useEffect(() => {
+    if (el === null) {
+      return undefined;
+    }
+    let last = 0;
+    return router.subscribe("onLoad", ({ toLocation }) => {
+      const now = ++last;
+      const move = () => {
+        if (now === last) {
+          el.setAttribute("data-at", lamps(toLocation.pathname));
+        }
+      };
+      const turning = document.activeViewTransition as ViewTransition | null | undefined;
+      if (turning === null || turning === undefined) {
+        move();
+      } else {
+        turning.ready.then(turned).then(move, move);
+      }
+    });
+  }, [el, router]);
+}
+
 // no bar of places: the list is home, and all about one agent opens from
 // its chat
 function Shell(): ReactNode {
@@ -118,12 +153,14 @@ function Shell(): ReactNode {
   const path = useLocation().pathname;
   const wide = useMedia(WIDE);
   const split = wide && (path === "/" || path.startsWith("/a/") || path === "/new");
+  const [aurora, setAurora] = useState<HTMLElement | null>(null);
+  useLamps(aurora);
   if (signed === null) {
     return null;
   }
   return (
     <div className={"shell" + (split ? " split" : "")}>
-      <div className="aurora" data-at={lamps(path)}><i /><i /><i /></div>
+      <div ref={setAurora} className="aurora"><i /><i /><i /></div>
       {signed ? <>{split ? <aside className="side"><Agents side /></aside> : null}<Outlet /></> : <div className="flex h-full"><SignIn /></div>}
       <Note />
       <Viewer />

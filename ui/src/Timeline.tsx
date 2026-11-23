@@ -29,6 +29,7 @@ function Top(): ReactNode {
 export function Timeline({ sub, head }: { sub: boolean; head: HTMLElement | null }): ReactNode {
   const rows = useKi((s) => s.rows);
   const tail = useKi((s) => s.tail);
+  const greeted = useKi((s) => s.greeted);
   const open = useWork((s) => s.open);
   const list = useRef<LegendListRef>(null);
   const [away, setAway] = useState(false);
@@ -50,15 +51,16 @@ export function Timeline({ sub, head }: { sub: boolean; head: HTMLElement | null
   // the items that may rise in: what streams in and waits at the end, and
   // the owner's own message as it lands, unless it waited there already.
   // Those that came since the last of them changed rise; the chat's first
-  // rows, or many coming at once, stay still
+  // rows, what the link brings over this browser's copy as the chat opens
+  // or comes back, or many coming at once, stay still
   const end = chat.items.at(-1);
   const may = end !== undefined && said(end) ? [end, ...live] : live;
   const keys = may.map((item) => item.key).join("\n");
-  const [came, setCame] = useState({ keys, fresh: new Set<string>(), waited: live.some(said) });
-  if (came.keys !== keys) {
+  const [came, setCame] = useState({ keys, greeted, fresh: new Set<string>(), waited: live.some(said) });
+  if (came.keys !== keys || came.greeted !== greeted) {
     const was = new Set(came.keys.split("\n"));
-    const fresh = may.filter((item) => !was.has(item.key) && !(item === end && came.waited));
-    setCame({ keys, fresh: new Set(fresh.length > FEW ? [] : fresh.map((item) => item.key)), waited: live.some(said) });
+    const fresh = came.greeted && greeted ? may.filter((item) => !was.has(item.key) && !(item === end && came.waited)) : [];
+    setCame({ keys, greeted, fresh: new Set(fresh.length > FEW ? [] : fresh.map((item) => item.key)), waited: live.some(said) });
   }
   useEffect(() => rose_keep(new Set(keys.split("\n"))), [keys]);
   const room = () => ROOM * parseFloat(getComputedStyle(document.documentElement).fontSize);

@@ -13,6 +13,8 @@ type Ki = {
   signed    : boolean | null;
   agent     : string;
   loaded    : boolean;
+  // the chat held is all the link's own, not this browser's copy of it
+  greeted   : boolean;
   offline   : boolean;
   team      : View.Mate[];
   rows      : View.Row[];
@@ -62,7 +64,7 @@ const v = View.view_new(AGENT.exec(location.pathname)?.[1] ?? localStorage.getIt
 // the chat on screen, counted read by the server while the window has focus
 const SEEN = { agent: null as string | null, at: 0, on: false, ws: null as WebSocket | null };
 
-export const useKi = create<Ki>(() => ({ signed: null, agent: v.agent, loaded: false, offline: false, team: [], rows: [], tail: [], stoppable: false, mood: "idle", asks: 0, timers: [], jobs: [], talk: null, meter: null, knobs: [], plugs: [], page: null, sub: null, hearing: false, importing: null, note: "", stale: false, intro: localStorage.getItem(INTRO) === null && !new URLSearchParams(location.search).has("skip"), welcome: false }));
+export const useKi = create<Ki>(() => ({ signed: null, agent: v.agent, loaded: false, greeted: false, offline: false, team: [], rows: [], tail: [], stoppable: false, mood: "idle", asks: 0, timers: [], jobs: [], talk: null, meter: null, knobs: [], plugs: [], page: null, sub: null, hearing: false, importing: null, note: "", stale: false, intro: localStorage.getItem(INTRO) === null && !new URLSearchParams(location.search).has("skip"), welcome: false }));
 
 let due = false;
 // a piece of a reply streaming in changes only the tail: the chat's rows
@@ -120,6 +122,7 @@ function draw(rows = true): void {
     useKi.setState({
       agent     : v.agent,
       loaded    : v.held === v.agent,
+      greeted   : v.held === v.agent && v.on === v.agent && v.greeted,
       offline   : View.view_offline(v),
       team      : v.team,
       rows      : body,

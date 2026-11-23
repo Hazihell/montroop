@@ -667,8 +667,9 @@
   .row.thin {
     padding-block: 0.125rem;
   }
+  /* only moved: its text is never drawn faded */
   .row.rise {
-    animation: rise 200ms var(--ease-out);
+    animation: lift 200ms var(--ease-out);
   }
   .who {
     display: flex;
@@ -1857,6 +1858,12 @@
   }
 }
 
+@keyframes lift {
+  from {
+    transform: translateY(0.5rem);
+  }
+}
+
 @keyframes pop {
   from {
     transform: scale(0.6);
@@ -1864,7 +1871,8 @@
 }
 
 /* Back.tsx's turn: only the page moves, over the ground. Avatars hold still meanwhile, so the phone
-   draws the move alone */
+   draws the move alone. The next page is drawn whole from the first frame, the one left dissolving
+   over it, so no text is ever seen faded */
 :active-view-transition .page {
   view-transition-name: page;
 }
@@ -1875,10 +1883,11 @@
   animation: none;
 }
 ::view-transition-old(page) {
-  animation: gone 120ms ease-in both, slide-out 280ms var(--ease-out) both;
+  z-index: 1;
+  animation: gone 110ms var(--ease-out) both, slide-out 280ms var(--ease-out) both;
 }
 ::view-transition-new(page) {
-  animation: fade 200ms ease-out 40ms both, slide-in 280ms var(--ease-out) both;
+  animation: slide-in 280ms var(--ease-out) both;
 }
 :active-view-transition-type(deeper) {
   --page-out: -3rem;
@@ -1909,11 +1918,5 @@
 @keyframes slide-in {
   from {
     transform: translateX(var(--page-in));
-  }
-}
-
-@keyframes fade {
-  from {
-    opacity: 0;
   }
 }
