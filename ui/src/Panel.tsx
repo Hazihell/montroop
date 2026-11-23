@@ -150,9 +150,22 @@ function Places({ agent, replace, running }: { agent: string; replace: boolean; 
 }
 
 // a phone's sheet over the chat; back, a tap beside it, Escape or a drag
-// down close it. Leaving: closed, it slides away and takes nothing more
-export function Sheet({ agent, close, leaving }: { agent: string; close: () => void; leaving: boolean }): ReactNode {
+// down close it. Leaving: closed, it slides away and takes nothing more,
+// then says it is gone
+export function Sheet({ agent, close, leaving, gone }: { agent: string; close: () => void; leaving: boolean; gone: () => void }): ReactNode {
   const box = useRef<HTMLDivElement>(null);
+  const dim = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!leaving) {
+      return undefined;
+    }
+    let on = true;
+    const moves = [box.current, dim.current].flatMap((el) => el?.getAnimations() ?? []);
+    void Promise.allSettled(moves.map((move) => move.finished)).then(() => on && gone());
+    return () => {
+      on = false;
+    };
+  }, [leaving, gone]);
   useEffect(() => {
     const el = box.current;
     if (el === null || leaving) {
@@ -206,7 +219,7 @@ export function Sheet({ agent, close, leaving }: { agent: string; close: () => v
   }, [close, leaving]);
   return (
     <>
-      <button type="button" className={"dim" + (leaving ? " leaving" : "")} aria-label="Close" inert={leaving} onClick={close} />
+      <button ref={dim} type="button" className={"dim" + (leaving ? " leaving" : "")} aria-label="Close" inert={leaving} onClick={close} />
       <div ref={box} className={"agsheet" + (leaving ? " leaving" : "")} inert={leaving} role="dialog" aria-modal="true" aria-label="The agent" tabIndex={-1}>
         <i className="grip" aria-hidden />
         <Who agent={agent} size={72} />

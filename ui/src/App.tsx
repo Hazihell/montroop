@@ -153,23 +153,15 @@ function Tree({ agent }: { agent: string }): ReactNode {
   return <Grown agent={agent} view={useLocation().hash === "view"} />;
 }
 
-// how long a closed sheet takes to leave: .agsheet's transition
-const LEAVE = 180;
-
-// what is shown stays drawn, leaving, a moment after it closes
-function useLeaving(on: boolean): "on" | "leaving" | false {
+// what is shown stays drawn, leaving, after it closes, until it says it
+// is gone
+function useLeaving(on: boolean): ["on" | "leaving" | false, () => void] {
   const [kept, setKept] = useState(on);
   if (on && !kept) {
     setKept(true);
   }
-  useEffect(() => {
-    if (on) {
-      return undefined;
-    }
-    const id = setTimeout(() => setKept(false), LEAVE);
-    return () => clearTimeout(id);
-  }, [on]);
-  return on ? "on" : kept ? "leaving" : false;
+  const gone = useCallback(() => setKept(false), []);
+  return [on ? "on" : kept ? "leaving" : false, gone];
 }
 
 // the agent's sheet is a step in the history, so the phone's back closes it
@@ -208,7 +200,7 @@ function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode 
   const going = useGoing(agent);
   const pop = usePop(going, agent);
   const [sheet, openSheet, closeSheet] = useSheet(agent);
-  const drawn = useLeaving(sheet && !wider && sub === null);
+  const [drawn, gone] = useLeaving(sheet && !wider && sub === null);
   const panel = wider && shown && sub === null;
   useEdgeBack(page, back);
   useEffect(() => {
@@ -255,7 +247,7 @@ function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode 
         )}
       </div>
       {panel ? <Panel agent={agent} /> : null}
-      {drawn === false ? null : <Sheet agent={agent} close={closeSheet} leaving={drawn === "leaving"} />}
+      {drawn === false ? null : <Sheet agent={agent} close={closeSheet} leaving={drawn === "leaving"} gone={gone} />}
     </section>
   );
 }

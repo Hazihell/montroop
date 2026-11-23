@@ -307,7 +307,7 @@
     z-index: 5;
     background: #0000008c;
     cursor: default;
-    animation: fade 200ms var(--ease-out);
+    transition: opacity 260ms var(--ease-out);
   }
   .agsheet {
     position: fixed;
@@ -326,8 +326,16 @@
     background: var(--solid);
     box-shadow: 0 -12px 48px #00000066;
     outline: none;
-    animation: up 260ms var(--ease-out);
-    transition: transform 180ms var(--ease-out);
+    transition: transform 260ms var(--ease-out);
+  }
+  /* it rises as it opens, and from wherever it is, it goes back */
+  @starting-style {
+    .dim {
+      opacity: 0;
+    }
+    .agsheet {
+      transform: translateY(100%);
+    }
   }
   .agsheet.dragged {
     transition: none;
@@ -336,11 +344,12 @@
   .agsheet.leaving {
     transform: translateY(110%);
     pointer-events: none;
+    transition-duration: 200ms;
   }
   .dim.leaving {
     opacity: 0;
     pointer-events: none;
-    transition: opacity 180ms var(--ease-out);
+    transition-duration: 200ms;
   }
   .grip {
     display: block;
@@ -1832,11 +1841,5 @@
 @keyframes fade {
   from {
     opacity: 0;
-  }
-}
-
-@keyframes up {
-  from {
-    transform: translateY(100%);
   }
 }
