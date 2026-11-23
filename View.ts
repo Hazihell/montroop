@@ -108,12 +108,14 @@ const CHAT = ["busy", "wait", "importing", "limit", "queue", "sent", "sums", "ag
 type Chat = { [K in (typeof CHAT)[number]]: View[K] };
 
 // agent: the agent whose chat is wanted; on: whose chat the server sends
-// the link now, as its last state said ("" before its first); held: whose
+// the link now, as its last state said ("" before its first); greeted: all
+// the link sends first on it has come, the chat's live part last; held: whose
 // chat the view holds, "" for none yet, kept over a reconnect (#114); kept:
 // the one it held before the last switch, shown again on a switch back
 export type View = State & {
   agent : string;
   on    : string;
+  greeted : boolean;
   held  : string;
   kept  : { agent: string; chat: Chat } | null;
   pages : Map<string, Page>;
@@ -318,6 +320,7 @@ export function view_new(agent: string): View {
   return {
     agent     : agent,
     on        : "",
+    greeted   : false,
     team      : [],
     busy      : false,
     wait      : "",
@@ -427,6 +430,7 @@ export function view_hear(v: View, msg: Server): Client[] {
   // shown as it was till its answer replaces it, as a chat is (#185)
   const fresh = msg.agent !== was;
   if (fresh) {
+    v.greeted = false;
     v.pages.clear();
   }
   const again: Client[] = fresh && v.page !== null ? [{ $: "agent", name: v.page.name }] : [];
@@ -501,6 +505,7 @@ function view_heard(v: View, msg: Server): Client[] {
       return [];
     }
     case "live": {
+      v.greeted ||= msg.agent === undefined;
       const live = msg.agent === undefined ? v.live : v.pages.get(msg.agent)?.live;
       if (live !== undefined) {
         live_set(live, msg.live);
