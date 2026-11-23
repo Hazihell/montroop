@@ -5,7 +5,7 @@ import * as View from "../../View.ts";
 import { Avatar, Face, look_of } from "./Avatar.tsx";
 import { Composer } from "./Composer.tsx";
 import { intro_end, MOODS, mood_of, noted, show, useKi, welcomed } from "./Ki.ts";
-import { Back, turn, turned, useBack, useEdgeBack } from "./Back.tsx";
+import { Back, turn, TURNS, useBack, useEdgeBack } from "./Back.tsx";
 import { Agents, Memory, Running, usePop } from "./Pages.tsx";
 import { Panel, Sheet, useGoing } from "./Panel.tsx";
 import { panel_set, usePrefs } from "./Prefs.ts";
@@ -293,9 +293,7 @@ const treeOld    = createRoute({ getParentRoute: () => root, path: "/tree", befo
 const team     = createRoute({ getParentRoute: () => root, path: "/team", beforeLoad: () => redirect({ to: "/", replace: true, throw: true }) });
 const settings = createRoute({ getParentRoute: () => root, path: "/settings", component: Settings });
 
-export const router = createRouter({ routeTree: root.addChildren([home, chat, sub, fresh, edit, look, running, memory, tree, runningOld, memoryOld, treeOld, team, settings]) });
-router.subscribe("onBeforeNavigate", ({ fromLocation, toLocation, pathChanged }) => turn(fromLocation?.pathname, toLocation.pathname, pathChanged));
-router.subscribe("onRendered", turned);
+export const router = createRouter({ routeTree: root.addChildren([home, chat, sub, fresh, edit, look, running, memory, tree, runningOld, memoryOld, treeOld, team, settings]), defaultViewTransition: TURNS && { types: turn } });
 
 declare module "@tanstack/react-router" {
   interface Register {
