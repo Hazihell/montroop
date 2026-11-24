@@ -111,6 +111,24 @@ export namespace Sessions {
     return output(r);
   }
 
+  // the unit and socket of a session's holder of launch n
+  function holder(s: Session, n: number): { unit: string; sock: string } {
+    return { unit: "ki-hold-" + s.id + "-" + n, sock: path.join(s.dir, "hold-" + n + ".sock") };
+  }
+
+  // a session with no unit in the record whose holder of its last launch
+  // runs: an older version (run on this record since) launched it and kept
+  // none, so it is named in the record, not taken for a run whose holder
+  // never launched
+  function adopted(s: Session): Session {
+    const named = holder(s, s.launches);
+    if (s.unit !== "" || s.launches === 0 || !alive({ ...s, ...named })) {
+      return s;
+    }
+    Session.set(s.id, named);
+    return { ...s, ...named };
+  }
+
   function alive(s: Session): boolean {
     return s.unit !== "" && ["active", "activating", "deactivating"].includes(systemctl(["is-active", s.unit]));
   }
@@ -124,7 +142,8 @@ export namespace Sessions {
   // at the server's start, before it takes requests, once the agents'
   // chats are open: the wake messages not yet in a chat are sent again;
   // the cards of calls still parked wait again, so an answer given at once
-  // finds them, and those of a holder gone are taken down; a stopped
+  // finds them, and those of a holder gone are taken down; a holder an
+  // older version launched is named in the record (adopted); a stopped
   // session's holder still running (its server killed midway) is stopped
   export function boot(gate: Gate, asked: (a: Asked) => void, wake: (w: Wake) => Promise<boolean>, change: () => void): void {
     HOOKS.gate = gate;
@@ -133,7 +152,8 @@ export namespace Sessions {
     HOOKS.change = change;
     config.RELOADED.add(() => LINKS.forEach((l) => Wire.send(l.sock, { $: "rules", rules: config.ASK })));
     Session.unsent().forEach(deliver);
-    for (const s of Session.list(null)) {
+    for (const x of Session.list(null)) {
+      const s = adopted(x);
       if (LIVE.includes(s.status)) {
         Session.parked(s.id).forEach((p) => arm(s, p));
         if (alive(s)) {
@@ -194,8 +214,7 @@ export namespace Sessions {
   // about, its agent is told
   function launch(s: Session, prompt: string, about: string | null): string | null {
     const launches = s.launches + 1;
-    const unit = "ki-hold-" + s.id + "-" + launches;
-    const sock = path.join(s.dir, "hold-" + launches + ".sock");
+    const { unit, sock } = holder(s, launches);
     Session.set(s.id, { launches, unit, sock });
     const first = s.launches > 0 && s.sdk === "" ? Session.runs(s.id)[0]?.prompt ?? prompt : prompt;
     const begin: Start = { prompt: first === prompt ? prompt : first + "\n\n" + prompt, resume: s.sdk, rules: config.ASK, sock };
