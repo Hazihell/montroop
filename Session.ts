@@ -7,6 +7,7 @@
 // for the owner's answer; the questions it asked its agent; the messages
 // sent to it not yet taken in; the messages that wake its agent.
 
+import type { Database } from "bun:sqlite";
 import { Owner } from "./Owner.ts";
 
 export type Status = "running" | "waiting" | "done" | "failed" | "stopped";
@@ -50,25 +51,50 @@ const NEXT: Record<Status, Partial<Record<Step, Status>>> = {
   stopped : { run: "running" },
 };
 
-const SCHEMA = `
-create table if not exists work_sessions (id text primary key, name text not null, agent text not null, repo text not null, base text not null, branch text not null, worktree text not null, account text not null, model text not null, dir text not null, status text not null, sdk text not null default '', ack integer not null default 0, launches integer not null default 0, last text not null default '', made integer not null, at integer not null, archived integer not null default 0);
-create table if not exists work_runs (session text not null, n integer not null, prompt text not null, status text not null, attempts integer not null default 1, why text not null default '', report text not null default '', started integer not null, ended integer, primary key (session, n));
-create table if not exists work_asks (id text primary key, session text not null, tool text not null, input text not null, what text not null, ok integer, note text not null default '', at integer not null);
-create table if not exists work_says (id text primary key, session text not null, text text not null, mode text not null, heard integer not null default 0, at integer not null);
-create table if not exists work_questions (id text primary key, session text not null, text text not null, at integer not null);
-create table if not exists work_wakes (id text primary key, agent text not null, text text not null, sent integer not null default 0, at integer not null);
-`;
+// each table's columns as this version makes them. A column an earlier
+// version's table lacks is added to it; one it can't add (not null with no
+// default) has the table rebuilt with this version's columns, its rows
+// copied as far as they allow. Otherwise columns a later version added stay.
+const TABLES: Record<string, string[]> = {
+  work_sessions   : ["id text primary key", "name text not null", "agent text not null", "repo text not null", "base text not null", "branch text not null", "worktree text not null", "account text not null", "model text not null", "dir text not null", "status text not null", "sdk text not null default ''", "ack integer not null default 0", "launches integer not null default 0", "last text not null default ''", "made integer not null", "at integer not null", "archived integer not null default 0"],
+  work_runs       : ["session text not null", "n integer not null", "prompt text not null", "status text not null", "attempts integer not null default 1", "why text not null default ''", "report text not null default ''", "started integer not null", "ended integer", "primary key (session, n)"],
+  work_asks       : ["id text primary key", "session text not null", "tool text not null", "input text not null", "what text not null", "ok integer", "note text not null default ''", "at integer not null"],
+  work_says       : ["id text primary key", "session text not null", "text text not null", "mode text not null default 'steer'", "heard integer not null default 0", "at integer not null"],
+  work_questions  : ["id text primary key", "session text not null", "text text not null", "at integer not null"],
+  work_wakes      : ["id text primary key", "agent text not null", "text text not null", "sent integer not null default 0", "at integer not null"],
+};
 
 let MADE = false;
 
 export const LIVE: Status[] = ["running", "waiting"];
+
+function fit(db: Database, name: string, columns: string[]): void {
+  db.run("create table if not exists " + name + " (" + columns.join(", ") + ")");
+  const had = new Set((db.query("select name from pragma_table_info(?)").all(name) as { name: string }[]).map((c) => c.name));
+  const missing = columns.filter((c) => !c.startsWith("primary key") && !had.has(c.split(" ")[0]));
+  try {
+    missing.forEach((c) => db.run("alter table " + name + " add column " + c));
+  } catch (err) {
+    if (!/Cannot add a/.test(String(err))) {
+      throw err;
+    }
+    const kept = columns.map((c) => c.split(" ")[0]).filter((c) => had.has(c)).join(", ");
+    db.run("drop table if exists " + name + "_new");
+    db.run("create table " + name + "_new (" + columns.join(", ") + ")");
+    if (kept !== "") {
+      db.run("insert or ignore into " + name + "_new (" + kept + ") select " + kept + " from " + name);
+    }
+    db.run("drop table " + name);
+    db.run("alter table " + name + "_new rename to " + name);
+  }
+}
 
 export namespace Session {
 
   export function db() {
     const db = Owner.open();
     if (!MADE) {
-      db.run(SCHEMA);
+      db.transaction(() => Object.entries(TABLES).forEach(([name, columns]) => fit(db, name, columns)))();
       MADE = true;
     }
     return db;
