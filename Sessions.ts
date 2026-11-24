@@ -28,10 +28,10 @@ import { Owner } from "./Owner.ts";
 import * as Pins from "./Pins.ts";
 import * as Prompts from "./Prompts.ts";
 import { command, output, run } from "./Service.ts";
-import { LIVE, Session, type Mode, type Parked, type Wake } from "./Session.ts";
+import { LIVE, Session, type Effect, type Mode, type Parked, type Wake } from "./Session.ts";
 import { Team } from "./Team.ts";
 import { PICTURE, SESSION, VIDEO, type Work } from "./View.ts";
-import { Wire, type Ev, type Told } from "./Wire.ts";
+import { VERSION, Wire, type Ev, type Told } from "./Wire.ts";
 import { Worktree } from "./Worktree.ts";
 
 // a session's link to its holder: the socket (null: none now), the
@@ -54,8 +54,6 @@ const DIR = path.join(config.DIR, "sessions");
 
 const NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
 
-const LAST = 300;
-
 const PAGE = 100;
 const PAGE_MOST = 1000;
 
@@ -67,6 +65,10 @@ const LINE = 300;
 
 // how long, at most, between tries to reach a holder that runs
 const RETRY = 5000;
+
+// how long, at most, between tries to deliver a wake its agent's chat
+// didn't take
+const REDELIVER = 60e3;
 
 // the variables a holder's Claude Code works with, from the server's
 const ENV = ["PATH", "LANG", "SHELL", "SSH_AUTH_SOCK", "XDG_CONFIG_HOME", "XDG_DATA_HOME"];
@@ -95,19 +97,14 @@ const FILE = /^[\w][\w.-]{0,200}$/;
 const LINKS = new Map<string, Link>();
 // each session's latest log line, once known
 const LATEST = new Map<string, string>();
+// the wakes being delivered
+const SENDING = new Set<string>();
 // the server's: the owner's cards; wake, a message into an agent's chat
-// once (id: its act); change, a session's row changed
-const HOOKS = { gate: null as Gate | null, asked: (_: Asked) => {}, wake: (_: Wake) => {}, change: () => {} };
+// once (id: its act), false if it didn't take it; change, a session's row
+// changed
+const HOOKS = { gate: null as Gate | null, asked: (_: Asked) => {}, wake: (_: Wake) => Promise.resolve(false), change: () => {} };
 
 export namespace Sessions {
-
-  function unit(s: Session): string {
-    return "ki-hold-" + s.id + "-" + s.launches;
-  }
-
-  function sock_of(s: Session): string {
-    return path.join(s.dir, "hold-" + s.launches + ".sock");
-  }
 
   function systemctl(args: string[]): string {
     const r = run(["systemctl", "--user", ...args]);
@@ -115,7 +112,7 @@ export namespace Sessions {
   }
 
   function alive(s: Session): boolean {
-    return s.launches > 0 && ["active", "activating", "deactivating"].includes(systemctl(["is-active", unit(s)]));
+    return s.unit !== "" && ["active", "activating", "deactivating"].includes(systemctl(["is-active", s.unit]));
   }
 
   function link_of(id: string): Link {
@@ -128,7 +125,7 @@ export namespace Sessions {
   // chats are open: the wake messages not yet in a chat are sent again;
   // the cards of calls still parked wait again, so an answer given at once
   // finds them, and those of a holder gone are taken down
-  export function boot(gate: Gate, asked: (a: Asked) => void, wake: (w: Wake) => void, change: () => void): void {
+  export function boot(gate: Gate, asked: (a: Asked) => void, wake: (w: Wake) => Promise<boolean>, change: () => void): void {
     HOOKS.gate = gate;
     HOOKS.asked = asked;
     HOOKS.wake = wake;
@@ -181,25 +178,28 @@ export namespace Sessions {
     const spec: Spec = { cwd: worktree, claude: config.claude_dir(agent.claude), model: b.model, append: [own, b.brief.trim(), Pins.block(false).text.trim()].filter((t) => t !== "").join("\n\n") };
     fs.writeFileSync(path.join(dir, SPEC), JSON.stringify(spec, null, 1) + "\n", { mode: 0o600 });
     const s = Session.add({ id, name: b.name, agent: b.agent, repo: top.dir, base, branch, worktree, account: agent.claude, model: b.model, dir }, b.prompt);
-    const why = launch(s, b.prompt);
+    const why = launch(s, b.prompt, null);
     return why === null ? Session.get(id) ?? s : why + "\nThe session " + b.name + " is kept, as failed: once that's fixed, send it a message to start it.";
   }
 
   // a run's holder started on its first message, resuming the session's
   // Claude Code session if it has one; one whose earlier holders never
-  // began one gets the session's first message before it. null: started
-  function launch(s: Session, prompt: string): string | null {
-    const next = { ...s, launches: s.launches + 1 };
-    Session.set(s.id, { launches: next.launches });
+  // began one gets the session's first message before it; its unit and
+  // socket named in the record. null: started; else why not, and with
+  // about, its agent is told (Session.move)
+  function launch(s: Session, prompt: string, about: string | null): string | null {
+    const launches = s.launches + 1;
+    const unit = "ki-hold-" + s.id + "-" + launches;
+    const sock = path.join(s.dir, "hold-" + launches + ".sock");
+    Session.set(s.id, { launches, unit, sock });
     const first = s.launches > 0 && s.sdk === "" ? Session.runs(s.id)[0]?.prompt ?? prompt : prompt;
-    const begin: Start = { prompt: first === prompt ? prompt : first + "\n\n" + prompt, resume: s.sdk, rules: config.ASK, sock: sock_of(next) };
+    const begin: Start = { prompt: first === prompt ? prompt : first + "\n\n" + prompt, resume: s.sdk, rules: config.ASK, sock };
     fs.writeFileSync(path.join(s.dir, START), JSON.stringify(begin, null, 1) + "\n", { mode: 0o600 });
     const env = Object.entries({ ...Object.fromEntries(ENV.flatMap((k) => (process.env[k] ? [[k, process.env[k]]] : []))), KI_DIR: config.DIR });
-    const r = run(["systemd-run", "--user", "--collect", "--quiet", "--unit=" + unit(next), "--description=Ki work session " + s.name, "-p", "TimeoutStopSec=10", ...env.map(([k, v]) => "--setenv=" + k + "=" + v), "--", ...command(), "hold", s.dir]);
+    const r = run(["systemd-run", "--user", "--collect", "--quiet", "--unit=" + unit, "--description=Ki work session " + s.name, "-p", "TimeoutStopSec=10", ...env.map(([k, v]) => "--setenv=" + k + "=" + v), "--", ...command(), "hold", s.dir]);
     if (r.code !== 0) {
       const why = "systemd-run failed: " + output(r);
-      Session.move(s.id, "failed", why);
-      HOOKS.change();
+      after(s.id, Session.move(s.id, "failed", why, about === null ? null : { about, text: why }) ?? []);
       return why;
     }
     unlink(s.id);
@@ -214,12 +214,12 @@ export namespace Sessions {
     if (s === null || l.sock !== null) {
       return;
     }
-    const sock = net.createConnection(sock_of(s));
+    const sock = net.createConnection(s.sock);
     l.sock = sock;
     sock.setEncoding("utf8");
     sock.on("connect", () => {
       l.tries = 0;
-      Wire.send(sock, { $: "hello", ack: Session.get(id)?.ack ?? 0, rules: config.ASK });
+      Wire.send(sock, { $: "hello", v: VERSION, ack: Session.get(id)?.ack ?? 0, rules: config.ASK });
     });
     sock.on("data", Wire.lines((msg) => {
       try {
@@ -279,84 +279,62 @@ export namespace Sessions {
     if (s === null) {
       return;
     }
-    fs.rmSync(sock_of(s), { force: true });
-    Hold.told(s.dir).filter((t) => t.seq > s.ack).forEach((t) => take(id, t));
+    if (s.sock !== "") {
+      fs.rmSync(s.sock, { force: true });
+    }
+    Hold.told(s.dir).filter((t) => t.seq > s.ack).forEach((t) => after(id, take(id, t)));
     const now = Session.get(id);
     const run = Session.run(id);
     if (now !== null && run !== null && LIVE.includes(now.status)) {
-      drop(now.id);
-      Session.move(now.id, "failed", GONE);
-      wake_owner(now, "gone " + attempt(run), "failed", GONE + ": send it a message to go on");
+      after(id, Session.move(id, "failed", GONE, { about: "gone " + attempt(run), text: GONE + ": send it a message to go on" }) ?? []);
     }
     HOOKS.change();
   }
 
   function got(id: string, sock: net.Socket, msg: Record<string, unknown>): void {
     if (msg.$ === "welcome") {
-      const held = new Set((Array.isArray(msg.asks) ? msg.asks : []).map((a) => str(get(a, "id"))));
-      const waits = new Set((Array.isArray(msg.questions) ? msg.questions : []).map((q) => str(get(q, "id"))));
-      for (const p of Session.parked(id)) {
-        if (!held.has(p.id)) {
-          unpark(id, p.id);
-        } else if (p.ok !== null) {
-          Wire.send(sock, { $: "answer", id: p.id, ok: p.ok === 1, note: p.note });
-        }
-      }
-      Session.questions(id).filter((q) => !waits.has(q.id)).forEach((q) => unask(id, q.id));
+      const held = (Array.isArray(msg.asks) ? msg.asks : []).map((a) => str(get(a, "id")) ?? "");
+      const waits = (Array.isArray(msg.questions) ? msg.questions : []).map((q) => str(get(q, "id")) ?? "");
+      after(id, Session.welcome(id, held, waits));
+      Session.parked(id).filter((p) => p.ok !== null).forEach((p) => Wire.send(sock, { $: "answer", id: p.id, ok: p.ok === 1, note: p.note }));
       Session.unheard(id).filter((say) => say.mode !== "queue").forEach((say) => Wire.send(sock, { $: "say", id: say.id, text: say.text, answer: say.mode === "answer" }));
     } else if (msg.$ === "ev" && typeof msg.seq === "number" && rec(msg.ev)) {
-      take(id, { seq: msg.seq, at: Number(msg.at) || Date.now(), ev: msg.ev as Ev });
+      const fx = take(id, { seq: msg.seq, at: Number(msg.at) || Date.now(), ev: msg.ev as Ev });
       Wire.send(sock, { $: "ack", seq: msg.seq });
+      after(id, fx);
     }
   }
 
-  // one event taken into the record, once
-  function take(id: string, told: Told): void {
-    const s = Session.get(id);
-    if (s === null || told.seq <= s.ack) {
-      return;
+  // one event taken into the record, once: what's left to do after it
+  function take(id: string, told: Told): Effect[] {
+    if ((Session.get(id)?.ack ?? told.seq) >= told.seq) {
+      return [];
     }
-    const ev = told.ev;
-    if (ev.k === "began") {
-      Session.set(id, { sdk: ev.sdk });
-    } else if (ev.k === "text") {
-      Session.set(id, { last: ev.text.trim().slice(-LAST) });
-    } else if (ev.k === "ask" && LIVE.includes(s.status)) {
-      const p = { id: ev.id, session: id, tool: ev.tool, input: JSON.stringify(ev.input), what: ev.what, at: told.at };
-      Session.park(p);
-      Session.move(id, "ask");
-      arm(s, { ...p, ok: null, note: "" });
-      if (s.status === "running") {
-        wake_owner(s, String(told.seq), "waiting", "the user's approval in the app, for: " + ev.what.toLowerCase() + " (" + ev.tool + ")");
-      }
-    } else if (ev.k === "answered" || ev.k === "dropped") {
-      unpark(id, ev.id);
-    } else if (ev.k === "question" && LIVE.includes(s.status)) {
-      Session.ask({ id: ev.id, session: id, text: ev.text, at: told.at });
-      Session.move(id, "ask");
-      wake_owner(s, String(told.seq), "question", ev.text + "\n\nIt waits for your answer: give it with session send. If only the user knows, ask them first.");
-    } else if (ev.k === "replied") {
-      unask(id, ev.id);
-    } else if (ev.k === "report") {
-      Session.report(id, ev.text);
-    } else if (ev.k === "heard") {
-      Session.heard([ev.id]);
-    } else if (ev.k === "end") {
-      drop(id);
-      const to = Session.move(id, ev.ok ? "ended" : "failed", ev.ok ? "" : ev.text);
-      if (to !== null) {
-        // messages it didn't take in start the next run at once
-        const next = Session.unheard(id).length > 0 ? "\n\nIt runs again now, on the messages sent to it it hadn't taken in." : "";
-        wake_owner(s, String(told.seq), to, ((to === "done" ? Session.run(id)?.report || ev.text : ev.text) || "(it said nothing)") + next);
-      }
-      // after the ack goes out, so the holder ending now isn't kept waiting
-      queueMicrotask(() => next_run(id));
-    }
-    const latest = latest_of(ev);
+    const fx = Session.apply(id, told);
+    const latest = latest_of(told.ev);
     if (latest !== "") {
       LATEST.set(id, latest);
     }
-    Session.set(id, { ack: told.seq });
+    return fx;
+  }
+
+  // what a change to the record leaves to do, done once it's in
+  function after(id: string, fx: Effect[]): void {
+    const waits = LINKS.get(id)?.waits;
+    for (const f of fx) {
+      if (f.do === "wake") {
+        deliver(f.wake);
+      } else if (f.do === "card") {
+        const s = Session.get(id);
+        if (s !== null) {
+          arm(s, f.parked);
+        }
+      } else if (f.do === "uncard") {
+        (f.ask === null ? [...(waits?.values() ?? [])] : [waits?.get(f.ask)]).forEach((w) => w?.abort());
+      } else {
+        next_run(id);
+      }
+    }
     HOOKS.change();
   }
 
@@ -368,11 +346,9 @@ export namespace Sessions {
       return;
     }
     const text = says.map((say) => say.text).join("\n\n");
-    Session.into_run(says.map((say) => say.id));
-    const run = Session.again(id, text);
-    const why = run === null ? null : launch(s, text);
-    if (run !== null && why !== null) {
-      wake_owner(s, "launch " + attempt(run), "failed", why);
+    const run = Session.again(id, text, says.map((say) => say.id));
+    if (run !== null) {
+      launch(s, text, "launch " + attempt(run));
     }
   }
 
@@ -390,7 +366,7 @@ export namespace Sessions {
       const x: unknown = JSON.parse(p.input);
       input = rec(x) ? x : {};
     } catch {}
-    void Gate.wait(HOOKS.gate, s.agent, SESSION + s.name, p.tool, input, p.what, stop.signal, HOOKS.asked).then((said) => {
+    void Gate.wait(HOOKS.gate, s.agent, SESSION + s.name, "session", p.tool, input, p.what, stop.signal, HOOKS.asked).then((said) => {
       l.waits.delete(p.id);
       if (said !== null) {
         Session.answer(p.id, said.ok, said.note);
@@ -399,53 +375,32 @@ export namespace Sessions {
     });
   }
 
-  function unpark(id: string, ask: string): void {
-    LINKS.get(id)?.waits.get(ask)?.abort();
-    Session.unpark(ask);
-    settle(id);
-  }
-
-  function unask(id: string, question: string): void {
-    Session.unask(question);
-    settle(id);
-  }
-
-  // at work again once nothing it asked waits
-  function settle(id: string): void {
-    if (Session.parked(id).length === 0 && Session.questions(id).length === 0) {
-      Session.move(id, "answered");
-    }
-  }
-
-  // every card of the session's parked calls taken down, its questions
-  // with them
-  function drop(id: string): void {
-    LINKS.get(id)?.waits.forEach((w) => w.abort());
-    Session.unpark_all(id);
-    Session.unask_all(id);
-  }
-
-  // a message that wakes the session's agent, once (about: what it's
-  // about, the same each time it's taken)
-  function wake_owner(s: Session, about: string, what: string, text: string): void {
-    const w = { id: "session " + s.id + " " + about, agent: s.agent, text: "[Session " + s.name + "] " + what + ": " + Hold.clip(text.trim()) };
-    if (Session.wake(w)) {
-      deliver(w);
-    }
-  }
-
   function attempt(run: { n: number; attempts: number }): string {
     return run.n + "." + run.attempts;
   }
 
-  // into the agent's chat, unless it's there already (an undelivered one
-  // stays unsent, and each boot tries it again)
+  // into the agent's chat, unless it's there already; marked sent once
+  // it is. One its chat didn't take is tried again, less often each time,
+  // while the server runs and its agent is there, and at its next boot
   function deliver(w: Wake): void {
-    if (Owner.act_get(w.id) === null) {
-      HOOKS.wake(w);
-    } else {
-      Session.sent(w.id);
+    if (!SENDING.has(w.id)) {
+      SENDING.add(w.id);
+      redeliver(w, 0);
     }
+  }
+
+  function redeliver(w: Wake, tries: number): void {
+    const took = Owner.act_get(w.id) === null ? HOOKS.wake(w).catch(() => false) : Promise.resolve(true);
+    void took.then((ok) => {
+      if (ok) {
+        Session.sent(w.id);
+      }
+      if (ok || Team.get(w.agent) === null) {
+        SENDING.delete(w.id);
+      } else {
+        setTimeout(() => redeliver(w, tries + 1), Math.min(REDELIVER, 1000 * 2 ** tries)).unref();
+      }
+    });
   }
 
   // a message to a session: into its run if one is at work (steer), or
@@ -475,8 +430,7 @@ export namespace Sessions {
       }
       return as === "answer" ? "answered" : as === "steer" ? "steered" : "queued";
     }
-    Session.into_run([key]);
-    const why = Session.again(id, text) === null ? "Session " + s.name + " can't take a message now." : launch(s, text);
+    const why = Session.again(id, text, [key]) === null ? "Session " + s.name + " can't take a message now." : launch(s, text, null);
     if (why !== null) {
       Session.unsay(key);
     }
@@ -498,7 +452,7 @@ export namespace Sessions {
       return STOPPING;
     }
     Session.again(id, null);
-    return launch(s, s.sdk === "" ? last.prompt : AGAIN + last.prompt);
+    return launch(s, s.sdk === "" ? last.prompt : AGAIN + last.prompt, null);
   }
 
   // its holder and everything it started killed (the whole unit), its
@@ -510,21 +464,19 @@ export namespace Sessions {
     if (s === null || run === null) {
       return "No session " + id + ".";
     }
-    if (Session.move(id, "stop") === null) {
+    const fx = Session.move(id, "stop", "", wake ? { about: "stop " + attempt(run), text: "by the user. Its worktree and branch stay: send it a message to go on." } : null);
+    if (fx === null) {
       return "Session " + s.name + " is " + s.status + " already.";
     }
-    drop(id);
-    Session.dropped(Session.unheard(id).map((say) => say.id));
     unlink(id);
     void Browser.close(s.dir);
-    if (s.launches > 0) {
-      systemctl(["stop", "--no-block", unit(s)]);
+    if (s.unit !== "") {
+      systemctl(["stop", "--no-block", s.unit]);
     }
     if (wake) {
       Session.set(id, { seen: Date.now() });
-      wake_owner(s, "stop " + attempt(run), "stopped", "by the user. Its worktree and branch stay: send it a message to go on.");
     }
-    HOOKS.change();
+    after(id, fx);
     return null;
   }
 

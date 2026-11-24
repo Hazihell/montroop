@@ -15,9 +15,12 @@ import { write_whole } from "./Write.ts";
 import { rec } from "./Json.ts";
 
 // a waiting call as the chat shows it: agent is the chat it shows in, who
-// the subagent that called ("" for the agent itself), input its arguments
-// as JSON, whole, so a card shows all that its yes runs
-export type Asked = { id: string; agent: string; who: string; tool: string; input: string; what: string; at: number };
+// the subagent or work session that called ("" for the agent itself),
+// from which of those it is, input its arguments as JSON, whole, so a card
+// shows all that its yes runs
+export type Asked = { id: string; agent: string; who: string; from: From; tool: string; input: string; what: string; at: number };
+
+type From = "agent" | "sub" | "session";
 
 type Said = { ok: boolean; note: string };
 
@@ -41,7 +44,9 @@ export namespace Gate {
     let held: Held[] = [];
     try {
       const kept: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
-      held = (Array.isArray(kept) ? kept : []).filter((h): h is Held => rec(h) && typeof h.id === "string" && typeof h.key === "string" && typeof h.agent === "string");
+      // a card kept before its origin was: a session's takes its own once
+      // its call waits on it again
+      held = (Array.isArray(kept) ? kept : []).filter((h): h is Omit<Held, "from"> & { from?: From } => rec(h) && typeof h.id === "string" && typeof h.key === "string" && typeof h.agent === "string").map((h) => ({ ...h, from: h.from ?? (h.who === "" ? "agent" : "sub") }));
     } catch {}
     const gate = { file, held, waits: new Map(), change };
     prune(gate, Date.now());
@@ -67,7 +72,7 @@ export namespace Gate {
 
   // the owner's answer to a call a rule named; null: the call was stopped
   // first. asked runs for a new card, not when a call re-attaches to one
-  export function wait(gate: Gate, agent: string, who: string, tool: string, args: Record<string, unknown>, what: string, signal: AbortSignal, asked: (a: Asked) => void): Promise<Said | null> {
+  export function wait(gate: Gate, agent: string, who: string, from: From, tool: string, args: Record<string, unknown>, what: string, signal: AbortSignal, asked: (a: Asked) => void): Promise<Said | null> {
     const now = Date.now();
     prune(gate, now);
     const key = key_of(args);
@@ -79,10 +84,13 @@ export namespace Gate {
     }
     let h = gate.held.find((x) => same(x) && x.ok === null && !gate.waits.has(x.id));
     if (h === undefined) {
-      h = { id: crypto.randomUUID().slice(0, 8), agent, who, tool, input: JSON.stringify(args), what, at: now, key, ok: null, note: "" };
+      h = { id: crypto.randomUUID().slice(0, 8), agent, who, from, tool, input: JSON.stringify(args), what, at: now, key, ok: null, note: "" };
       gate.held = [...gate.held, h];
       save(gate);
       asked(h);
+    } else if (h.from !== from) {
+      h.from = from;
+      save(gate);
     }
     const held = h;
     gate.change();
@@ -130,8 +138,8 @@ export namespace Gate {
     return gate.held.filter((h) => h.ok === null && h.agent === agent).map(card);
   }
 
-  function card({ id, agent, who, tool, input, what, at }: Held): Asked {
-    return { id, agent, who, tool, input, what, at };
+  function card({ id, agent, who, from, tool, input, what, at }: Held): Asked {
+    return { id, agent, who, from, tool, input, what, at };
   }
 
   export function line(a: Asked): string {

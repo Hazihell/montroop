@@ -2598,11 +2598,9 @@ export namespace Main {
     };
     Limit.answering(() => ({ queued: [...Main.chats.values()].some((c) => Run.waiting(c.main)), busy: [...Main.chats.values()].some((c) => c.main.busy) }));
     Team.all().forEach((agent) => Chat.open(agent.id, Main.tools, agent.id === hello));
-    Sessions.boot(Main.tools.gate, (a) => Main.asked(a), (w) => {
+    Sessions.boot(Main.tools.gate, (a) => Main.asked(a), async (w) => {
       const chat = Main.chats.get(w.agent);
-      if (chat !== undefined) {
-        void Chat.job_done(chat, w.id, w.agent, w.text);
-      }
+      return chat !== undefined && (await Chat.job_done(chat, w.id, w.agent, w.text)).error === undefined;
     }, () => Main.team_soon());
     Chat.copies();
     Main.watch();

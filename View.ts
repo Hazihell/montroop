@@ -846,7 +846,7 @@ export function view_tail(v: View): Row[] {
 // the calls waiting for the owner's yes (Gate) made by who: "" for the
 // agent itself and its work sessions, else a subagent's name
 function view_asks(v: View, who: string): Row[] {
-  return v.asks.filter((a) => a.who === who || (who === "" && a.who.startsWith(SESSION))).map(ask_row);
+  return v.asks.filter((a) => a.who === who || (who === "" && a.from === "session")).map(ask_row);
 }
 
 export function ask_row(ask: Asked): Extract<Row, { $: "Ask" }> {

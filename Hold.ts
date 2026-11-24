@@ -21,7 +21,7 @@ import { err_why } from "./Err.ts";
 import { get, list, rec, str } from "./Json.ts";
 import { Rules, type Rule } from "./Rules.ts";
 import { BIN } from "./Browser.ts";
-import { Wire, type Ask, type Asking, type Ev, type Outbox, type Told } from "./Wire.ts";
+import { VERSION, Wire, type Ask, type Asking, type Ev, type Outbox, type Told } from "./Wire.ts";
 
 // what a session keeps for its life: its worktree, its Claude account's
 // folder, its model ("": the account's default) and what its system
@@ -152,7 +152,7 @@ export namespace Hold {
       h.conn = s;
       h.rules = Array.isArray(msg.rules) ? (msg.rules as Rule[]) : h.rules;
       Wire.ack(h.out, Number(msg.ack) || 0);
-      Wire.send(s, { $: "welcome", seq: h.out.seq, asks: [...h.asks.values()].map((a) => a.ask), questions: [...h.waits.values()].map((w) => w.q) });
+      Wire.send(s, { $: "welcome", v: VERSION, seq: h.out.seq, asks: [...h.asks.values()].map((a) => a.ask), questions: [...h.waits.values()].map((w) => w.q) });
       h.out.kept.forEach((t) => Wire.send(s, { $: "ev", ...t }));
     } else if (s !== h.conn) {
       return;

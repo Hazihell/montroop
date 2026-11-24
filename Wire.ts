@@ -4,6 +4,11 @@
 // one JSON message a line. The holder numbers what it tells (seq) and keeps
 // it until the server acks it, telling it again after each hello; the
 // newest hello owns the session, the connection it replaces is closed.
+// Either side may run an older program than the other (a holder outlives
+// the server that started it): a message or event a side doesn't know is
+// ignored (an event still acked), and a message's fields are only ever
+// added, never renamed or removed. v: the sender's VERSION, raised with
+// each change, so a side can tell what the other knows.
 
 import type * as net from "node:net";
 import { rec } from "./Json.ts";
@@ -39,17 +44,19 @@ export type Ev =
 
 export type Told = { seq: number; at: number; ev: Ev };
 
+export const VERSION = 1;
+
 // rules: the ask rules changed; say: a message for the session (answer:
 // the answer to its first question waiting, if one still waits)
 type ToHold =
-  | { $: "hello"; ack: number; rules: Rule[] }
+  | { $: "hello"; v: number; ack: number; rules: Rule[] }
   | { $: "ack"; seq: number }
   | { $: "rules"; rules: Rule[] }
   | { $: "answer"; id: string; ok: boolean; note: string }
   | { $: "say"; id: string; text: string; answer: boolean };
 
 type FromHold =
-  | { $: "welcome"; seq: number; asks: Ask[]; questions: Asking[] }
+  | { $: "welcome"; v: number; seq: number; asks: Ask[]; questions: Asking[] }
   | ({ $: "ev" } & Told);
 
 export type Outbox = { seq: number; kept: Told[] };

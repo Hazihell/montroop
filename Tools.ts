@@ -348,7 +348,7 @@ export namespace Tools {
     if (at === null) {
       return { text: "No agent " + who + ".", fail: true };
     }
-    const said = await Gate.wait(tools.gate, at.agent, at.who, name, args, rule.what, signal, (a) => tools.hub.asked(a));
+    const said = await Gate.wait(tools.gate, at.agent, at.who, at.who === "" ? "agent" : "sub", name, args, rule.what, signal, (a) => tools.hub.asked(a));
     if (said === null) {
       return { text: "Stopped.", fail: true };
     }
@@ -362,18 +362,18 @@ export namespace Tools {
 
   // the owner's answer to a call that asked, from a browser: a note in the
   // asking agent's or subagent's chat, and, with no call waiting, a
-  // message to it
+  // message to it (not for a session's call: its holder keeps it)
   export async function decide(tools: Tools, id: string, ok: boolean, note: string): Promise<string | null> {
     const said = Gate.decide(tools.gate, id, { ok, note });
     if (said === null) {
       return "This was already answered, or its call was stopped.";
     }
-    const { agent, who, tool, what } = said.held;
+    const { agent, who, from, tool, what } = said.held;
     const text = (ok ? "Approved" : "Denied") + " by the user: " + what.toLowerCase() + " (" + Gate.line(said.held) + ")." + (note === "" ? "" : " Note: “" + note + "”");
     const boss = tools.seats.get(agent);
     const seat = (who === "" ? undefined : tools.seats.get(who)) ?? boss;
     seat?.note(text);
-    if (!said.waited) {
+    if (!said.waited && from !== "session") {
       const msg = "[Approval " + id + "] " + text + (ok ? " No call was waiting for it (the server restarted): call " + tool + " again with the same arguments to do it." : " Don't do it another way.");
       const subs = boss?.subs ?? null;
       const told = who === "" || subs === null ? null : await subs.tell(who, msg);
