@@ -1,4 +1,4 @@
-// Files Server.ts imports, typed for tsc: the app's files as vite built
+// Files the server imports, typed for tsc: the app's files as vite built
 // them (ui/dist/files.ts, there only once built), the heads and the
 // installer as files (Bun gives their paths); as text, the chat's first
 // message and the release key.

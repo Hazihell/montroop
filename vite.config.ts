@@ -13,7 +13,7 @@ const proxy: Record<string, ProxyOptions> = to === undefined ? {} : { ...Object.
 
 const DIST = "ui/dist";
 
-// the build's files as Server.ts imports them, each a file Bun compiles
+// the build's files as Web.ts imports them, each a file Bun compiles
 // into the program: dist/files.ts, a map from the path a browser asks to
 // the file. Each script and style also comes brotli'd at its best (NAME.br),
 // too slow to do as the server starts
