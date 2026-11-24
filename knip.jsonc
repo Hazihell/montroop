@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  // what Build.ts compiles and the test rig's fake models; Build.ts itself comes from the build script, the page's script (ui/src/main.tsx) from ui/index.html
+  // what Build.ts compiles and the test rig's fake models; Build.ts and Seams.ts come from the build and check scripts, the page's script (ui/src/main.tsx) from ui/index.html
   "entry": ["Cli.ts", "testing/fake/server.ts", "testing/fake/fake.ts"],
   "project": ["*.ts", "ui/src/*.{ts,tsx,css}", "testing/fake/*.ts"],
   // the default leaves out a namespace's members, and every module's functions are in one
