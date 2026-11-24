@@ -291,10 +291,12 @@ export namespace Sessions {
     Hold.told(s.dir).filter((t) => t.seq > s.ack).forEach((t) => after(id, take(id, t)));
     const now = Session.get(id);
     const run = Session.run(id);
-    if (now !== null && run !== null && LIVE.includes(now.status) && now.unit === "") {
-      next_run(id);
-    } else if (now !== null && run !== null && LIVE.includes(now.status) && now.unit === s.unit) {
-      after(id, Session.move(id, "failed", GONE, { about: "gone " + attempt(run), text: GONE + ": send it a message to go on" }) ?? []);
+    if (now !== null && run !== null && LIVE.includes(now.status)) {
+      if (now.unit === "") {
+        next_run(id);
+      } else if (now.unit === s.unit) {
+        after(id, Session.move(id, "failed", GONE, { about: "gone " + attempt(run), text: GONE + ": send it a message to go on" }) ?? []);
+      }
     }
     HOOKS.change();
   }

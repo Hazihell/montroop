@@ -114,16 +114,20 @@ export namespace Session {
       const had = (db.query("select name from pragma_table_info('work_sessions')").all() as { name: string }[]).map((c) => c.name);
       const unseen = had.length > 0 && !had.includes("seen");
       const unitless = had.length > 0 && !had.includes("unit");
-      db.transaction(() => Object.entries(TABLES).forEach(([name, columns]) => fit(db, name, columns)))();
-      // sessions made before a session's last look was kept count as seen
-      if (unseen) {
-        db.run("update work_sessions set seen = at");
-      }
-      // a holder launched by a version that kept no unit or socket in the
-      // record was named so
-      if (unitless) {
-        db.run("update work_sessions set unit = 'ki-hold-' || id || '-' || launches, sock = dir || '/hold-' || launches || '.sock' where launches > 0");
-      }
+      // the columns and what fills them in one transaction: a server killed
+      // midway leaves neither
+      db.transaction(() => {
+        Object.entries(TABLES).forEach(([name, columns]) => fit(db, name, columns));
+        // sessions made before a session's last look was kept count as seen
+        if (unseen) {
+          db.run("update work_sessions set seen = at");
+        }
+        // a holder launched by a version that kept no unit or socket in
+        // the record was named so
+        if (unitless) {
+          db.run("update work_sessions set unit = 'ki-hold-' || id || '-' || launches, sock = dir || '/hold-' || launches || '.sock' where launches > 0");
+        }
+      })();
       MADE = true;
     }
     return db;
