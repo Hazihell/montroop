@@ -1,9 +1,8 @@
 import * as path from "node:path";
 import ts from "typescript";
 
-const ROOT = import.meta.dir;
+const HERE = import.meta.dir;
 
-// today's offenders, file by file: the list only shrinks
 const LEGACY: Record<string, string[]> = {
   "Agent.ts": [
     "Agent.loop", "Agent.step", "Agent.steered", "Agent.entries_queued_till_started", "Agent.paired",
@@ -73,7 +72,38 @@ const LEGACY: Record<string, string[]> = {
     "Push.gist", "Push.browsers", "Push.deliver", "Push.after", "Push.make_if_missing", "Push.read_keys",
     "Push.point", "Push.encrypt", "Push.ecdh", "Push.vapid", "Push.subject", "Push.send",
   ],
-  "Server.ts": ["Msg", "Chat", "Main"],
+  "Server.ts": [
+    "Msg", "Chat", "Chat.open", "Chat.pick_name", "Chat.name", "Chat.you", "Chat.system", "Chat.share",
+    "Chat.account", "Chat.say", "Chat.read", "Chat.posted", "Chat.queued", "Chat.pictured", "Chat.writing",
+    "Chat.hold", "Chat.pieces", "Chat.voice", "Chat.begin", "Chat.leader", "Chat.leader_block", "Chat.ending",
+    "Chat.finish", "Chat.from", "Chat.call", "Chat.ended", "Chat.check", "Chat.checked", "Chat.said",
+    "Chat.message", "Chat.failed", "Chat.limits", "Chat.park", "Chat.go_on", "Chat.unpark", "Chat.note",
+    "Chat.noted", "Chat.behind", "Chat.push", "Chat.log", "Chat.line_of", "Chat.later", "Chat.put",
+    "Chat.started_unlogged", "Chat.mid_message", "Chat.flush", "Chat.talked", "Chat.talk_off", "Chat.used",
+    "Chat.meter", "Chat.guess", "Chat.room", "Chat.model_name", "Chat.talk", "Chat.on", "Chat.limit",
+    "Chat.ran", "Chat.waiting", "Chat.unanswered", "Chat.asks", "Chat.live", "Chat.subs_of", "Chat.sub_doing",
+    "Chat.sub_view", "Chat.spawn", "Chat.sub_start", "Chat.sub_restart", "Chat.sub_kind", "Chat.sub_pick",
+    "Chat.sub_shown", "Chat.sub_how", "Chat.sub_picked", "Chat.sub_meter", "Chat.sub_row", "Chat.sub_bytes",
+    "Chat.sub_ask", "Chat.sub_put", "Chat.sub_on", "Chat.sub_done", "Chat.tell", "Chat.sub_gone",
+    "Chat.sub_stop", "Chat.sub_sweep", "Chat.archived", "Chat.held", "Chat.report", "Chat.job_done",
+    "Chat.seen", "Chat.opened", "Chat.phone", "Chat.ring", "Chat.after", "Chat.ingest", "Chat.batch",
+    "Chat.built", "Chat.time", "Chat.keep", "Chat.resumed", "Chat.reads", "Chat.fresh", "Chat.done",
+    "Chat.imported", "Chat.made", "Chat.copies", "Chat.progress", "Chat.digest", "Chat.go", "Chat.resume",
+    "Chat.timed", "Chat.fire", "Chat.full", "Chat.running", "Chat.interrupt", "Chat.stop", "Chat.halted",
+    "Chat.all", "Chat.send", "Chat.state", "Chat.sums", "Chat.waits", "Chat.offer", "Chat.change",
+    "Chat.last", "Chat.real", "Chat.gist", "Chat.join", "Chat.greet", "Chat.opening", "Chat.answer",
+    "Chat.fail", "Chat.ask", "Chat.apply", "Chat.act", "Chat.stop_recorded", "Chat.set_state", "Chat.pick_to",
+    "Chat.no_plug", "Chat.plug", "Chat.post", "Chat.mark", "Chat.eye", "Chat.import_cover", "Chat.show",
+    "Chat.blocks", "Chat.teach", "Chat.know", "Main", "Main.asked", "Main.approve", "Main.pin_sweep",
+    "Main.pins", "Main.first", "Main.by_who", "Main.stored", "Main.own_picture", "Main.chat_of",
+    "Main.keep_picks", "Main.offer", "Main.mates", "Main.team_soon", "Main.attach", "Main.leave",
+    "Main.heard", "Main.made", "Main.knobs", "Main.lead_set", "Main.team", "Main.agent", "Main.manages",
+    "Main.agents_tool", "Main.settings_of", "Main.shown", "Main.edited", "Main.revert", "Main.template",
+    "Main.shelve", "Main.left", "Main.forget", "Main.lock", "Main.locked", "Main.file", "Main.navigated",
+    "Main.page", "Main.room", "Main.media", "Main.http", "Main.post_only", "Main.event", "Main.start",
+    "Main.settings", "Main.scratch_sweep", "Main.watch", "Main.follow", "Main.unowned", "Main.chats",
+    "Main.socks", "Main.tools", "Main.server",
+  ],
   "Service.ts": ["command"],
   "Tools.ts": [
     "Tools.base", "Tools.fetch", "Tools.answer", "Tools.asker", "Tools.gated", "Tools.shortened",
@@ -83,7 +113,7 @@ const LEGACY: Record<string, string[]> = {
   ],
 };
 
-const config = ts.getParsedCommandLineOfConfigFile(ROOT + "/tsconfig.json", {}, { ...ts.sys, onUnRecoverableConfigFileDiagnostic: () => undefined });
+const config = ts.getParsedCommandLineOfConfigFile(HERE + "/tsconfig.json", {}, { ...ts.sys, onUnRecoverableConfigFileDiagnostic: () => undefined });
 if (config === undefined) {
   throw new Error("tsconfig.json can't be read");
 }
@@ -91,23 +121,27 @@ const program = ts.createProgram(config.fileNames, config.options);
 const checker = program.getTypeChecker();
 const files = program.getSourceFiles().filter((file) => !file.isDeclarationFile && !file.fileName.includes("/node_modules/") && !file.fileName.endsWith(".config.ts"));
 
-type Export = { name: string; rel: string; line: number; file: ts.SourceFile; within?: Export; used: boolean };
+type Export = { name: string; rel: string; line: number; file: ts.SourceFile; used: boolean };
 
 const exports = new Map<ts.Symbol, Export>();
 const names = new Set<string>();
 
-function gather(owner: ts.Symbol, file: ts.SourceFile, within?: Export): void {
+function own(sym: ts.Symbol): ts.Symbol {
+  return checker.getExportSymbolOfSymbol(sym.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(sym) : sym);
+}
+
+function gather(owner: ts.Symbol, file: ts.SourceFile, prefix = ""): void {
   for (const sym of checker.getExportsOfModule(owner)) {
     const decl = sym.declarations?.find((d) => d.getSourceFile() === file);
-    if (decl === undefined) {
+    // `export { x } from "./Y.ts"` is Y's export
+    if (decl === undefined || (ts.isExportSpecifier(decl) && decl.parent.parent.moduleSpecifier !== undefined)) {
       continue;
     }
-    const name = (within === undefined ? "" : within.name + ".") + (sym.name === "default" ? ts.getNameOfDeclaration(decl)?.getText() ?? "default" : sym.name);
-    const e: Export = { name, rel: path.relative(ROOT, file.fileName), line: file.getLineAndCharacterOfPosition(decl.getStart()).line + 1, file, within, used: false };
-    exports.set(sym, e);
+    const name = prefix + (sym.name === "default" ? ts.getNameOfDeclaration(decl)?.getText() ?? "default" : sym.name);
+    exports.set(own(sym), { name, rel: path.relative(HERE, file.fileName), line: file.getLineAndCharacterOfPosition(decl.getStart()).line + 1, file, used: false });
     names.add(sym.name);
     if (sym.flags & ts.SymbolFlags.Namespace) {
-      gather(sym, file, e);
+      gather(sym, file, name + ".");
     }
   }
 }
@@ -119,12 +153,9 @@ for (const file of files) {
   }
 }
 
-function target(id: ts.Identifier): ts.Symbol | undefined {
-  let sym = ts.isShorthandPropertyAssignment(id.parent) ? checker.getShorthandAssignmentValueSymbol(id.parent) : checker.getSymbolAtLocation(id);
-  if (sym !== undefined && sym.flags & ts.SymbolFlags.Alias) {
-    sym = checker.getAliasedSymbol(sym);
-  }
-  return sym === undefined ? undefined : checker.getExportSymbolOfSymbol(sym);
+function resolved(id: ts.Identifier): ts.Symbol | undefined {
+  const sym = ts.isShorthandPropertyAssignment(id.parent) ? checker.getShorthandAssignmentValueSymbol(id.parent) : checker.getSymbolAtLocation(id);
+  return sym === undefined ? undefined : own(sym);
 }
 
 // what a file takes from a module it imports when it runs: `lazy(() =>
@@ -132,7 +163,7 @@ function target(id: ts.Identifier): ts.Symbol | undefined {
 // import("./X.tsx"), "Name")` its Name, and an import by a path built at
 // run time, `(await import(path.join(dir, "X.ts"))) as { X: { f: … } }`,
 // what its cast names
-function loaded(call: ts.CallExpression, file: ts.SourceFile): void {
+function mark_loaded(call: ts.CallExpression, file: ts.SourceFile): void {
   const [spec] = call.arguments;
   let up: ts.Node = call.parent;
   if (ts.isStringLiteral(spec)) {
@@ -142,7 +173,7 @@ function loaded(call: ts.CallExpression, file: ts.SourceFile): void {
     }
     if (mod !== undefined && ts.isCallExpression(up) && up.arguments.some((arg) => arg.pos <= call.pos && arg.end >= call.end)) {
       for (const name of ["default", ...up.arguments.filter(ts.isStringLiteral).map((arg) => arg.text)]) {
-        use(checker.tryGetMemberInModuleExports(name, mod), file);
+        mark_used(checker.tryGetMemberInModuleExports(name, mod), file);
       }
     }
     return;
@@ -158,10 +189,10 @@ function loaded(call: ts.CallExpression, file: ts.SourceFile): void {
   }
   for (const prop of checker.getTypeFromTypeNode(up.type).getProperties()) {
     const sym = checker.tryGetMemberInModuleExports(prop.name, mod);
-    use(sym, file);
+    mark_used(sym, file);
     if (sym !== undefined && sym.flags & ts.SymbolFlags.Namespace) {
       for (const inner of checker.getTypeOfSymbol(prop).getProperties()) {
-        use(checker.tryGetMemberInModuleExports(inner.name, sym), file);
+        mark_used(checker.tryGetMemberInModuleExports(inner.name, sym), file);
       }
     }
   }
@@ -171,8 +202,8 @@ function literals(node: ts.Node): string[] {
   return ts.isStringLiteral(node) ? [node.text] : node.getChildren().flatMap(literals);
 }
 
-function use(sym: ts.Symbol | undefined, file: ts.SourceFile): void {
-  const found = sym === undefined ? undefined : exports.get(sym);
+function mark_used(sym: ts.Symbol | undefined, file: ts.SourceFile): void {
+  const found = sym === undefined ? undefined : exports.get(own(sym));
   if (found !== undefined && found.file !== file) {
     found.used = true;
   }
@@ -181,18 +212,23 @@ function use(sym: ts.Symbol | undefined, file: ts.SourceFile): void {
 for (const file of files) {
   const visit = (node: ts.Node): void => {
     if (ts.isIdentifier(node) && (names.has(node.text) || ts.isImportClause(node.parent))) {
-      use(target(node), file);
+      mark_used(resolved(node), file);
+    }
+    if (ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent)) {
+      const key = node.propertyName ?? node.name;
+      if (ts.isIdentifier(key)) {
+        mark_used(checker.getTypeAtLocation(node.parent).getProperty(key.text), file);
+      }
     }
     if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword && node.arguments.length > 0) {
-      loaded(node, file);
+      mark_loaded(node, file);
     }
     ts.forEachChild(node, visit);
   };
   visit(file);
 }
 
-// a namespace no other file uses is reported alone, not with its members
-const unused = new Map([...exports.values()].filter((e) => !e.used && e.within?.used !== false).map((e) => [e.rel + " " + e.name, e]));
+const unused = new Map([...exports.values()].filter((e) => !e.used).map((e) => [e.rel + " " + e.name, e]));
 const legacy = new Set(Object.entries(LEGACY).flatMap(([rel, list]) => list.map((name) => rel + " " + name)));
 const fresh = [...unused].filter(([key]) => !legacy.has(key)).map(([, e]) => e).sort((a, b) => a.rel.localeCompare(b.rel) || a.line - b.line);
 const gone = [...legacy].filter((key) => !unused.has(key));
