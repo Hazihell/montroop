@@ -47,7 +47,7 @@ export function useBack(to: string): () => void {
 
 // what opens over a chat as a step in its history, so the phone's back
 // closes it
-export type Steps = { about?: 1; knobs?: 1 };
+type Steps = { about?: 1; knobs?: 1 };
 
 export function steps_of(s: Record<string, unknown>): Steps {
   const on = (step: keyof Steps) => s[step] === 1 || s[step] === "1";

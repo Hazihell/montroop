@@ -24,25 +24,25 @@ export namespace Reap {
     if (process.platform !== "linux" || process.pid !== 1) {
       return;
     }
-    const wait = Reap.waitpid();
+    const wait = waitpid();
     if (wait === null) {
       console.error("ki: PID 1 can't reap orphans (no libc): run its container with --init");
       return;
     }
     let last = new Set<number>();
-    setInterval(() => (last = Reap.tick(wait, last)), TICK).unref();
+    setInterval(() => (last = tick(wait, last)), TICK).unref();
   }
 
-  export function tick(wait: (pid: number) => void, last: Set<number>, proc = "/proc"): Set<number> {
-    const now = Reap.zombies(process.pid, proc);
+  function tick(wait: (pid: number) => void, last: Set<number>, proc = "/proc"): Set<number> {
+    const now = zombies(process.pid, proc);
     const due = now.filter((pid) => last.has(pid));
-    const bun = due.length > 0 ? Reap.held(proc) : new Set<number>();
+    const bun = due.length > 0 ? held(proc) : new Set<number>();
     const reap = due.filter((pid) => !bun.has(pid));
     reap.forEach(wait);
     return new Set(now.filter((pid) => !reap.includes(pid)));
   }
 
-  export function zombies(ppid: number, proc = "/proc"): number[] {
+  function zombies(ppid: number, proc = "/proc"): number[] {
     const found: number[] = [];
     for (const name of fs.readdirSync(proc)) {
       if (!/^\d+$/.test(name)) {
@@ -60,7 +60,7 @@ export namespace Reap {
   }
 
   // the processes this one holds a pidfd for (Bun's own children)
-  export function held(proc = "/proc"): Set<number> {
+  function held(proc = "/proc"): Set<number> {
     const pids = new Set<number>();
     for (const fd of fs.readdirSync(proc + "/self/fd")) {
       try {
@@ -76,7 +76,7 @@ export namespace Reap {
   }
 
   // libc's waitpid(pid, NULL, WNOHANG) (glibc, or musl), null if neither loads
-  export function waitpid(): ((pid: number) => void) | null {
+  function waitpid(): ((pid: number) => void) | null {
     const arch = process.arch === "arm64" ? "aarch64" : "x86_64";
     for (const lib of ["libc.so.6", "libc.musl-" + arch + ".so.1"]) {
       try {

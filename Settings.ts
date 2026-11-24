@@ -64,14 +64,14 @@ export namespace Settings {
     const shown = Object.entries(config.VARS).map(([name, env]): Key => {
       const from = config.config_key_from(name, keys);
       const key = from === "env" ? config.KEYS[name] : keys[name] ?? "";
-      return { name, env, from, tail: Settings.tail(key) };
+      return { name, env, from, tail: tail(key) };
     });
-    const profiles = process.env.KI_PROFILES !== undefined ? null : Settings.profiles(file.profiles) ?? {};
+    const profiles = process.env.KI_PROFILES !== undefined ? null : profiles_in(file.profiles) ?? {};
     const ask = Rules.read(file.ask);
     return { version: snap.version, ki: VERSION, settings, keys: shown, profiles, ask: typeof ask === "string" ? ASK : ask, built: ASK, error, none: config.config_none() };
   }
 
-  export function tail(key: string): string {
+  function tail(key: string): string {
     const plain = key.replace(/[^A-Za-z0-9]/g, "");
     return plain.length >= MASK ? plain.slice(-TAIL) : "";
   }
@@ -94,10 +94,10 @@ export namespace Settings {
     } catch {
       return refuse(400, "Not JSON.");
     }
-    const set = Settings.record(get(body, "set"));
-    const keys = Settings.record(get(body, "keys"));
+    const set = record(get(body, "set"));
+    const keys = record(get(body, "keys"));
     const given = get(body, "profiles");
-    const profiles = given === undefined ? undefined : given === null ? null : Settings.profiles(given);
+    const profiles = given === undefined ? undefined : given === null ? null : profiles_in(given);
     const asked = get(body, "ask");
     const ask = asked === undefined ? undefined : asked === null ? null : Rules.read(asked);
     if (typeof ask === "string") {
@@ -182,7 +182,7 @@ export namespace Settings {
       }
       kept[name] = key;
     }
-    const why = Settings.check(next, new Set([...Object.keys(set), ...(profiles === undefined ? [] : ["profiles"])]));
+    const why = check(next, new Set([...Object.keys(set), ...(profiles === undefined ? [] : ["profiles"])]));
     if (why !== null) {
       return refuse(400, why.error, why.key);
     }
@@ -203,8 +203,8 @@ export namespace Settings {
     return { status: 200, body: { ...Settings.page(), saved }, saved, wrote: saved.length > 0 };
   }
 
-  export function profiles(x: unknown): Record<string, string[]> | null {
-    const all = Object.entries(Settings.record(x));
+  function profiles_in(x: unknown): Record<string, string[]> | null {
+    const all = Object.entries(record(x));
     if (x === null || typeof x !== "object" || Array.isArray(x) || all.length > PROFILES) {
       return null;
     }
@@ -220,11 +220,11 @@ export namespace Settings {
     return Object.fromEntries(out);
   }
 
-  export function record(x: unknown): Record<string, unknown> {
+  function record(x: unknown): Record<string, unknown> {
     return rec(x) ? x : {};
   }
 
-  export function check(file: Record<string, unknown>, changed: Set<string>): { error: string; key?: string } | null {
+  function check(file: Record<string, unknown>, changed: Set<string>): { error: string; key?: string } | null {
     if (changed.has("vendors") && config.config_value(file, "vendors").trim() === "") {
       return { error: "Offer at least one vendor.", key: "vendors" };
     }

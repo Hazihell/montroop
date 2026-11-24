@@ -13,7 +13,7 @@ export type Move = "model" | "effort" | "speed";
 
 // efforts: its own levels, as its vendor names them, in its order; effort:
 // the one its vendor uses when a request names none
-export type Model = { label: string; id: string; speeds: string[]; efforts: string[]; effort: string; window: number };
+type Model = { label: string; id: string; speeds: string[]; efforts: string[]; effort: string; window: number };
 
 export type Offer = { vendors: Vendor[]; models: string[]; profiles?: Record<string, Fall[]> };
 
@@ -115,7 +115,7 @@ export namespace Pick {
     }
   }
 
-  export function move(pick: Pick, move: Move, offer: Offer, to: string): Pick | null {
+  function matched(pick: Pick, move: Move, offer: Offer, to: string): Pick | null {
     const list = Pick.options(pick, move, offer);
     const mine = ([, p]: [string, Pick]) => p.profile === undefined && p.vendor === pick.vendor;
     const same = list.filter(([part, p]) => part === to || (p.profile === undefined && p.vendor + ":" + part === to));
@@ -133,7 +133,7 @@ export namespace Pick {
     if (move === "effort" && Pick.options(from, "effort", offer).length === 0) {
       return from.model + " has no effort to set.";
     }
-    return Pick.move(from, move, offer, to) ?? "No " + move + " " + to + (move === "effort" ? " on " + from.model : "") + "; one of: " + Pick.parts(from, move, offer).join(", ") + ".";
+    return matched(from, move, offer, to) ?? "No " + move + " " + to + (move === "effort" ? " on " + from.model : "") + "; one of: " + Pick.parts(from, move, offer).join(", ") + ".";
   }
 
   export function parts(pick: Pick, move: Move, offer: Offer): string[] {
@@ -174,19 +174,19 @@ export namespace Pick {
   }
 
   export function profile(name: string, offer: Offer, effort: string, speed: string): Pick | null {
-    const first = Pick.first(name, offer);
-    if (first === undefined) {
+    const fall = first(name, offer);
+    if (fall === undefined) {
       return null;
     }
-    const on = Pick.on({ vendor: first.vendor, model: first.model.label, effort, speed }, first.vendor, first.model);
-    return { ...on, effort: first.effort ?? on.effort, speed: first.speed ?? on.speed, profile: name };
+    const on = Pick.on({ vendor: fall.vendor, model: fall.model.label, effort, speed }, fall.vendor, fall.model);
+    return { ...on, effort: fall.effort ?? on.effort, speed: fall.speed ?? on.speed, profile: name };
   }
 
   export function read(x: unknown, offer: Offer): Pick | null {
     const [profile, effort, speed, label] = [get(x, "profile"), get(x, "effort"), get(x, "speed"), get(x, "model")];
     if (profile !== undefined) {
-      const first = typeof profile === "string" ? Pick.first(profile, offer) : undefined;
-      return typeof profile === "string" && first !== undefined && typeof effort === "string" && Pick.offers(first.model, effort) ? Pick.profile(profile, offer, effort, String(speed)) : null;
+      const fall = typeof profile === "string" ? first(profile, offer) : undefined;
+      return typeof profile === "string" && fall !== undefined && typeof effort === "string" && Pick.offers(fall.model, effort) ? Pick.profile(profile, offer, effort, String(speed)) : null;
     }
     const vendor = offer.vendors.find((v) => v === get(x, "vendor"));
     if (vendor === undefined || typeof label !== "string" || !offer.models.includes(label)) {
@@ -205,24 +205,24 @@ export namespace Pick {
     return Math.min(...models.map((m) => m?.window ?? 272e3));
   }
 
-  export function first(profile: string, offer: Offer): Fall | undefined {
+  function first(profile: string, offer: Offer): Fall | undefined {
     const profiles = offer.profiles ?? {};
     return Object.hasOwn(profiles, profile) ? profiles[profile][0] : undefined;
   }
 
   // the offered model a pick names
-  export function named_model(x: unknown, offer: Offer): Model | undefined {
+  function named_model(x: unknown, offer: Offer): Model | undefined {
     const [profile, label] = [get(x, "profile"), get(x, "model")];
     const vendor = offer.vendors.find((v) => v === get(x, "vendor"));
     if (profile !== undefined) {
-      return typeof profile === "string" ? Pick.first(profile, offer)?.model : undefined;
+      return typeof profile === "string" ? first(profile, offer)?.model : undefined;
     }
     return vendor === undefined || typeof label !== "string" || !offer.models.includes(label) ? undefined : Pick.model(vendor, label);
   }
 
   // why read refuses a pick, when for its effort
   export function refused(x: unknown, offer: Offer): string | null {
-    const model = Pick.named_model(x, offer);
+    const model = named_model(x, offer);
     const effort = get(x, "effort");
     return model !== undefined && typeof effort === "string" && !Pick.offers(model, effort) ? Pick.no_effort(model, effort) : null;
   }
@@ -231,7 +231,7 @@ export namespace Pick {
   // the model's default
   export function load(saved: object | null, offer: Offer, def: Pick): Pick {
     const x = saved ?? def;
-    const model = Pick.named_model(x, offer);
+    const model = named_model(x, offer);
     return Pick.read(x, offer) ?? (model === undefined ? null : Pick.read({ ...x, effort: model.effort }, offer)) ?? def;
   }
 

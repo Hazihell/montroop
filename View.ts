@@ -112,7 +112,7 @@ type Chat = { [K in (typeof CHAT)[number]]: View[K] };
 // the link sends first on it has come, the chat's live part last; held: whose
 // chat the view holds, "" for none yet, kept over a reconnect (#114); kept:
 // the one it held before the last switch, shown again on a switch back
-export type View = State & {
+type View = State & {
   agent : string;
   on    : string;
   greeted : boolean;
@@ -168,7 +168,7 @@ export type Answer = { error?: string; status?: number; text?: string; going?: b
 type Upload = BodyInit | AsyncIterable<string>;
 type Body   = () => Upload | Promise<Upload>;
 
-export type Client =
+type Client =
   | { $: "say"; sizes: number[]; body: Body; agent?: string }
   | { $: "import"; body: Body; agent: string }
   | { $: "voice"; type: string; body: Body }
@@ -188,7 +188,7 @@ export type Client =
 
 type Post = { msg: Client & { id: string }; ws: WebSocket | null; done: (a: Answer) => void; said: string };
 
-export type Link = {
+type Link = {
   open : (query: string) => WebSocket;
   post : (path: string, body: Upload) => Promise<Response>;
   hear : (msg: Server) => void;
@@ -850,7 +850,7 @@ function limit_show(limit: Parked, now = Date.now()): string {
 }
 
 // the one usage-limit note: the parked wait's row, a call ended by one
-// (Limit.off), a subagent's in its spawner's turn (#170)
+// (off in Limit.ts), a subagent's in its spawner's turn (#170)
 export function limit_note(vendor: Vendor, does: string, until: number | null, now = Date.now(), since: number | null = null): string {
   return "Usage limit on " + vendor + (since === null ? "" : " since " + clock(since, now)) + ", " + (until === null ? "reset time unknown" : does + " at " + clock(until, now));
 }

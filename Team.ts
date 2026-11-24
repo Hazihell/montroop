@@ -42,7 +42,7 @@ export namespace Team {
     if (db.query("select 1 from agents").get() !== null) {
       return null;
     }
-    const id = Team.new_id();
+    const id = new_id();
     db.query("insert into agents (id, name, about, picture, prompt, made) values (?, ?, ?, ?, null, 0)").run(id, "Ki", FIRST_ABOUT, LOGO);
     return id;
   }
@@ -83,7 +83,7 @@ export namespace Team {
     const text = (k: string) => (typeof field(x, k) === "string" ? String(field(x, k)) : "");
     const name = text("name").trim();
     const about = text("about").trim();
-    const picture = text("picture").trim() || Team.head_random();
+    const picture = text("picture").trim() || head_random();
     const own = text("prompt").trim();
     const was = id === null ? "" : Team.get(id)?.claude ?? "";
     const sent = typeof field(x, "claude") === "string" ? text("claude").trim() : null;
@@ -101,7 +101,7 @@ export namespace Team {
     if (about === "" || about.length > ABOUT || /[\r\n]/.test(about)) {
       return "A description is one line of 1 to " + ABOUT + " characters.";
     }
-    if (!Team.picture_ok(picture)) {
+    if (!picture_ok(picture)) {
       return "No picture " + picture + ".";
     }
     if (own === "") {
@@ -128,18 +128,18 @@ export namespace Team {
   }
 
   // a drawn avatar: its shape, eyes, glasses and extra, then its two colors
-  export const DRAWN = /^av:[a-z]{1,12}(?:\.[a-z]{1,12}){3}(?:\.[0-9a-f]{6}){2}$/;
+  const DRAWN = /^av:[a-z]{1,12}(?:\.[a-z]{1,12}){3}(?:\.[0-9a-f]{6}){2}$/;
 
-  export function picture_ok(picture: string): boolean {
+  function picture_ok(picture: string): boolean {
     const head = /^head-(\d\d)$/.exec(picture);
     return (head !== null && Number(head[1]) >= 1 && Number(head[1]) <= HEADS) || /^\/media\/(?:[a-z0-9]{1,16}\/)?[0-9a-f]{16}\.(png|jpeg|webp)$/.test(picture) || picture === LOGO || DRAWN.test(picture);
   }
 
-  export function head_random(): string {
+  function head_random(): string {
     return "head-" + String(1 + Math.floor(Math.random() * HEADS)).padStart(2, "0");
   }
 
-  export function new_id(): string {
+  function new_id(): string {
     let id = "";
     do {
       id = "a" + Math.random().toString(36).slice(2, 9);
@@ -148,7 +148,7 @@ export namespace Team {
   }
 
   export function add(f: Fields): Agent {
-    const id = Team.new_id();
+    const id = new_id();
     Owner.open().query("insert into agents (id, name, about, picture, prompt, made, claude) values (?, ?, ?, ?, ?, ?, ?)").run(id, f.name, f.about, f.picture, f.prompt, Date.now(), f.claude);
     return Team.get(id) as Agent;
   }

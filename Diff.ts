@@ -11,7 +11,7 @@ const CELLS = 4e6;
 
 export namespace Diff {
 
-  export function lines(a: string, b: string): Line[] {
+  function lines(a: string, b: string): Line[] {
     const [x, y] = [a.split("\n"), b.split("\n")];
     let head = 0;
     while (head < x.length && head < y.length && x[head] === y[head]) {
@@ -23,12 +23,12 @@ export namespace Diff {
     }
     const keep = (text: string): Line => ({ op: " ", text });
     const [xs, ys] = [x.slice(head, x.length - tail), y.slice(head, y.length - tail)];
-    const middle = xs.length * ys.length > CELLS ? [...xs.map((text): Line => ({ op: "-", text })), ...ys.map((text): Line => ({ op: "+", text }))] : Diff.common(xs, ys);
+    const middle = xs.length * ys.length > CELLS ? [...xs.map((text): Line => ({ op: "-", text })), ...ys.map((text): Line => ({ op: "+", text }))] : common(xs, ys);
     return [...x.slice(0, head).map(keep), ...middle, ...x.slice(x.length - tail).map(keep)];
   }
 
   // the longest common subsequence of two lists of lines, walked into a diff
-  export function common(xs: string[], ys: string[]): Line[] {
+  function common(xs: string[], ys: string[]): Line[] {
     const [n, m] = [xs.length, ys.length];
     const t = new Uint32Array((n + 1) * (m + 1));
     const at = (i: number, j: number) => i * (m + 1) + j;
@@ -53,7 +53,7 @@ export namespace Diff {
   }
 
   export function hunks(a: string, b: string): Hunk[] {
-    const all = Diff.lines(a, b);
+    const all = lines(a, b);
     let [i, j] = [1, 1];
     const at = all.map((line) => {
       const here = [i, j];
