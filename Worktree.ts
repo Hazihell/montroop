@@ -64,7 +64,7 @@ export namespace Worktree {
     if (fs.existsSync(dir)) {
       const lost = Worktree.unsaved(dir, base);
       if (lost.length > 0 && !force) {
-        return dir + " has " + lost.join(" and ") + ": push it first, or force";
+        return dir + " has " + lost.join(" and ") + (lost.some((l) => l.endsWith("not checkable")) ? ": check them, then force" : ": push it first, or force");
       }
       const r = Worktree.git(repo, ["worktree", "remove", "--force", dir]);
       if (!r.ok) {
