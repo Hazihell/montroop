@@ -34,10 +34,6 @@ export type Live = { kind: Kind; text: string; of?: string };
 // how many of its calls wait for the owner's yes; works, its work sessions
 export type Mate = { id: string; name: string; about: string; picture: string; unread: number; last: string; busy: boolean; asks?: number; archived: number; subs?: SubRow[]; works?: SessionRow[] };
 
-// a work session as its agent's row carries it: what it waits on (the
-// owner's approval, its agent's answer); line, its latest log line;
-// started and ended, its latest run's; seq, its latest event taken in;
-// fresh, it ended since the owner last looked at it
 // what a work session waits on: the owner's approval of a call it parked,
 // or its agent's answer to its question
 export type Waits = "approval" | "answer" | null;

@@ -13,6 +13,7 @@ import * as fs from "node:fs";
 import { call_parse, call_text } from "./Call.ts";
 import { write_whole } from "./Write.ts";
 import { rec } from "./Json.ts";
+import { SESSION } from "./View.ts";
 
 // a waiting call as the chat shows it: agent is the chat it shows in, who
 // the subagent or work session that called ("" for the agent itself),
@@ -44,9 +45,8 @@ export namespace Gate {
     let held: Held[] = [];
     try {
       const kept: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
-      // a card kept before its origin was: a session's takes its own once
-      // its call waits on it again
-      held = (Array.isArray(kept) ? kept : []).filter((h): h is Omit<Held, "from"> & { from?: From } => rec(h) && typeof h.id === "string" && typeof h.key === "string" && typeof h.agent === "string").map((h) => ({ ...h, from: h.from ?? (h.who === "" ? "agent" : "sub") }));
+      // a card kept before its origin was: told by who asked
+      held = (Array.isArray(kept) ? kept : []).filter((h): h is Omit<Held, "from"> & { from?: From } => rec(h) && typeof h.id === "string" && typeof h.key === "string" && typeof h.agent === "string").map((h) => ({ ...h, from: h.from ?? (h.who === "" ? "agent" : h.who.startsWith(SESSION) ? "session" : "sub") }));
     } catch {}
     const gate = { file, held, waits: new Map(), change };
     prune(gate, Date.now());
@@ -88,9 +88,6 @@ export namespace Gate {
       gate.held = [...gate.held, h];
       save(gate);
       asked(h);
-    } else if (h.from !== from) {
-      h.from = from;
-      save(gate);
     }
     const held = h;
     gate.change();

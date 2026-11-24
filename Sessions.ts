@@ -124,7 +124,8 @@ export namespace Sessions {
   // at the server's start, before it takes requests, once the agents'
   // chats are open: the wake messages not yet in a chat are sent again;
   // the cards of calls still parked wait again, so an answer given at once
-  // finds them, and those of a holder gone are taken down
+  // finds them, and those of a holder gone are taken down; a stopped
+  // session's holder still running (its server killed midway) is stopped
   export function boot(gate: Gate, asked: (a: Asked) => void, wake: (w: Wake) => Promise<boolean>, change: () => void): void {
     HOOKS.gate = gate;
     HOOKS.asked = asked;
@@ -132,12 +133,16 @@ export namespace Sessions {
     HOOKS.change = change;
     config.RELOADED.add(() => LINKS.forEach((l) => Wire.send(l.sock, { $: "rules", rules: config.ASK })));
     Session.unsent().forEach(deliver);
-    for (const s of Session.list(null).filter((x) => LIVE.includes(x.status))) {
-      Session.parked(s.id).forEach((p) => arm(s, p));
-      if (alive(s)) {
-        link(s.id);
-      } else {
-        gone(s.id);
+    for (const s of Session.list(null)) {
+      if (LIVE.includes(s.status)) {
+        Session.parked(s.id).forEach((p) => arm(s, p));
+        if (alive(s)) {
+          link(s.id);
+        } else {
+          gone(s.id);
+        }
+      } else if (s.status === "stopped" && alive(s)) {
+        systemctl(["stop", "--no-block", s.unit]);
       }
     }
   }
@@ -186,7 +191,7 @@ export namespace Sessions {
   // Claude Code session if it has one; one whose earlier holders never
   // began one gets the session's first message before it; its unit and
   // socket named in the record. null: started; else why not, and with
-  // about, its agent is told (Session.move)
+  // about, its agent is told
   function launch(s: Session, prompt: string, about: string | null): string | null {
     const launches = s.launches + 1;
     const unit = "ki-hold-" + s.id + "-" + launches;
@@ -307,9 +312,6 @@ export namespace Sessions {
 
   // one event taken into the record, once: what's left to do after it
   function take(id: string, told: Told): Effect[] {
-    if ((Session.get(id)?.ack ?? told.seq) >= told.seq) {
-      return [];
-    }
     const fx = Session.apply(id, told);
     const latest = latest_of(told.ev);
     if (latest !== "") {
@@ -338,17 +340,13 @@ export namespace Sessions {
     HOOKS.change();
   }
 
-  // messages a run's holder did not take in before it ended start the next
+  // the holder of the run the record started on the messages the last
+  // one didn't take in
   function next_run(id: string): void {
     const s = Session.get(id);
-    const says = Session.unheard(id);
-    if (s === null || says.length === 0 || LIVE.includes(s.status) || s.status === "stopped") {
-      return;
-    }
-    const text = says.map((say) => say.text).join("\n\n");
-    const run = Session.again(id, text, says.map((say) => say.id));
-    if (run !== null) {
-      launch(s, text, "launch " + attempt(run));
+    const run = Session.run(id);
+    if (s !== null && run !== null && s.status === "running") {
+      launch(s, run.prompt, "launch " + attempt(run));
     }
   }
 
@@ -421,7 +419,9 @@ export namespace Sessions {
     }
     const as: Mode = live && Session.questions(id).length > 0 ? "answer" : mode;
     const key = id + "/" + request;
-    if (!Session.say({ id: key, session: id, text, mode: as, at: Date.now() })) {
+    // a retry of one whose run never started (its server stopped first)
+    // starts it
+    if (!Session.say({ id: key, session: id, text, mode: as, at: Date.now() }) && (live || !Session.unheard(id).some((say) => say.id === key))) {
       return "again";
     }
     if (live) {
@@ -508,7 +508,7 @@ export namespace Sessions {
 
   // what the session told, after seq, at most n; or with before, the
   // last n before it
-  function log(id: string, after: number, n: number, before: number | null = null): Told[] {
+  function log(id: string, after: number, n: number, before: number | null): Told[] {
     const s = Session.get(id);
     const all = s === null ? [] : Hold.told(s.dir);
     return before === null ? all.filter((t) => t.seq > after).slice(0, n) : all.filter((t) => t.seq < before).slice(-n || all.length);
@@ -526,7 +526,7 @@ export namespace Sessions {
     return { id: s.id, name: s.name, agent: s.agent, branch: s.branch, status: s.status, waits, last: LATEST.get(s.id) ?? "", started: run?.started ?? s.made, ended, at: s.at, unseen: ended !== null && ended > s.seen };
   }
 
-  // the session's page, with its log after a point (log)
+  // the session's page, with a page of its log (log)
   function page(s: Session, after: number, n: number, before: number | null): SessionPage {
     return {
       ...row(s),
@@ -586,8 +586,8 @@ export namespace Sessions {
         return typeof sent !== "string" ? no(sent.why) : ok(SENT[sent] + " You get a message when it's done or needs you: don't wait for it.");
       }
       case "read": {
-        const rec = Session.get(s.id);
-        return rec === null ? no("No session " + s.name + ".") : ok(read(rec, args.after === undefined ? null : Number(args.after) || 0, Number(args.n) || LINES));
+        const record = Session.get(s.id);
+        return record === null ? no("No session " + s.name + ".") : ok(read(record, args.after === undefined ? null : Number(args.after) || 0, Number(args.n) || LINES));
       }
       case "stop": {
         const why = stop(s.id, false);

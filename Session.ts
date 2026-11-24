@@ -8,9 +8,8 @@
 // sent to it not yet taken in; the messages that wake its agent.
 
 import type { Database } from "bun:sqlite";
-import { Hold } from "./Hold.ts";
 import { Owner } from "./Owner.ts";
-import type { Told } from "./Wire.ts";
+import { Wire, type Told } from "./Wire.ts";
 
 export type Status = "running" | "waiting" | "done" | "failed" | "stopped";
 
@@ -48,7 +47,7 @@ export type Wake = { id: string; agent: string; text: string };
 
 // what the server does once a change to the record is in: deliver a wake;
 // show a parked call's card; take a card down (null: every one of the
-// session's); start the next run on the messages not taken in
+// session's); launch the run started on the messages not taken in
 export type Effect =
   | { do: "wake"; wake: Wake }
   | { do: "card"; parked: Parked }
@@ -176,7 +175,8 @@ export namespace Session {
         return [];
       }
       const out = taken(db, s, told);
-      db.query("update work_sessions set ack = ?, at = ? where id = ?").run(told.seq, Date.now(), id);
+      // at: later with each change, so the app sees each one
+      db.query("update work_sessions set ack = ?, at = max(at + 1, ?) where id = ?").run(told.seq, Date.now(), id);
       return out;
     })();
   }
@@ -191,8 +191,8 @@ export namespace Session {
       const parked: Parked = { id: ev.id, session: s.id, tool: ev.tool, input: JSON.stringify(ev.input), what: ev.what, ok: null, note: "", at };
       db.query("insert or ignore into work_asks (id, session, tool, input, what, at) values (?, ?, ?, ?, ?, ?)").run(parked.id, s.id, parked.tool, parked.input, parked.what, at);
       step(db, s.id, "ask");
-      const told = s.status === "running" ? noted(db, s, String(seq), "waiting", "the user's approval in the app, for: " + ev.what.toLowerCase() + " (" + ev.tool + ")") : [];
-      return [{ do: "card", parked }, ...told];
+      const woke = s.status === "running" ? noted(db, s, String(seq), "waiting", "the user's approval in the app, for: " + ev.what.toLowerCase() + " (" + ev.tool + ")") : [];
+      return [{ do: "card", parked }, ...woke];
     } else if (ev.k === "answered" || ev.k === "dropped") {
       db.query("delete from work_asks where id = ?").run(ev.id);
       settle(db, s.id);
@@ -213,10 +213,11 @@ export namespace Session {
       if (to === null) {
         return [{ do: "uncard", ask: null }];
       }
-      const unheard = Session.unheard(s.id).length > 0;
+      const unheard = Session.unheard(s.id);
       const said = (to === "done" ? Session.run(s.id)?.report || ev.text : ev.text) || "(it said nothing)";
-      const told = noted(db, s, String(seq), to, said + (unheard ? "\n\nIt runs again now, on the messages sent to it it hadn't taken in." : ""));
-      return [{ do: "uncard", ask: null }, ...told, ...(unheard ? [{ do: "next" as const }] : [])];
+      const woke = noted(db, s, String(seq), to, said + (unheard.length > 0 ? "\n\nIt runs again now, on the messages sent to it it hadn't taken in." : ""));
+      const next = unheard.length > 0 && rerun(db, s.id, unheard.map((say) => say.text).join("\n\n"), unheard.map((say) => say.id)) !== null;
+      return [{ do: "uncard", ask: null }, ...woke, ...(next ? [{ do: "next" as const }] : [])];
     }
     return [];
   }
@@ -255,7 +256,7 @@ export namespace Session {
 
   // a wake message kept to send, in the transaction of the step it tells
   function noted(db: Database, s: Session, about: string, what: string, text: string): Effect[] {
-    const wake = { id: "session " + s.id + " " + about, agent: s.agent, text: "[Session " + s.name + "] " + what + ": " + Hold.clip(text.trim()) };
+    const wake = { id: "session " + s.id + " " + about, agent: s.agent, text: "[Session " + s.name + "] " + what + ": " + Wire.clip(text.trim()) };
     const kept = db.query("insert or ignore into work_wakes (id, agent, text, at) values (?, ?, ?, ?)").run(wake.id, wake.agent, wake.text, Date.now()).changes > 0;
     return kept ? [{ do: "wake", wake }] : [];
   }
@@ -263,15 +264,15 @@ export namespace Session {
   // the server's own step out of work (its holder gone or never started,
   // or stopped), with the wake that tells its agent, if any; null: it
   // can't be taken now
-  export function move(id: string, to: "failed" | "stop", why: string, note: Note | null): Effect[] | null {
+  export function move(id: string, by: "failed" | "stop", why: string, note: Note | null): Effect[] | null {
     const db = opened();
     return db.transaction(() => {
       const s = Session.get(id);
-      const now = s === null ? null : step(db, id, to, why);
-      if (s === null || now === null) {
+      const to = s === null ? null : step(db, id, by, why);
+      if (s === null || to === null) {
         return null;
       }
-      return [{ do: "uncard" as const, ask: null }, ...(note === null ? [] : noted(db, s, note.about, now, note.text))];
+      return [{ do: "uncard" as const, ask: null }, ...(note === null ? [] : noted(db, s, note.about, to, note.text))];
     })();
   }
 
@@ -280,23 +281,25 @@ export namespace Session {
   // is at work, or has none
   export function again(id: string, prompt: string | null, says: string[] = []): Run | null {
     const db = opened();
+    return db.transaction(() => rerun(db, id, prompt, says))();
+  }
+
+  function rerun(db: Database, id: string, prompt: string | null, says: string[]): Run | null {
+    const s = Session.get(id);
+    const run = Session.run(id);
+    if (s === null || run === null || next(s.status, "run") === null) {
+      return null;
+    }
     const now = Date.now();
-    return db.transaction(() => {
-      const s = Session.get(id);
-      const run = Session.run(id);
-      if (s === null || run === null || next(s.status, "run") === null) {
-        return null;
-      }
-      db.query("update work_sessions set status = 'running', at = ? where id = ?").run(now, id);
-      if (prompt === null) {
-        db.query("update work_runs set status = 'running', attempts = attempts + 1, why = '', ended = null where session = ? and n = ?").run(id, run.n);
-      } else {
-        db.query("insert into work_runs (session, n, prompt, status, started) values (?, ?, ?, 'running', ?)").run(id, run.n + 1, prompt, now);
-      }
-      const heard = db.query("update work_says set heard = 1, mode = 'queue' where id = ?");
-      says.forEach((say) => heard.run(say));
-      return Session.run(id);
-    })();
+    db.query("update work_sessions set status = 'running', at = ? where id = ?").run(now, id);
+    if (prompt === null) {
+      db.query("update work_runs set status = 'running', attempts = attempts + 1, why = '', ended = null where session = ? and n = ?").run(id, run.n);
+    } else {
+      db.query("insert into work_runs (session, n, prompt, status, started) values (?, ?, ?, 'running', ?)").run(id, run.n + 1, prompt, now);
+    }
+    const heard = db.query("update work_says set heard = 1, mode = 'queue' where id = ?");
+    says.forEach((say) => heard.run(say));
+    return Session.run(id);
   }
 
   // what a new holder's welcome says it holds: the calls parked and the

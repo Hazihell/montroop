@@ -61,8 +61,6 @@ const LOG = "log.jsonl";
 // each log as read so far: the bytes taken in, and what they told
 const READ = new Map<string, { at: number; told: Told[] }>();
 
-const CLIP = 2000;
-
 // how long a holder whose run is over waits for the server to take what
 // it has not acked yet; the rest stays in the log
 const LINGER = 60e3;
@@ -126,10 +124,6 @@ export namespace Hold {
         return [];
       }
     });
-  }
-
-  export function clip(text: string): string {
-    return text.length > CLIP ? text.slice(0, CLIP) + "…" : text;
   }
 
   // a tool's input or result as text
@@ -347,10 +341,10 @@ export namespace Hold {
     if (msg.type === "assistant" && msg.parent_tool_use_id === null) {
       return msg.message.content.flatMap((b): Ev[] =>
         b.type === "text" && b.text.trim() !== "" ? [{ k: "text", text: b.text }] :
-        b.type === "tool_use" ? [{ k: "tool", id: b.id, name: b.name, input: Hold.clip(shown(b.input)) }] : []);
+        b.type === "tool_use" ? [{ k: "tool", id: b.id, name: b.name, input: Wire.clip(shown(b.input)) }] : []);
     }
     if (msg.type === "user" && msg.parent_tool_use_id === null && Array.isArray(msg.message.content)) {
-      return msg.message.content.flatMap((b): Ev[] => (b.type === "tool_result" ? [{ k: "result", id: b.tool_use_id, text: Hold.clip(shown(b.content ?? "")), error: b.is_error === true }] : []));
+      return msg.message.content.flatMap((b): Ev[] => (b.type === "tool_result" ? [{ k: "result", id: b.tool_use_id, text: Wire.clip(shown(b.content ?? "")), error: b.is_error === true }] : []));
     }
     if (msg.type === "system" && msg.subtype === "compact_boundary") {
       return [{ k: "compacted" }];

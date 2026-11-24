@@ -46,6 +46,8 @@ export type Told = { seq: number; at: number; ev: Ev };
 
 export const VERSION = 1;
 
+const CLIP = 2000;
+
 // rules: the ask rules changed; say: a message for the session (answer:
 // the answer to its first question waiting, if one still waits)
 type ToHold =
@@ -88,6 +90,11 @@ export namespace Wire {
         }
       }
     };
+  }
+
+  // a text told cut to what a message carries
+  export function clip(text: string): string {
+    return text.length > CLIP ? text.slice(0, CLIP) + "…" : text;
   }
 
   export function outbox(seq: number): Outbox {
