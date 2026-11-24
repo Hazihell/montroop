@@ -19,7 +19,7 @@ import { get, rec, str } from "./Json.ts";
 import { Machine } from "./Machine.ts";
 import { Owner } from "./Owner.ts";
 import * as Pins from "./Pins.ts";
-import { command, run, said } from "./Service.ts";
+import { command, output, run } from "./Service.ts";
 import { LIVE, Session, type Parked } from "./Session.ts";
 import { Team } from "./Team.ts";
 import { Wire, type Ev, type Told } from "./Wire.ts";
@@ -74,7 +74,7 @@ export namespace Sessions {
 
   export function systemctl(args: string[]): string {
     const r = run(["systemctl", "--user", ...args]);
-    return said(r);
+    return output(r);
   }
 
   export function alive(s: Session): boolean {
@@ -153,7 +153,7 @@ export namespace Sessions {
     const env = Object.entries({ ...Object.fromEntries(ENV.flatMap((k) => (process.env[k] ? [[k, process.env[k]]] : []))), KI_DIR: config.DIR });
     const r = run(["systemd-run", "--user", "--collect", "--quiet", "--unit=" + Sessions.unit(next), "--description=Ki work session " + s.name, "-p", "TimeoutStopSec=10", ...env.map(([k, v]) => "--setenv=" + k + "=" + v), "--", ...command(), "hold", s.dir]);
     if (r.code !== 0) {
-      const why = "systemd-run failed: " + said(r);
+      const why = "systemd-run failed: " + output(r);
       Session.move(s.id, "failed", why);
       return why;
     }

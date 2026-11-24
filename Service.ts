@@ -699,7 +699,7 @@ export function run(cmd: string[], env: Record<string, string> = {}): { code: nu
 }
 
 // what a run printed, both streams
-export function said(r: { out: string; err: string }): string {
+export function output(r: { out: string; err: string }): string {
   return (r.out + "\n" + r.err).trim();
 }
 
