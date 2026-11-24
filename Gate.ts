@@ -32,7 +32,7 @@ const KEPT = 24 * 60 * 60 * 1000;
 
 export namespace Gate {
 
-  function key(x: unknown): string {
+  function key_of(x: unknown): string {
     const sorted = (y: unknown): unknown => (Array.isArray(y) ? y.map(sorted) : rec(y) ? Object.fromEntries(Object.keys(y).sort().map((k) => [k, sorted(y[k])])) : y);
     return JSON.stringify(sorted(x));
   }
@@ -70,8 +70,8 @@ export namespace Gate {
   export function wait(gate: Gate, agent: string, who: string, tool: string, args: Record<string, unknown>, what: string, signal: AbortSignal, asked: (a: Asked) => void): Promise<Said | null> {
     const now = Date.now();
     prune(gate, now);
-    const keyed = key(args);
-    const same = (h: Held) => h.agent === agent && h.who === who && h.tool === tool && h.key === keyed;
+    const key = key_of(args);
+    const same = (h: Held) => h.agent === agent && h.who === who && h.tool === tool && h.key === key;
     const yes = gate.held.find((h) => same(h) && h.ok === true);
     if (yes !== undefined) {
       drop(gate, yes);
@@ -79,7 +79,7 @@ export namespace Gate {
     }
     let h = gate.held.find((x) => same(x) && x.ok === null && !gate.waits.has(x.id));
     if (h === undefined) {
-      h = { id: crypto.randomUUID().slice(0, 8), agent, who, tool, input: JSON.stringify(args), what, at: now, key: keyed, ok: null, note: "" };
+      h = { id: crypto.randomUUID().slice(0, 8), agent, who, tool, input: JSON.stringify(args), what, at: now, key, ok: null, note: "" };
       gate.held = [...gate.held, h];
       save(gate);
       asked(h);

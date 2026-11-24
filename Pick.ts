@@ -115,7 +115,7 @@ export namespace Pick {
     }
   }
 
-  function move(pick: Pick, move: Move, offer: Offer, to: string): Pick | null {
+  function matched(pick: Pick, move: Move, offer: Offer, to: string): Pick | null {
     const list = Pick.options(pick, move, offer);
     const mine = ([, p]: [string, Pick]) => p.profile === undefined && p.vendor === pick.vendor;
     const same = list.filter(([part, p]) => part === to || (p.profile === undefined && p.vendor + ":" + part === to));
@@ -126,14 +126,14 @@ export namespace Pick {
   }
 
   // a pick with one part moved, as /model, /effort and /fast ask, or why not
-  export function moved(from: Pick, which: Move, offer: Offer, to: string): Pick | string {
-    if (which === "speed" && Pick.options(from, "speed", offer).length === 1) {
+  export function moved(from: Pick, move: Move, offer: Offer, to: string): Pick | string {
+    if (move === "speed" && Pick.options(from, "speed", offer).length === 1) {
       return from.model + " has no fast.";
     }
-    if (which === "effort" && Pick.options(from, "effort", offer).length === 0) {
+    if (move === "effort" && Pick.options(from, "effort", offer).length === 0) {
       return from.model + " has no effort to set.";
     }
-    return move(from, which, offer, to) ?? "No " + which + " " + to + (which === "effort" ? " on " + from.model : "") + "; one of: " + Pick.parts(from, which, offer).join(", ") + ".";
+    return matched(from, move, offer, to) ?? "No " + move + " " + to + (move === "effort" ? " on " + from.model : "") + "; one of: " + Pick.parts(from, move, offer).join(", ") + ".";
   }
 
   export function parts(pick: Pick, move: Move, offer: Offer): string[] {
