@@ -13,9 +13,14 @@ import type { Rule } from "./Rules.ts";
 // Code's tool use id, which the answer names)
 export type Ask = { id: string; tool: string; input: Record<string, unknown>; what: string };
 
+// a question the session asked its agent (ask_owner), its call waiting
+// for the answer
+export type Asking = { id: string; text: string };
+
 // what a session did. began: Claude Code's session id, which resumes it;
-// heard: a message the server sent went in; turn: Claude Code finished a
-// turn; end: the holder's run is over and it exits
+// heard: a message the server sent went in; replied: a question got its
+// answer; report: the session's result; turn: Claude Code finished a turn;
+// end: the holder's run is over and it exits
 export type Ev =
   | { k: "began"; sdk: string }
   | { k: "text"; text: string }
@@ -25,22 +30,26 @@ export type Ev =
   | { k: "answered"; id: string; ok: boolean }
   | { k: "dropped"; id: string }
   | { k: "heard"; id: string }
+  | ({ k: "question" } & Asking)
+  | { k: "replied"; id: string }
+  | { k: "report"; text: string }
   | { k: "compacted" }
   | { k: "turn"; ok: boolean; text: string }
   | { k: "end"; ok: boolean; text: string };
 
 export type Told = { seq: number; at: number; ev: Ev };
 
-// rules: the ask rules changed
+// rules: the ask rules changed; say: a message for the session (answer:
+// the answer to its first question waiting, if one still waits)
 type ToHold =
   | { $: "hello"; ack: number; rules: Rule[] }
   | { $: "ack"; seq: number }
   | { $: "rules"; rules: Rule[] }
   | { $: "answer"; id: string; ok: boolean; note: string }
-  | { $: "say"; id: string; text: string };
+  | { $: "say"; id: string; text: string; answer: boolean };
 
 type FromHold =
-  | { $: "welcome"; seq: number; asks: Ask[] }
+  | { $: "welcome"; seq: number; asks: Ask[]; questions: Asking[] }
   | ({ $: "ev" } & Told);
 
 export type Outbox = { seq: number; kept: Told[] };

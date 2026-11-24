@@ -4,7 +4,8 @@
 // repo, in its own branch and worktree, kept across server restarts. A
 // session has runs (a message it works on until it's done with it), each
 // tried again (an attempt) when its holder died; the calls it has parked
-// for the owner's answer; the messages sent to it not yet taken in.
+// for the owner's answer; the questions it asked its agent; the messages
+// sent to it not yet taken in; the messages that wake its agent.
 
 import { Owner } from "./Owner.ts";
 
@@ -23,13 +24,23 @@ export type Session = {
   last: string; made: number; at: number; archived: number;
 };
 
-type Run = { session: string; n: number; prompt: string; status: Status; attempts: number; why: string; started: number; ended: number | null };
+// report: what the session gave as the run's result
+type Run = { session: string; n: number; prompt: string; status: Status; attempts: number; why: string; report: string; started: number; ended: number | null };
 
 // ok: the owner's answer, null till then; it stays till the holder says it
 // took it
 export type Parked = { id: string; session: string; tool: string; input: string; what: string; ok: number | null; note: string; at: number };
 
-type Say = { id: string; session: string; text: string; at: number };
+// queue: taken in once the run at work ends; steer: into it now; answer:
+// the answer to the question the session waits on
+export type Mode = "queue" | "steer" | "answer";
+
+type Say = { id: string; session: string; text: string; mode: Mode; at: number };
+
+type Question = { id: string; session: string; text: string; at: number };
+
+// a message for the session's agent, sent once it's in that agent's chat
+export type Wake = { id: string; agent: string; text: string };
 
 const NEXT: Record<Status, Partial<Record<Step, Status>>> = {
   running : { ask: "waiting", ended: "done", failed: "failed", stop: "stopped" },
@@ -41,9 +52,11 @@ const NEXT: Record<Status, Partial<Record<Step, Status>>> = {
 
 const SCHEMA = `
 create table if not exists work_sessions (id text primary key, name text not null, agent text not null, repo text not null, base text not null, branch text not null, worktree text not null, account text not null, model text not null, dir text not null, status text not null, sdk text not null default '', ack integer not null default 0, launches integer not null default 0, last text not null default '', made integer not null, at integer not null, archived integer not null default 0);
-create table if not exists work_runs (session text not null, n integer not null, prompt text not null, status text not null, attempts integer not null default 1, why text not null default '', started integer not null, ended integer, primary key (session, n));
+create table if not exists work_runs (session text not null, n integer not null, prompt text not null, status text not null, attempts integer not null default 1, why text not null default '', report text not null default '', started integer not null, ended integer, primary key (session, n));
 create table if not exists work_asks (id text primary key, session text not null, tool text not null, input text not null, what text not null, ok integer, note text not null default '', at integer not null);
-create table if not exists work_says (id text primary key, session text not null, text text not null, heard integer not null default 0, at integer not null);
+create table if not exists work_says (id text primary key, session text not null, text text not null, mode text not null, heard integer not null default 0, at integer not null);
+create table if not exists work_questions (id text primary key, session text not null, text text not null, at integer not null);
+create table if not exists work_wakes (id text primary key, agent text not null, text text not null, sent integer not null default 0, at integer not null);
 `;
 
 let MADE = false;
@@ -161,16 +174,53 @@ export namespace Session {
 
   // a message for the session; false: one with that id came already
   export function say(s: Say): boolean {
-    return Session.db().query("insert or ignore into work_says (id, session, text, at) values (?, ?, ?, ?)").run(s.id, s.session, s.text, s.at).changes > 0;
+    return Session.db().query("insert or ignore into work_says (id, session, text, mode, at) values (?, ?, ?, ?, ?)").run(s.id, s.session, s.text, s.mode, s.at).changes > 0;
+  }
+
+  export function unsay(id: string): void {
+    Session.db().query("delete from work_says where id = ?").run(id);
   }
 
   export function unheard(session: string): Say[] {
-    return Session.db().query("select id, session, text, at from work_says where session = ? and heard = 0 order by at").all(session) as Say[];
+    return Session.db().query("select id, session, text, mode, at from work_says where session = ? and heard = 0 order by at").all(session) as Say[];
   }
 
   export function heard(ids: string[]): void {
     const q = Session.db().query("update work_says set heard = 1 where id = ?");
     ids.forEach((id) => q.run(id));
+  }
+
+  export function report(session: string, text: string): void {
+    Session.db().query("update work_runs set report = ? where session = ? and n = (select max(n) from work_runs where session = ?)").run(text, session, session);
+  }
+
+  export function ask(q: Question): void {
+    Session.db().query("insert or ignore into work_questions (id, session, text, at) values (?, ?, ?, ?)").run(q.id, q.session, q.text, q.at);
+  }
+
+  export function questions(session: string): Question[] {
+    return Session.db().query("select * from work_questions where session = ? order by at").all(session) as Question[];
+  }
+
+  export function unask(id: string): void {
+    Session.db().query("delete from work_questions where id = ?").run(id);
+  }
+
+  export function unask_all(session: string): void {
+    Session.db().query("delete from work_questions where session = ?").run(session);
+  }
+
+  // a wake message kept to send; false: one with that id was kept already
+  export function wake(w: Wake): boolean {
+    return Session.db().query("insert or ignore into work_wakes (id, agent, text, at) values (?, ?, ?, ?)").run(w.id, w.agent, w.text, Date.now()).changes > 0;
+  }
+
+  export function unsent(): Wake[] {
+    return Session.db().query("select id, agent, text from work_wakes where sent = 0 order by at").all() as Wake[];
+  }
+
+  export function sent(id: string): void {
+    Session.db().query("update work_wakes set sent = 1 where id = ?").run(id);
   }
 
 }

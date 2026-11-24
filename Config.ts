@@ -101,6 +101,9 @@ export const PERSONAL = "personal";
 const ACCOUNT = /^(?!sub$)(?=[a-z0-9-]*[a-z])[a-z0-9][a-z0-9-]{0,23}$/;
 export const CLAUDE     = config_path(config_get("claude", ""));
 
+// the agent-browser a work session's browser runs ("": the one on PATH)
+export const AGENT_BROWSER = config_path(config_get("agent_browser", ""));
+
 const ENV_KEYS: Record<string, string> = Object.fromEntries(Object.entries(VARS).map(([name, v]) => [name, config_key(v)]));
 export const KEYS: Record<string, string> = config_keys(keys_read());
 

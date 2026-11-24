@@ -6,17 +6,22 @@
 // it has nothing left to do, tells the server everything it does (Wire),
 // and parks each call a rule names until the server sends the owner's
 // answer. What it tells is also kept in the session's log, which the
-// server reads what it missed from once the holder is gone.
+// server reads what it missed from once the holder is gone. It gives the
+// session two tools of Ki's: ask_owner, a question for its agent that
+// waits for the answer (a message the server sends as one), and report,
+// its result.
 
 import * as fs from "node:fs";
 import * as net from "node:net";
 import * as path from "node:path";
-import type { CanUseTool, HookCallback, PermissionResult, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { CanUseTool, HookCallback, McpSdkServerConfigWithInstance, PermissionResult, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
+import { z } from "zod";
 import { ClaudeSub } from "./ClaudeSub.ts";
 import { err_why } from "./Err.ts";
 import { get, list, rec, str } from "./Json.ts";
 import { Rules, type Rule } from "./Rules.ts";
-import { Wire, type Ask, type Ev, type Outbox, type Told } from "./Wire.ts";
+import { BIN } from "./Browser.ts";
+import { Wire, type Ask, type Asking, type Ev, type Outbox, type Told } from "./Wire.ts";
 
 // what a session keeps for its life: its worktree, its Claude account's
 // folder, its model ("": the account's default) and what its system
@@ -30,13 +35,17 @@ export type Start = { prompt: string; resume: string; rules: Rule[]; sock: strin
 
 type Parked = { ask: Ask; done: (r: PermissionResult) => void };
 
+type Waiting = { q: Asking; done: (answer: string) => void };
+
 // a holder's state: what it told and the server hasn't acked, the calls
-// parked, the notes the owner approved some with, the messages the server
-// sent (by id), Claude Code's input, the rules that park a call, the
-// connection that owns it now, how it tells an event
+// parked, the questions waiting for an answer, the notes the owner
+// approved some with, the messages the server sent (by id), Claude Code's
+// input, the rules that park a call, the connection that owns it now, how
+// it tells an event
 type Held = {
   out   : Outbox;
   asks  : Map<string, Parked>;
+  waits : Map<string, Waiting>;
   notes : Map<string, string>;
   says  : Set<string>;
   inbox : ReturnType<typeof ClaudeSub.inbox>;
@@ -114,7 +123,7 @@ export namespace Hold {
       h.conn = s;
       h.rules = Array.isArray(msg.rules) ? (msg.rules as Rule[]) : h.rules;
       Wire.ack(h.out, Number(msg.ack) || 0);
-      Wire.send(s, { $: "welcome", seq: h.out.seq, asks: [...h.asks.values()].map((a) => a.ask) });
+      Wire.send(s, { $: "welcome", seq: h.out.seq, asks: [...h.asks.values()].map((a) => a.ask), questions: [...h.waits.values()].map((w) => w.q) });
       h.out.kept.forEach((t) => Wire.send(s, { $: "ev", ...t }));
     } else if (s !== h.conn) {
       return;
@@ -126,9 +135,34 @@ export namespace Hold {
       Hold.answer(h, String(msg.id), msg.ok === true, str(msg.note) ?? "");
     } else if (msg.$ === "say" && typeof msg.id === "string" && typeof msg.text === "string" && !h.says.has(msg.id) && h.inbox.open()) {
       h.says.add(msg.id);
-      h.inbox.put([msg.text], []);
+      const [first] = h.waits.values();
+      if (msg.answer !== true || first === undefined) {
+        h.inbox.put([msg.text], []);
+      } else {
+        h.waits.delete(first.q.id);
+        h.emit({ k: "replied", id: first.q.id });
+        first.done(msg.text);
+      }
       h.emit({ k: "heard", id: msg.id });
     }
+  }
+
+  export function tools(h: Held, sdk: Awaited<ReturnType<typeof ClaudeSub.sdk>>): McpSdkServerConfigWithInstance {
+    const said = (text: string) => ({ content: [{ type: "text" as const, text }] });
+    return sdk.createSdkMcpServer({ name: "ki", alwaysLoad: true, tools: [
+      sdk.tool("ask_owner", "Ask the agent that started this session a question, when you can't go on without its answer (a decision, missing information). The call waits for the answer, which can take a while; it comes back as this call's result.", { question: z.string() }, async ({ question }) => {
+        const id = crypto.randomUUID();
+        const answer = await new Promise<string>((done) => {
+          h.waits.set(id, { q: { id, text: question }, done });
+          h.emit({ k: "question", id, text: question });
+        });
+        return said("The answer: " + answer);
+      }),
+      sdk.tool("report", "Give your result to the agent that started this session, once, when you're done: what you did, where (branch, commits, files), how you checked it, what is left. Then end your turn.", { result: z.string() }, ({ result }) => {
+        h.emit({ k: "report", text: result });
+        return Promise.resolve(said("Reported. End your turn now."));
+      }),
+    ] });
   }
 
   // the owner's answer to a parked call; one it already had, or for a
@@ -161,7 +195,7 @@ export namespace Hold {
     if (size > 0 && fs.readFileSync(file).at(size - 1) !== 0x0a) {
       fs.writeSync(log, "\n");
     }
-    const h: Held = { out: Wire.outbox(Hold.told(dir).at(-1)?.seq ?? 0), asks: new Map(), notes: new Map(), says: new Set(), inbox: ClaudeSub.inbox(), rules: start.rules, conn: null, emit: () => {} };
+    const h: Held = { out: Wire.outbox(Hold.told(dir).at(-1)?.seq ?? 0), asks: new Map(), waits: new Map(), notes: new Map(), says: new Set(), inbox: ClaudeSub.inbox(), rules: start.rules, conn: null, emit: () => {} };
     h.emit = (ev) => {
       const told = Wire.push(h.out, ev, Date.now());
       fs.writeSync(log, JSON.stringify(told) + "\n");
@@ -234,13 +268,14 @@ export namespace Hold {
         cwd                        : spec.cwd,
         model                      : spec.model === "" ? undefined : spec.model,
         pathToClaudeCodeExecutable : await ClaudeSub.bin_on_disk(),
-        env                        : { ...env, ...ENV, CLAUDE_CONFIG_DIR: spec.claude },
+        env                        : { ...env, ...ENV, CLAUDE_CONFIG_DIR: spec.claude, PATH: [path.join(dir, BIN), env.PATH].filter((p) => p !== undefined).join(path.delimiter) },
         systemPrompt               : { type: "preset", preset: "claude_code", append: spec.append },
         tools                      : { type: "preset", preset: "claude_code" },
         settingSources             : ["user", "project", "local"],
         permissionMode             : "default",
         disallowedTools            : DISALLOWED,
         settings                   : SETTINGS,
+        mcpServers                 : { ki: Hold.tools(h, sdk_mod) },
         resume                     : sdk === "" ? undefined : sdk,
         canUseTool                 : can,
         hooks                      : {

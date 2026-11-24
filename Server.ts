@@ -1268,8 +1268,9 @@ export namespace Chat {
     }, { kind: "work", text }));
   }
 
-  // a device's job report, acked once it's queued, and taken once: a device
-  // sends it again until acked
+  // a device's job report, or a work session's wake message, acked once
+  // it's queued, and taken once: a device sends it again until acked, a
+  // server's boot sends a wake again till its act is logged
   export async function job_done(chat: Chat, id: string, agent: string, text: string): Promise<Answer> {
     if (chat.main.queue.some((x) => x.q.act === id) || chat.mem.held.some((q) => q.act === id) || Owner.act_get(id) !== null) {
       return {};
@@ -2863,7 +2864,12 @@ export namespace Main {
     };
     Limit.answering(() => ({ queued: [...Main.chats.values()].some((c) => Run.waiting(c.main)), busy: [...Main.chats.values()].some((c) => c.main.busy) }));
     Team.all().forEach((agent) => Chat.open(agent.id, Main.tools, agent.id === hello));
-    Sessions.boot(Main.tools.gate, (a) => Main.asked(a));
+    Sessions.boot(Main.tools.gate, (a) => Main.asked(a), (w) => {
+      const chat = Main.chats.get(w.agent);
+      if (chat !== undefined) {
+        void Chat.job_done(chat, w.id, w.agent, w.text);
+      }
+    });
     Chat.copies();
     Main.watch();
     setInterval(() => void Main.scratch_sweep(null), SCRATCH_SWEEP).unref();

@@ -9,6 +9,7 @@ import { clip_page } from "./Clip.ts";
 import { Mcp, NAME_MOST, type Held, type Servers } from "./Mcp.ts";
 import { Memory } from "./Memory.ts";
 import { Search } from "./Search.ts";
+import { Sessions } from "./Sessions.ts";
 import * as Prompts from "./Prompts.ts";
 import { Team } from "./Team.ts";
 import * as Timer from "./Timer.ts";
@@ -129,6 +130,20 @@ const boss = (): Spec[] => [
     until  : { type: "string", description: "YYYY-MM-DD: the last day a temporary pin holds." },
     id     : INT,
     ids    : { type: "array", items: INT },
+  }, ["action"]),
+  spec("session", "Work sessions: a Claude Code session of your own on a git repo of this server's computer, in its own branch (ki/<name>) and worktree, that runs on its own for as long as the task takes, through server restarts. start: repo, base (the ref its branch starts from; default the repo's HEAD), name, brief (its whole task: it knows only that, the repo and its instructions), model. It never waits on you while it runs: you get one message \"[Session name] done|failed|stopped|waiting|question: …\" when its run ends, it waits on the user's approval of a call (only the user can give it, in the app), or it asks you something; that message starts your turn, so don't wait for it, read it to check, or schedule a check. send: a message (text) to it, by name: mode steer (default: into its work now; to a session that asked you something, the answer) or queue (for its next run, once this one ends); to a session done or stopped it starts a new run; request: an id of yours for this message, the same on a retry, so it's sent once. read: its state, what it waits on, its report and its latest lines; after (a line's number) and n for its log from there. stop: stop it at once (its worktree stays). list: your sessions. archive: remove its worktree and branch once its work is merged or not wanted (force: even with commits or changes found nowhere else).", {
+    action  : { type: "string", enum: ["start", "send", "read", "stop", "list", "archive"] },
+    name    : { type: "string", description: "The session's name: 1 to 40 lowercase letters, digits and dashes." },
+    repo    : { type: "string", description: "Start: the repo's folder (~ is the home folder)." },
+    base    : STR,
+    brief   : STR,
+    model   : { type: "string", description: "Start: its Claude model (an alias such as sonnet, or a model id); by default its Claude account's." },
+    text    : STR,
+    mode    : { type: "string", enum: ["steer", "queue"] },
+    request : STR,
+    after   : INT,
+    n       : INT,
+    force   : { type: "boolean" },
   }, ["action"]),
   spec("resume", "Wake every call on this server waiting for an AI service's usage limit (other turns, summaries), when the user says a limit was reset early. Each asks again once; one still limited waits again.", {}, []),
 ];
@@ -486,6 +501,9 @@ export namespace Tools {
       }
       case "message": {
         return await seat.message(text_of(args.agent), text_of(args.text));
+      }
+      case "session": {
+        return seat.subs === null ? { text: "A subagent starts no sessions.", fail: true } : Sessions.tool(who, args);
       }
       case "spawn": {
         const tasks = Sub.spawns(args);
