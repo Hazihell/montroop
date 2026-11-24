@@ -47,7 +47,7 @@ export function name(part: Part): string {
 }
 
 export function command(): string[] {
-  const bun = /^bun(\.exe)?$/i.test(path.basename(process.execPath));
+  const bun = /^bun(\.native)?(\.exe)?$/i.test(path.basename(process.execPath));
   return bun ? [process.execPath, path.resolve(process.argv[1])] : [process.execPath];
 }
 

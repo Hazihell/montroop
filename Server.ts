@@ -31,6 +31,7 @@ import * as Service from "./Service.ts";
 import * as Timer from "./Timer.ts";
 import * as Pins from "./Pins.ts";
 import { Gate, type Asked } from "./Gate.ts";
+import { Sessions } from "./Sessions.ts";
 import { SEARCHES, Tools, type Seat, type Subs } from "./Tools.ts";
 import { JOB } from "./Machine.ts";
 import { ACTIVE, ASKS, FRAME, IDLE, IMAGES, limit_note, LINES, LINES_MOST, live_push, MEDIA, PING, QUIT, SUMMARIES, TICK, TURN, WIRE, type Answer, type Live, type Part, type Pending, type Queued, type Server as Out, type Sums, type Talk as Meter, TOKEN, type Wait, type Mate } from "./View.ts";
@@ -2681,6 +2682,9 @@ export namespace Main {
         return await Main.team(req);
       }
     }
+    if (p === "/api/sessions" || p.startsWith("/api/sessions/")) {
+      return await Sessions.http(req, p);
+    }
     const one = /^\/api\/agents\/([a-z0-9]{1,16})(?:\/(archive|restore|left|prompts))?$/.exec(p);
     if (one !== null) {
       return await Main.agent(req, one[1], one[2] ?? "");
@@ -2859,6 +2863,7 @@ export namespace Main {
     };
     Limit.answering(() => ({ queued: [...Main.chats.values()].some((c) => Run.waiting(c.main)), busy: [...Main.chats.values()].some((c) => c.main.busy) }));
     Team.all().forEach((agent) => Chat.open(agent.id, Main.tools, agent.id === hello));
+    Sessions.boot(Main.tools.gate, (a) => Main.asked(a));
     Chat.copies();
     Main.watch();
     setInterval(() => void Main.scratch_sweep(null), SCRATCH_SWEEP).unref();
