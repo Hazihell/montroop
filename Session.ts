@@ -29,7 +29,7 @@ export type Session = {
 };
 
 // report: what the session gave as the run's result
-export type Run = { session: string; n: number; prompt: string; status: Status; attempts: number; why: string; report: string; started: number; ended: number | null };
+type Run = { session: string; n: number; prompt: string; status: Status; attempts: number; why: string; report: string; started: number; ended: number | null };
 
 // ok: the owner's answer, null till then; it stays till the holder says it
 // took it
@@ -39,9 +39,9 @@ export type Parked = { id: string; session: string; tool: string; input: string;
 // the answer to the question the session waits on
 export type Mode = "queue" | "steer" | "answer";
 
-export type Say = { id: string; session: string; text: string; mode: Mode; at: number };
+type Say = { id: string; session: string; text: string; mode: Mode; at: number };
 
-export type Question = { id: string; session: string; text: string; at: number };
+type Question = { id: string; session: string; text: string; at: number };
 
 // a message for the session's agent, sent once it's in that agent's chat
 export type Wake = { id: string; agent: string; text: string };

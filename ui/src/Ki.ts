@@ -99,10 +99,10 @@ export function mood_of(m: View.Mate, s: { agent: string; loaded: boolean; mood:
 
 // a work session's mood: at work, waiting on the owner or on its agent,
 // or ended and not yet seen by the owner; null once it ended and was seen
-export function work_mood(w: View.Work): Mood | null {
+export function work_mood(w: View.SessionRow): Mood | null {
   return w.status === "running" ? "working"
-    : w.status === "waiting" ? (w.wait === "question" ? "listening" : "asking")
-    : !w.fresh ? null
+    : w.status === "waiting" ? (w.waits === "answer" ? "listening" : "asking")
+    : !w.unseen ? null
     : w.status === "done" ? "done"
     : w.status === "failed" ? "error"
     : "sleeping";
@@ -119,7 +119,7 @@ const WORK_SAID: Partial<Record<Mood, [string, string]>> = {
 };
 
 // the work sessions that matter now, in one sentence for a screen reader
-export function works_said(works: View.Work[]): string {
+export function works_said(works: View.SessionRow[]): string {
   const moods = works.map(work_mood).filter((m) => m !== null);
   const counts = [...new Set(moods)].map((m) => {
     const n = moods.filter((x) => x === m).length;

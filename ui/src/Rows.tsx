@@ -252,7 +252,7 @@ function Cap({ row }: { row: Of<"Cap"> }): ReactNode {
 
 // who asked: a work session's name opens its page
 function AskedBy({ ask }: { ask: Of<"Ask">["ask"] }): ReactNode {
-  const work = useKi((s) => s.team.find((m) => m.id === ask.agent)?.works?.find((w) => View.SESSION + w.name === ask.who));
+  const work = useKi((s) => s.team.find((m) => m.id === ask.agent)?.works?.find((w) => ask.from === "session" && View.SESSION + w.name === ask.who));
   return work === undefined ? ask.who : <Link to="/a/$agent/w/$id" params={{ agent: ask.agent, id: work.id }} className="underline underline-offset-2">{ask.who}</Link>;
 }
 

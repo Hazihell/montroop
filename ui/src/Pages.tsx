@@ -33,7 +33,7 @@ export function usePop(n: number, of = ""): string {
 }
 
 // an agent's work sessions that matter now, as small faces of their own
-function minis_of(works: View.Work[]): Mini[] {
+function minis_of(works: View.SessionRow[]): Mini[] {
   return works.flatMap((w) => {
     const mood = work_mood(w);
     return mood === null ? [] : [{ key: w.id, seed: work_seed(w), mood }];

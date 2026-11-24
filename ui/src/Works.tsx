@@ -9,18 +9,18 @@ import { note, useKi, work_mood } from "./Ki.ts";
 // an agent's work sessions as the app shows them: in its list of what runs
 // (each opens its page, one at work stops from there), and what they do
 
-const NO_WORKS: View.Work[] = [];
+const NO_WORKS: View.SessionRow[] = [];
 
-export function useWorks(agent: string): View.Work[] {
+export function useWorks(agent: string): View.SessionRow[] {
   return useKi((s) => s.team.find((m) => m.id === agent)?.works ?? NO_WORKS);
 }
 
-export function work_live(w: View.Work): boolean {
+export function work_live(w: View.SessionRow): boolean {
   return w.status === "running" || w.status === "waiting";
 }
 
 // what a session's face is drawn from: the same face wherever it shows
-export function work_seed(w: View.Work): string {
+export function work_seed(w: View.SessionRow): string {
   return "session/" + w.id;
 }
 
@@ -38,22 +38,22 @@ export function useNow(on: boolean): number {
 }
 
 // how long its latest run has run: till now, or till it ended
-export function work_span(w: View.Work, now: number): string {
+export function work_span(w: View.SessionRow, now: number): string {
   const s = Math.max(0, Math.round(((w.ended ?? now) - w.started) / 1000));
   return s < 60 ? s + "s" : s < 3600 ? Math.floor(s / 60) + "m" : Math.floor(s / 3600) + "h " + Math.floor((s % 3600) / 60) + "m";
 }
 
-export function WorkFace({ w, size }: { w: View.Work; size: number }): ReactNode {
+export function WorkFace({ w, size }: { w: View.SessionRow; size: number }): ReactNode {
   return <Face picture="" id={work_seed(w)} mood={work_mood(w) ?? "idle"} size={size} />;
 }
 
-export const STATES: Record<View.Work["status"], string> = { running: "Running", waiting: "Waiting", done: "Done", failed: "Failed", stopped: "Stopped" };
+export const STATES: Record<View.SessionRow["status"], string> = { running: "Running", waiting: "Waiting", done: "Done", failed: "Failed", stopped: "Stopped" };
 
 // what it does, in words, tinted by it; agent: its agent's name, whom its
 // question waits on
-export function WorkState({ w, agent }: { w: View.Work; agent: string }): ReactNode {
-  const said = w.wait === "approval" ? "Needs your approval" : w.wait === "question" ? "Asks " + (agent || "its agent") : STATES[w.status];
-  return <span className={"state " + (w.wait === "" ? w.status : "waiting")}>{said}</span>;
+export function WorkState({ w, agent }: { w: View.SessionRow; agent: string }): ReactNode {
+  const said = w.waits === "approval" ? "Needs your approval" : w.waits === "answer" ? "Asks " + (agent || "its agent") : STATES[w.status];
+  return <span className={"state " + (w.waits === null ? w.status : "waiting")}>{said}</span>;
 }
 
 // the server's answer, or null when it refused (said in a note)
@@ -66,7 +66,7 @@ export async function work_act(id: string, act: "say" | "stop" | "resume" | "arc
   return out;
 }
 
-export function work_stop(w: View.Work): void {
+export function work_stop(w: View.SessionRow): void {
   if (confirm("Stop " + w.name + "? It stops at once; its worktree and branch stay, and a message starts it again.")) {
     void work_act(w.id, "stop");
   }
@@ -83,7 +83,7 @@ export function WorkRows({ agent }: { agent: string }): ReactNode {
         <p>
           <b className="font-semibold">{w.name}</b>
           <small><WorkState w={w} agent={name} /> · <span className="tabular-nums">{work_span(w, now)}</span></small>
-          {w.line === "" ? null : <small className="said">{w.line}</small>}
+          {w.last === "" ? null : <small className="said">{w.last}</small>}
         </p>
         {work_live(w) ? null : <CaretRightIcon size={16} className="self-center" />}
       </Link>

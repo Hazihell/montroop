@@ -30,7 +30,7 @@ import * as Prompts from "./Prompts.ts";
 import { command, output, run } from "./Service.ts";
 import { LIVE, Session, type Effect, type Mode, type Parked, type Wake } from "./Session.ts";
 import { Team } from "./Team.ts";
-import { PICTURE, SESSION, VIDEO, type Work } from "./View.ts";
+import { PICTURE, SESSION, VIDEO, type SessionPage, type SessionRow, type Waits } from "./View.ts";
 import { VERSION, Wire, type Ev, type Told } from "./Wire.ts";
 import { Worktree } from "./Worktree.ts";
 
@@ -514,16 +514,32 @@ export namespace Sessions {
     return before === null ? all.filter((t) => t.seq > after).slice(0, n) : all.filter((t) => t.seq < before).slice(-n || all.length);
   }
 
-  // the session as its agent's row in the app
-  export function row(s: Session): Work {
+  // the session as the app and the session tool show it
+  export function row(s: Session): SessionRow {
     if (!LATEST.has(s.id)) {
       const last = Hold.told(s.dir).map((t) => latest_of(t.ev)).findLast((b) => b !== "");
       LATEST.set(s.id, last ?? line(s.last, LINE));
     }
     const run = Session.run(s.id);
-    const wait = Session.parked(s.id).length > 0 ? "approval" : Session.questions(s.id).length > 0 ? "question" : "";
+    const waits: Waits = Session.parked(s.id).length > 0 ? "approval" : Session.questions(s.id).length > 0 ? "answer" : null;
     const ended = run?.ended ?? null;
-    return { id: s.id, name: s.name, branch: s.branch, status: s.status, wait, line: LATEST.get(s.id) ?? "", started: run?.started ?? s.made, ended, seq: s.ack, fresh: ended !== null && ended > s.seen };
+    return { id: s.id, name: s.name, agent: s.agent, branch: s.branch, status: s.status, waits, last: LATEST.get(s.id) ?? "", started: run?.started ?? s.made, ended, at: s.at, unseen: ended !== null && ended > s.seen };
+  }
+
+  // the session's page, with its log after a point (log)
+  function page(s: Session, after: number, n: number, before: number | null): SessionPage {
+    return {
+      ...row(s),
+      base      : s.base,
+      worktree  : s.worktree,
+      archived  : s.archived !== 0,
+      runs      : Session.runs(s.id).map(({ n: k, prompt, status, attempts, why, report, started, ended }) => ({ n: k, prompt, status, attempts, why, report, started, ended })),
+      parked    : Session.parked(s.id).map(({ id, tool, what, input }) => ({ id, tool, what, input })),
+      questions : Session.questions(s.id).map(({ id, text }) => ({ id, text })),
+      says      : Session.says(s.id).map(({ id, text, mode, heard, at }) => ({ id, text, mode, heard, at })),
+      media     : media(s),
+      log       : log(s.id, after, n, before),
+    };
   }
 
   // the session's media files, oldest first
@@ -538,7 +554,7 @@ export namespace Sessions {
     const arg = (k: string) => (args[k] === undefined || args[k] === null ? "" : text_of(args[k]).trim());
     const ok = (text: string): Out => ({ text, fail: false });
     const no = (text: string): Out => ({ text, fail: true });
-    const mine = Session.list(agent);
+    const mine = Session.list(agent).map(row);
     const action = arg("action");
     if (action === "list") {
       return ok(mine.length === 0 ? "You have no sessions." : mine.map((x) => x.name + ": " + state(x) + ", branch " + x.branch + (x.last === "" ? "" : ", last: " + line(x.last, 80))).join("\n"));
@@ -570,7 +586,8 @@ export namespace Sessions {
         return typeof sent !== "string" ? no(sent.why) : ok(SENT[sent] + " You get a message when it's done or needs you: don't wait for it.");
       }
       case "read": {
-        return ok(read(s, args.after === undefined ? null : Number(args.after) || 0, Number(args.n) || LINES));
+        const rec = Session.get(s.id);
+        return rec === null ? no("No session " + s.name + ".") : ok(read(rec, args.after === undefined ? null : Number(args.after) || 0, Number(args.n) || LINES));
       }
       case "stop": {
         const why = stop(s.id, false);
@@ -585,10 +602,8 @@ export namespace Sessions {
   }
 
   // its status, with what it waits on
-  function state(s: Session): string {
-    const parked = Session.parked(s.id).length;
-    const asked = Session.questions(s.id).length;
-    return s.status + (parked > 0 ? " on the user's approval" : asked > 0 ? " on your answer" : "");
+  function state(r: SessionRow): string {
+    return r.status + (r.waits === "approval" ? " on the user's approval" : r.waits === "answer" ? " on your answer" : "");
   }
 
   function line(text: string, most: number): string {
@@ -621,20 +636,21 @@ export namespace Sessions {
   // what a read shows: its state, what waits on someone, its report, and
   // the log's latest lines, or n of them after a point
   function read(s: Session, after: number | null, n: number): string {
-    const run = Session.run(s.id);
-    const all = Hold.told(s.dir).filter((t) => !["began", "heard", "replied", "compacted", "dropped"].includes(t.ev.k));
-    const page = after === null ? all.slice(-TAIL) : all.filter((t) => t.seq > after).slice(0, Math.min(Math.max(1, n), LINES_MOST));
-    const more = after !== null && page.length > 0 && all.at(-1) !== page.at(-1);
-    const head = "Session " + s.name + ": " + state(s) + (run === null ? "" : ", run " + run.n + (run.attempts > 1 ? " (attempt " + run.attempts + ")" : "")) + ". Branch " + s.branch + " from " + s.base + ", worktree " + s.worktree + ", media " + path.join(s.dir, MEDIA) + ".";
+    const p = page(s, 0, Infinity, null);
+    const run = p.runs.at(-1) ?? null;
+    const all = p.log.filter((t) => !["began", "heard", "replied", "compacted", "dropped"].includes(t.ev.k));
+    const shown = after === null ? all.slice(-TAIL) : all.filter((t) => t.seq > after).slice(0, Math.min(Math.max(1, n), LINES_MOST));
+    const more = after !== null && shown.length > 0 && all.at(-1) !== shown.at(-1);
+    const head = "Session " + p.name + ": " + state(p) + (run === null ? "" : ", run " + run.n + (run.attempts > 1 ? " (attempt " + run.attempts + ")" : "")) + ". Branch " + p.branch + " from " + p.base + ", worktree " + p.worktree + ", media " + path.join(s.dir, MEDIA) + ".";
     const lines = [
       head,
-      ...Session.parked(s.id).map((p) => "Waits on the user's approval, in the app (you can't give it): " + p.what + " (" + p.tool + " " + line(p.input, 200) + ")"),
-      ...Session.questions(s.id).map((q) => "Asks you (answer with send): " + q.text),
+      ...p.parked.map((c) => "Waits on the user's approval, in the app (you can't give it): " + c.what + " (" + c.tool + " " + line(c.input, 200) + ")"),
+      ...p.questions.map((q) => "Asks you (answer with send): " + q.text),
       ...(run !== null && run.report !== "" ? ["Report: " + run.report] : run !== null && run.why !== "" ? ["Why it " + run.status + ": " + run.why] : []),
       "",
       (after === null ? "Its latest lines" : "Its lines after " + after) + ":",
-      ...(page.length === 0 ? ["(none)"] : page.map(said)),
-      ...(more ? ["(more: read with after=" + page.at(-1)?.seq + ")"] : after === null && all.length > TAIL ? ["(earlier lines: read with after=0)"] : []),
+      ...(shown.length === 0 ? ["(none)"] : shown.map(said)),
+      ...(more ? ["(more: read with after=" + shown.at(-1)?.seq + ")"] : after === null && all.length > TAIL ? ["(earlier lines: read with after=0)"] : []),
     ];
     return lines.join("\n");
   }
@@ -657,17 +673,20 @@ export namespace Sessions {
       return Response.json({ error: "No such session call." }, { status: 404 });
     }
     const [, id, act] = m;
-    const out = (why: string | null, more: object = {}) => Response.json(why === null ? { ...Session.get(id), ...more } : { error: why }, { status: why === null ? 200 : 409 });
+    const out = (why: string | null, more: object = {}) => {
+      const s = Session.get(id);
+      return Response.json(why === null ? { ...(s === null ? {} : row(s)), ...more } : { error: why }, { status: why === null ? 200 : 409 });
+    };
     if (req.method === "GET" && act === undefined) {
       if (id === undefined) {
-        return Response.json(Session.list(url.searchParams.get("agent")));
+        return Response.json(Session.list(url.searchParams.get("agent")).map(row));
       }
       const s = Session.get(id);
       const after = Number(url.searchParams.get("after") ?? 0) || 0;
       const before = url.searchParams.has("before") ? Number(url.searchParams.get("before")) || Infinity : null;
       const asked = Number(url.searchParams.get("n") ?? PAGE);
       const n = Math.min(Math.max(0, Number.isNaN(asked) ? PAGE : asked), PAGE_MOST);
-      return s === null ? Response.json({ error: "No session " + id + "." }, { status: 404 }) : Response.json({ ...s, runs: Session.runs(id), parked: Session.parked(id), questions: Session.questions(id), says: Session.says(id), media: media(s), log: log(id, after, n, before) });
+      return s === null ? Response.json({ error: "No session " + id + "." }, { status: 404 }) : Response.json(page(s, after, n, before));
     }
     if (req.method !== "POST") {
       return new Response("a session act is a POST", { status: 405 });
@@ -679,7 +698,7 @@ export namespace Sessions {
     const text = (k: string) => str(get(body, k)) ?? "";
     if (id === undefined) {
       const s = start({ agent: text("agent"), repo: Machine.home(text("repo")), base: text("base"), branch: text("branch"), name: text("name"), brief: text("brief"), prompt: text("prompt"), model: text("model") });
-      return typeof s === "string" ? Response.json({ error: s }, { status: 409 }) : Response.json(s);
+      return typeof s === "string" ? Response.json({ error: s }, { status: 409 }) : Response.json(row(s));
     }
     switch (act) {
       case "say": {

@@ -4,7 +4,6 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type 
 import * as Call from "../../Call.ts";
 import { get, text_of } from "../../Json.ts";
 import * as Md from "../../Md.ts";
-import type { Parked, Question, Run, Say, Session } from "../../Session.ts";
 import * as View from "../../View.ts";
 import type { Told } from "../../Wire.ts";
 import { Back } from "./Back.tsx";
@@ -18,8 +17,6 @@ import { useNow, useWorks, work_act, work_live, work_span, work_stop, STATES, Wo
 // (newest at the bottom, followed while at the bottom), the calls and
 // questions it waits on, its report and media, and a box to message it
 
-type Detail = Session & { runs: Run[]; parked: Parked[]; questions: Question[]; says: Array<Say & { heard: number }>; media: string[]; log: Told[] };
-
 // log entries a page brings
 const PAGE = 100;
 // how near the bottom still follows what comes, in px
@@ -32,16 +29,16 @@ const QUIET = new Set(["began", "heard", "replied", "dropped", "result"]);
 
 // the session as the server has it; "gone": it has none such; null: it
 // could not be reached
-async function load(id: string, query: string): Promise<Detail | "gone" | null> {
+async function load(id: string, query: string): Promise<View.SessionPage | "gone" | null> {
   const res = await fetch("/api/sessions/" + id + "?" + query).catch(() => null);
-  return res?.status === 404 ? "gone" : res?.ok === true ? ((await res.json()) as Detail) : null;
+  return res?.status === 404 ? "gone" : res?.ok === true ? ((await res.json()) as View.SessionPage) : null;
 }
 
 // the session and its log: the latest page, then what comes after it each
 // time its row in the team changes (moved) or again is called, and earlier
 // pages as asked
-function useDetail(id: string, moved: string): { d: Detail | null; log: Told[]; gone: boolean; earlier: () => void; again: () => void } {
-  const [d, setD] = useState<Detail | null>(null);
+function useDetail(id: string, moved: string): { d: View.SessionPage | null; log: Told[]; gone: boolean; earlier: () => void; again: () => void } {
+  const [d, setD] = useState<View.SessionPage | null>(null);
   const [log, setLog] = useState<Told[]>([]);
   const [gone, setGone] = useState(false);
   const [asked, setAsked] = useState(0);
@@ -206,8 +203,8 @@ function SayBox({ id, name, live, sent }: { id: string; name: string; live: bool
 // the log and what goes with it: the messages sent, in the order things
 // came; its media under the entry that names it, the rest at the end; then
 // what waits on someone now
-function Log({ d, log, id, agent, live, earlier }: { d: Detail; log: Told[]; id: string; agent: string; live: boolean; earlier: () => void }): ReactNode {
-  const asks = useKi((s) => s.asks).filter((a) => a.who === View.SESSION + d.name);
+function Log({ d, log, id, agent, live, earlier }: { d: View.SessionPage; log: Told[]; id: string; agent: string; live: boolean; earlier: () => void }): ReactNode {
+  const asks = useKi((s) => s.asks).filter((a) => a.from === "session" && a.who === View.SESSION + d.name);
   const results = new Map(log.flatMap((t) => (t.ev.k === "result" ? [[t.ev.id, { text: t.ev.text, error: t.ev.error }] as const] : [])));
   const placed = new Map<number, string[]>();
   const rest = d.media.filter((m) => {
@@ -256,7 +253,7 @@ export function WorkPage({ agent, id }: { agent: string; id: string }): ReactNod
   const works = useWorks(agent);
   const row = works.find((w) => w.id === id);
   const named = useKi((s) => s.team.find((m) => m.id === agent)?.name ?? "");
-  const { d, log, gone, earlier, again } = useDetail(id, row === undefined ? "" : row.seq + " " + row.status + " " + row.wait);
+  const { d, log, gone, earlier, again } = useDetail(id, row === undefined ? "" : String(row.at));
   const scroll = useRef<HTMLDivElement>(null);
   const held = useRef({ bottom: true, height: 0, first: -1 });
   const live = row !== undefined && work_live(row);
@@ -266,12 +263,12 @@ export function WorkPage({ agent, id }: { agent: string; id: string }): ReactNod
     return () => show(null);
   }, [agent]);
   // looked at: it is no longer new for the owner
-  const fresh = row?.fresh === true;
+  const unseen = row?.unseen === true;
   useEffect(() => {
-    if (fresh) {
+    if (unseen) {
       void View.post("/api/sessions/" + id + "/seen", {});
     }
-  }, [fresh, id]);
+  }, [unseen, id]);
   // follows the log while at its bottom; an earlier page keeps the place
   useLayoutEffect(() => {
     const el = scroll.current;
@@ -336,7 +333,7 @@ export function WorkPage({ agent, id }: { agent: string; id: string }): ReactNod
         {row === undefined ? null : <WorkFace w={row} size={44} />}
         <div className="min-w-0 flex-1 pl-0.5">
           <h1 className="truncate">{name}</h1>
-          <p className="work-sub">{row === undefined ? d === null ? "" : d.archived > 0 ? "Archived" : STATES[d.status] : <><WorkState w={row} agent={named} /> · <span className="tabular-nums">{work_span(row, now)}</span></>}</p>
+          <p className="work-sub">{row === undefined ? d === null ? "" : d.archived ? "Archived" : STATES[d.status] : <><WorkState w={row} agent={named} /> · <span className="tabular-nums">{work_span(row, now)}</span></>}</p>
         </div>
       </header>
       <div className="work-acts">

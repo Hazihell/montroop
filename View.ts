@@ -7,7 +7,8 @@ import type { Timer } from "./Timer.ts";
 import type { Bg, Job } from "./Machine.ts";
 import type { How, Row as SubRow } from "./Sub.ts";
 import type { Asked } from "./Gate.ts";
-import type { Status } from "./Session.ts";
+import type { Mode, Status } from "./Session.ts";
+import type { Told } from "./Wire.ts";
 import { rec } from "./Json.ts";
 
 export type Part = [number, number];
@@ -31,13 +32,33 @@ export type Live = { kind: Kind; text: string; of?: string };
 
 // an agent as the chat list shows it: last, its last message's gist; asks,
 // how many of its calls wait for the owner's yes; works, its work sessions
-export type Mate = { id: string; name: string; about: string; picture: string; unread: number; last: string; busy: boolean; asks?: number; archived: number; subs?: SubRow[]; works?: Work[] };
+export type Mate = { id: string; name: string; about: string; picture: string; unread: number; last: string; busy: boolean; asks?: number; archived: number; subs?: SubRow[]; works?: SessionRow[] };
 
 // a work session as its agent's row carries it: what it waits on (the
 // owner's approval, its agent's answer); line, its latest log line;
 // started and ended, its latest run's; seq, its latest event taken in;
 // fresh, it ended since the owner last looked at it
-export type Work = { id: string; name: string; branch: string; status: Status; wait: "approval" | "question" | ""; line: string; started: number; ended: number | null; seq: number; fresh: boolean };
+// what a work session waits on: the owner's approval of a call it parked,
+// or its agent's answer to its question
+export type Waits = "approval" | "answer" | null;
+
+// a work session as the app lists it: last, its latest line; started and
+// ended, its latest run's; at, when its record last changed; unseen, its
+// run ended since the owner last looked
+export type SessionRow = { id: string; name: string; agent: string; branch: string; status: Status; waits: Waits; last: string; started: number; ended: number | null; at: number; unseen: boolean };
+
+// a work session's page: its runs, the calls and questions it waits on,
+// the messages sent to it (heard: 1 taken in, 0 not yet, -1 dropped as it
+// was stopped), its media files and a page of its log
+export type SessionPage = SessionRow & {
+  base: string; worktree: string; archived: boolean;
+  runs: Array<{ n: number; prompt: string; status: Status; attempts: number; why: string; report: string; started: number; ended: number | null }>;
+  parked: Array<{ id: string; tool: string; what: string; input: string }>;
+  questions: Array<{ id: string; text: string }>;
+  says: Array<{ id: string; text: string; mode: Mode; heard: number; at: number }>;
+  media: string[];
+  log: Told[];
+};
 
 // who a work session's calls are asked by, on the owner's cards
 export const SESSION = "Session ";
