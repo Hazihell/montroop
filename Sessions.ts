@@ -172,15 +172,17 @@ export namespace Sessions {
     fs.writeFileSync(path.join(dir, SPEC), JSON.stringify(spec, null, 1) + "\n", { mode: 0o600 });
     const s = Session.add({ id, name: b.name, agent: b.agent, repo: top.dir, base, branch, worktree, account: agent.claude, model: b.model, dir }, b.prompt);
     const why = Sessions.launch(s, b.prompt);
-    return why === null ? Session.get(id) ?? s : why;
+    return why === null ? Session.get(id) ?? s : why + "\nThe session " + b.name + " is kept, as failed: once that's fixed, send it a message to start it.";
   }
 
   // a run's holder started on its first message, resuming the session's
-  // Claude Code session if it has one; null: started
+  // Claude Code session if it has one; one whose earlier holders never
+  // began one gets the session's first message before it. null: started
   export function launch(s: Session, prompt: string): string | null {
     const next = { ...s, launches: s.launches + 1 };
     Session.set(s.id, { launches: next.launches });
-    const begin: Start = { prompt, resume: s.sdk, rules: config.ASK, sock: Sessions.sock(next) };
+    const first = s.launches > 0 && s.sdk === "" ? Session.runs(s.id)[0]?.prompt ?? prompt : prompt;
+    const begin: Start = { prompt: first === prompt ? prompt : first + "\n\n" + prompt, resume: s.sdk, rules: config.ASK, sock: Sessions.sock(next) };
     fs.writeFileSync(path.join(s.dir, START), JSON.stringify(begin, null, 1) + "\n", { mode: 0o600 });
     const env = Object.entries({ ...Object.fromEntries(ENV.flatMap((k) => (process.env[k] ? [[k, process.env[k]]] : []))), KI_DIR: config.DIR });
     const r = run(["systemd-run", "--user", "--collect", "--quiet", "--unit=" + Sessions.unit(next), "--description=Ki work session " + s.name, "-p", "TimeoutStopSec=10", ...env.map(([k, v]) => "--setenv=" + k + "=" + v), "--", ...command(), "hold", s.dir]);
