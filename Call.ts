@@ -60,6 +60,12 @@ export function tool_name(logged: string): string {
   return theirs === null ? name : theirs[2] + ": " + theirs[3];
 }
 
+// a call in one line: its first block's first line, else its head
+export function call_gist(c: Call): string {
+  const said = c.blocks[0]?.x ?? c.head.trim().replace(/^"(.*)"$/, "$1");
+  return said.split("\n").find((l) => l.trim() !== "")?.trim() ?? "";
+}
+
 export function call_text(c: Call): string {
   const where = c.name.includes(": ") && c.device !== "" ? " · " + c.device : "";
   return [(c.name + " " + c.head).trim() + where, ...c.blocks.map((b) => b.x)].join("\n");

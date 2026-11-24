@@ -5,7 +5,8 @@ import type { Pin } from "../../Pins.ts";
 import type * as View from "../../View.ts";
 import { Face } from "./Avatar.tsx";
 import { Back } from "./Back.tsx";
-import { MOODS, mood_of, show, useKi } from "./Ki.ts";
+import { MOODS, mood_of, show, useKi, work_mood, works_said } from "./Ki.ts";
+import { Minis, type Mini } from "./Minis.tsx";
 import { Context, RunList } from "./Panel.tsx";
 
 // what is shown stays drawn, leaving, after it closes, until it says it
@@ -30,17 +31,27 @@ export function usePop(n: number, of = ""): string {
   return last.changed ? " pop" : "";
 }
 
+// an agent's work sessions that matter now, as small faces of their own
+function minis_of(works: View.Work[]): Mini[] {
+  return works.flatMap((w) => {
+    const mood = work_mood(w);
+    return mood === null ? [] : [{ key: w.id, seed: "session/" + w.id, mood }];
+  });
+}
+
 // an agent as a row: its avatar acts out its mood, which only a screen
-// reader hears said, and the line under its name holds its last words
+// reader hears said, and the line under its name holds its last words;
+// beside its name, its work sessions'
 function Mate({ m, size }: { m: View.Mate; size: number }): ReactNode {
   const mood = useKi((s) => mood_of(m, s));
   const said = m.last === "" ? m.about : m.last;
   const pop = usePop(m.unread);
+  const works = m.works ?? [];
   return (
     <Link to="/a/$agent" params={{ agent: m.id }} className="ag">
       <Face picture={m.picture} id={m.id} mood={mood} size={size} />
       <div>
-        <b>{m.name}</b>
+        <p className="named"><b>{m.name}</b><Minis items={minis_of(works)} label={works_said(works)} /></p>
         <small>{MOODS[mood] === "" ? null : <span className="sr-only">{MOODS[mood] + ". "}</span>}{said}</small>
       </div>
       {mood === "asking"
@@ -76,8 +87,8 @@ function useHold(agent: string): void {
   }, [agent]);
 }
 
-// what goes on for one agent without the owner: its subagents, background
-// jobs and timers
+// what goes on for one agent without the owner: its work sessions,
+// subagents, background jobs and timers
 export function Running({ agent }: { agent: string }): ReactNode {
   const name = useKi((s) => s.team.find((m) => m.id === agent)?.name ?? "");
   useHold(agent);
@@ -87,7 +98,7 @@ export function Running({ agent }: { agent: string }): ReactNode {
         <Back to={"/a/" + agent} label="Back to the chat" />
         <h1 className="truncate pl-1.5">Running</h1>
       </header>
-      {name === "" ? null : <p className="lede -mt-1 pb-1">{name}'s subagents, background jobs and timers.</p>}
+      {name === "" ? null : <p className="lede -mt-1 pb-1">{name}'s work sessions, subagents, background jobs and timers.</p>}
       <div className="scroll pb-4"><RunList agent={agent} /></div>
     </section>
   );

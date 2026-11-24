@@ -18,6 +18,7 @@ const AgentPage = lazyRouteComponent(() => import("./Agent.tsx"), "AgentPage");
 const Look      = lazyRouteComponent(() => import("./Look.tsx"), "Look");
 const Grown     = lazyRouteComponent(() => import("./Grown.tsx"), "Grown");
 const Settings  = lazyRouteComponent(() => import("./Settings.tsx"), "Settings");
+const WorkPage  = lazyRouteComponent(() => import("./Work.tsx"), "WorkPage");
 
 const NOTE = 6000;
 // the face over a chat, in px: .isl's height
@@ -109,8 +110,8 @@ function useMedia(query: MediaQueryList): boolean {
 
 // where the ground's lamps sit for each screen
 function lamps(path: string): string {
-  const own = /^\/a\/[^/]+\/(running|memory|tree)\b/.exec(path)?.[1];
-  return own === "tree" ? "memory" : own ?? (/^\/a\/[^/]+(\/s\/[^/]+)?$/.test(path) ? "chat" : "team");
+  const own = /^\/a\/[^/]+\/(running|memory|tree|w)\b/.exec(path)?.[1];
+  return own === "tree" ? "memory" : own === "w" ? "running" : own ?? (/^\/a\/[^/]+(\/s\/[^/]+)?$/.test(path) ? "chat" : "team");
 }
 
 // the view transition's own animations, once they have started: a phone
@@ -365,6 +366,7 @@ const fresh    = createRoute({ getParentRoute: () => root, path: "/new", compone
 const edit     = createRoute({ getParentRoute: () => root, path: "/a/$agent/edit", component: () => <AgentPage agent={edit.useParams().agent} /> });
 const look     = createRoute({ getParentRoute: () => root, path: "/a/$agent/look", component: () => <Look agent={look.useParams().agent} /> });
 const running  = createRoute({ getParentRoute: () => root, path: "/a/$agent/running", component: () => <Running agent={running.useParams().agent} /> });
+const work     = createRoute({ getParentRoute: () => root, path: "/a/$agent/w/$id", component: () => <WorkPage agent={work.useParams().agent} id={work.useParams().id} /> });
 const memory   = createRoute({ getParentRoute: () => root, path: "/a/$agent/memory", component: () => <Memory agent={memory.useParams().agent} /> });
 const tree     = createRoute({ getParentRoute: () => root, path: "/a/$agent/tree", component: () => <Tree agent={tree.useParams().agent} /> });
 // where these were before they became each agent's own, and the list home
@@ -380,7 +382,7 @@ const treeOld    = createRoute({ getParentRoute: () => root, path: "/tree", befo
 const team     = createRoute({ getParentRoute: () => root, path: "/team", beforeLoad: () => redirect({ to: "/", replace: true, throw: true }) });
 const settings = createRoute({ getParentRoute: () => root, path: "/settings", component: Settings });
 
-export const router = createRouter({ routeTree: root.addChildren([home, chat, sub, fresh, edit, look, running, memory, tree, runningOld, memoryOld, treeOld, team, settings]), defaultViewTransition: TURNS && { types: turn } });
+export const router = createRouter({ routeTree: root.addChildren([home, chat, sub, fresh, edit, look, running, work, memory, tree, runningOld, memoryOld, treeOld, team, settings]), defaultViewTransition: TURNS && { types: turn } });
 
 declare module "@tanstack/react-router" {
   interface Register {

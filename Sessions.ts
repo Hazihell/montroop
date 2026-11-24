@@ -17,6 +17,7 @@ import * as net from "node:net";
 import * as path from "node:path";
 import type { Out } from "./Agent.ts";
 import { Browser, MEDIA } from "./Browser.ts";
+import { call_gist, call_parse } from "./Call.ts";
 import * as config from "./Config.ts";
 import { err_why } from "./Err.ts";
 import { Gate, type Asked } from "./Gate.ts";
@@ -29,6 +30,7 @@ import * as Prompts from "./Prompts.ts";
 import { command, output, run } from "./Service.ts";
 import { LIVE, Session, type Mode, type Parked, type Wake } from "./Session.ts";
 import { Team } from "./Team.ts";
+import { SESSION, type Work } from "./View.ts";
 import { Wire, type Ev, type Told } from "./Wire.ts";
 import { Worktree } from "./Worktree.ts";
 
@@ -85,10 +87,15 @@ const SENT: Record<Sent, string> = {
   again    : "A message with this request was sent already: not sent twice.",
 };
 
+// a file of a session's media folder, as the app asks for it
+const FILE = /^[\w][\w.-]{0,200}$/;
+
 const LINKS = new Map<string, Link>();
-// the server's: the owner's cards, and wake, a message into an agent's
-// chat once (id: its act)
-const HOOKS = { gate: null as Gate | null, asked: (_: Asked) => {}, wake: (_: Wake) => {} };
+// each session's latest log line, once known
+const LATEST = new Map<string, string>();
+// the server's: the owner's cards; wake, a message into an agent's chat
+// once (id: its act); change, a session's row changed
+const HOOKS = { gate: null as Gate | null, asked: (_: Asked) => {}, wake: (_: Wake) => {}, change: () => {} };
 
 export namespace Sessions {
 
@@ -119,10 +126,11 @@ export namespace Sessions {
   // chats are open: the wake messages not yet in a chat are sent again;
   // the cards of calls still parked wait again, so an answer given at once
   // finds them, and those of a holder gone are taken down
-  export function boot(gate: Gate, asked: (a: Asked) => void, wake: (w: Wake) => void): void {
+  export function boot(gate: Gate, asked: (a: Asked) => void, wake: (w: Wake) => void, change: () => void): void {
     HOOKS.gate = gate;
     HOOKS.asked = asked;
     HOOKS.wake = wake;
+    HOOKS.change = change;
     config.RELOADED.add(() => LINKS.forEach((l) => Wire.send(l.sock, { $: "rules", rules: config.ASK })));
     Session.unsent().forEach(Sessions.deliver);
     for (const s of Session.list(null).filter((x) => LIVE.includes(x.status))) {
@@ -187,10 +195,12 @@ export namespace Sessions {
     if (r.code !== 0) {
       const why = "systemd-run failed: " + output(r);
       Session.move(s.id, "failed", why);
+      HOOKS.change();
       return why;
     }
     Sessions.unlink(s.id);
     Sessions.link(s.id);
+    HOOKS.change();
     return null;
   }
 
@@ -274,6 +284,7 @@ export namespace Sessions {
       Session.move(now.id, "failed", GONE);
       Sessions.wake(now, "gone " + Sessions.attempt(run), "failed", GONE + ": send it a message to go on");
     }
+    HOOKS.change();
   }
 
   export function got(id: string, sock: net.Socket, msg: Record<string, unknown>): void {
@@ -337,7 +348,12 @@ export namespace Sessions {
       // after the ack goes out, so the holder ending now isn't kept waiting
       queueMicrotask(() => Sessions.next_run(id));
     }
+    const latest = Sessions.latest(ev);
+    if (latest !== "") {
+      LATEST.set(id, latest);
+    }
     Session.set(id, { ack: told.seq });
+    HOOKS.change();
   }
 
   // messages a run's holder did not take in before it ended start the next
@@ -370,7 +386,7 @@ export namespace Sessions {
       const x: unknown = JSON.parse(p.input);
       input = rec(x) ? x : {};
     } catch {}
-    void Gate.wait(HOOKS.gate, s.agent, "Session " + s.name, p.tool, input, p.what, stop.signal, HOOKS.asked).then((said) => {
+    void Gate.wait(HOOKS.gate, s.agent, SESSION + s.name, p.tool, input, p.what, stop.signal, HOOKS.asked).then((said) => {
       l.waits.delete(p.id);
       if (said !== null) {
         Session.answer(p.id, said.ok, said.note);
@@ -501,8 +517,10 @@ export namespace Sessions {
       Sessions.systemctl(["stop", "--no-block", Sessions.unit(s)]);
     }
     if (wake) {
+      Session.set(id, { seen: Date.now() });
       Sessions.wake(s, "stop " + Sessions.attempt(run), "stopped", "by the user. Its worktree and branch stay: send it a message to go on.");
     }
+    HOOKS.change();
     return null;
   }
 
@@ -526,13 +544,36 @@ export namespace Sessions {
     void Browser.forget(s.dir);
     Session.set(id, { archived: 1 });
     LINKS.delete(id);
+    LATEST.delete(id);
+    HOOKS.change();
     return null;
   }
 
-  // what the session told, after seq, at most n
-  export function log(id: string, after: number, n: number): Told[] {
+  // what the session told, after seq, at most n; or with before, the
+  // last n before it
+  export function log(id: string, after: number, n: number, before: number | null = null): Told[] {
     const s = Session.get(id);
-    return s === null ? [] : Hold.told(s.dir).filter((t) => t.seq > after).slice(0, n);
+    const all = s === null ? [] : Hold.told(s.dir);
+    return before === null ? all.filter((t) => t.seq > after).slice(0, n) : all.filter((t) => t.seq < before).slice(-n || all.length);
+  }
+
+  // the session as its agent's row in the app
+  export function row(s: Session): Work {
+    if (!LATEST.has(s.id)) {
+      const last = Hold.told(s.dir).map((t) => Sessions.latest(t.ev)).findLast((b) => b !== "");
+      LATEST.set(s.id, last ?? Sessions.line(s.last, LINE));
+    }
+    const run = Session.run(s.id);
+    const wait = Session.parked(s.id).length > 0 ? "approval" : Session.questions(s.id).length > 0 ? "question" : "";
+    const ended = run?.ended ?? null;
+    return { id: s.id, name: s.name, branch: s.branch, status: s.status, wait, line: LATEST.get(s.id) ?? "", made: s.made, ended, seq: s.ack, fresh: ended !== null && ended > s.seen };
+  }
+
+  // the session's media files, oldest first
+  export function media(s: Session): string[] {
+    const dir = path.join(s.dir, MEDIA);
+    const names = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => FILE.test(f) && fs.statSync(path.join(dir, f)).isFile()) : [];
+    return names.map((f) => ({ f, at: fs.statSync(path.join(dir, f)).mtimeMs })).sort((a, b) => a.at - b.at).map(({ f }) => f);
   }
 
   // the session tool: an agent starts and drives its own sessions, by name
@@ -598,18 +639,26 @@ export namespace Sessions {
     return flat.length > most ? flat.slice(0, most) + "…" : flat;
   }
 
-  // a logged event as a line
-  export function said(t: Told): string {
-    const ev = t.ev;
-    const body =
-      ev.k === "text" ? ev.text :
+  // what a logged event says, "" for nothing
+  export function body(ev: Ev): string {
+    return ev.k === "text" ? ev.text :
       ev.k === "tool" ? ev.name + " " + ev.input :
       ev.k === "result" ? (ev.error ? "error: " : "") + ev.text :
       ev.k === "ask" ? "asks the user: " + ev.what + " (" + ev.tool + ")" :
       ev.k === "answered" ? (ev.ok ? "approved" : "denied") :
       ev.k === "question" || ev.k === "report" || ev.k === "turn" || ev.k === "end" ? ev.text :
       "";
-    return t.seq + " " + ev.k + (body === "" ? "" : ": " + Sessions.line(body, LINE));
+  }
+
+  // what an event shows as the session's latest line in the app; "": none
+  export function latest(ev: Ev): string {
+    return Sessions.line(ev.k === "tool" ? ev.name + " " + call_gist(call_parse(ev.name + " " + ev.input)) : Sessions.body(ev), LINE);
+  }
+
+  // a logged event as a line
+  export function said(t: Told): string {
+    const body = Sessions.body(t.ev);
+    return t.seq + " " + t.ev.k + (body === "" ? "" : ": " + Sessions.line(body, LINE));
   }
 
   // what a read shows: its state, what waits on someone, its report, and
@@ -635,21 +684,29 @@ export namespace Sessions {
 
   export async function http(req: Request, p: string): Promise<Response> {
     const url = new URL(req.url);
-    const m = /^\/api\/sessions(?:\/([0-9a-f]{8})(?:\/(say|resume|stop|archive))?)?$/.exec(p);
+    const file = /^\/api\/sessions\/([0-9a-f]{8})\/media\/([^/]+)$/.exec(p);
+    if (file !== null) {
+      const s = Session.get(file[1]);
+      const name = decodeURIComponent(file[2]);
+      const at = s === null || !FILE.test(name) ? null : Bun.file(path.join(s.dir, MEDIA, name));
+      return at !== null && (await at.exists()) ? new Response(at, { headers: { "cache-control": "private, max-age=3600" } }) : new Response("not found", { status: 404 });
+    }
+    const m = /^\/api\/sessions(?:\/([0-9a-f]{8})(?:\/(say|resume|stop|archive|seen))?)?$/.exec(p);
     if (m === null) {
       return Response.json({ error: "No such session call." }, { status: 404 });
     }
     const [, id, act] = m;
-    const out = (why: string | null) => Response.json(why === null ? Session.get(id) : { error: why }, { status: why === null ? 200 : 409 });
+    const out = (why: string | null, more: object = {}) => Response.json(why === null ? { ...Session.get(id), ...more } : { error: why }, { status: why === null ? 200 : 409 });
     if (req.method === "GET" && act === undefined) {
       if (id === undefined) {
         return Response.json(Session.list(url.searchParams.get("agent")));
       }
       const s = Session.get(id);
       const after = Number(url.searchParams.get("after") ?? 0) || 0;
+      const before = url.searchParams.has("before") ? Number(url.searchParams.get("before")) || Infinity : null;
       const asked = Number(url.searchParams.get("n") ?? PAGE);
       const n = Math.min(Math.max(0, Number.isNaN(asked) ? PAGE : asked), PAGE_MOST);
-      return s === null ? Response.json({ error: "No session " + id + "." }, { status: 404 }) : Response.json({ ...s, runs: Session.runs(id), parked: Session.parked(id), questions: Session.questions(id), log: Sessions.log(id, after, n) });
+      return s === null ? Response.json({ error: "No session " + id + "." }, { status: 404 }) : Response.json({ ...s, runs: Session.runs(id), parked: Session.parked(id), questions: Session.questions(id), says: Session.says(id), media: Sessions.media(s), log: Sessions.log(id, after, n, before) });
     }
     if (req.method !== "POST") {
       return new Response("a session act is a POST", { status: 405 });
@@ -666,7 +723,15 @@ export namespace Sessions {
     switch (act) {
       case "say": {
         const sent = Sessions.say(id, text("text"), text("request") || crypto.randomUUID(), text("mode") === "queue" ? "queue" : "steer");
-        return out(typeof sent === "string" ? null : sent.why);
+        return typeof sent === "string" ? out(null, { sent: SENT[sent] }) : out(sent.why);
+      }
+      case "seen": {
+        const s = Session.get(id);
+        if (s !== null) {
+          Session.set(id, { seen: Date.now() });
+          HOOKS.change();
+        }
+        return out(s === null ? "No session " + id + "." : null);
       }
       case "resume":
         return out(Sessions.resume(id));

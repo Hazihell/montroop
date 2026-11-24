@@ -7,6 +7,7 @@ import type { Timer } from "./Timer.ts";
 import type { Bg, Job } from "./Machine.ts";
 import type { How, Row as SubRow } from "./Sub.ts";
 import type { Asked } from "./Gate.ts";
+import type { Status } from "./Session.ts";
 import { rec } from "./Json.ts";
 
 export type Part = [number, number];
@@ -29,8 +30,17 @@ type Node = { text: string; to: string };
 export type Live = { kind: Kind; text: string; of?: string };
 
 // an agent as the chat list shows it: last, its last message's gist; asks,
-// how many of its calls wait for the owner's yes
-export type Mate = { id: string; name: string; about: string; picture: string; unread: number; last: string; busy: boolean; asks?: number; archived: number; subs?: SubRow[] };
+// how many of its calls wait for the owner's yes; works, its work sessions
+export type Mate = { id: string; name: string; about: string; picture: string; unread: number; last: string; busy: boolean; asks?: number; archived: number; subs?: SubRow[]; works?: Work[] };
+
+// a work session as its agent's row carries it: what it waits on (the
+// owner's approval, its agent's answer); line, its latest log line; ended,
+// when its latest run ended; seq, its latest event taken in; fresh, it
+// ended since the owner last looked at it
+export type Work = { id: string; name: string; branch: string; status: Status; wait: "approval" | "question" | ""; line: string; made: number; ended: number | null; seq: number; fresh: boolean };
+
+// who a work session's calls are asked by, on the owner's cards
+export const SESSION = "Session ";
 
 // a subagent's page: its log as loaded (from: how many of its first
 // entries aren't yet), what it says now, whether it is done (#116)
@@ -830,9 +840,13 @@ export function view_tail(v: View): Row[] {
 }
 
 // the calls waiting for the owner's yes (Gate) made by who: "" for the
-// agent itself, else a subagent's name
+// agent itself and its work sessions, else a subagent's name
 function view_asks(v: View, who: string): Row[] {
-  return v.asks.filter((a) => a.who === who).map((ask) => ({ $: "Ask", ask, call: Call.call_parse(ask.tool + " " + ask.input) }));
+  return v.asks.filter((a) => a.who === who || (who === "" && a.who.startsWith(SESSION))).map(ask_row);
+}
+
+export function ask_row(ask: Asked): Extract<Row, { $: "Ask" }> {
+  return { $: "Ask", ask, call: Call.call_parse(ask.tool + " " + ask.input) };
 }
 
 function sums_show(sums: Sums | null, again: Again | null, now = Date.now()): string {

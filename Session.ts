@@ -17,15 +17,16 @@ type Step = "ask" | "answered" | "ended" | "failed" | "stop" | "run";
 // account: its Claude account ("": personal); dir: its folder in Ki's,
 // with its log; sdk: the Claude Code session it resumes; ack: the last of
 // its holder's events taken in; launches: its holders so far (each a unit
-// and socket of its own); last: its latest words
+// and socket of its own); last: its latest words; seen: when the owner
+// last looked at it
 export type Session = {
   id: string; name: string; agent: string; repo: string; base: string; branch: string; worktree: string;
   account: string; model: string; dir: string; status: Status; sdk: string; ack: number; launches: number;
-  last: string; made: number; at: number; archived: number;
+  last: string; made: number; at: number; archived: number; seen: number;
 };
 
 // report: what the session gave as the run's result
-type Run = { session: string; n: number; prompt: string; status: Status; attempts: number; why: string; report: string; started: number; ended: number | null };
+export type Run = { session: string; n: number; prompt: string; status: Status; attempts: number; why: string; report: string; started: number; ended: number | null };
 
 // ok: the owner's answer, null till then; it stays till the holder says it
 // took it
@@ -35,9 +36,9 @@ export type Parked = { id: string; session: string; tool: string; input: string;
 // the answer to the question the session waits on
 export type Mode = "queue" | "steer" | "answer";
 
-type Say = { id: string; session: string; text: string; mode: Mode; at: number };
+export type Say = { id: string; session: string; text: string; mode: Mode; at: number };
 
-type Question = { id: string; session: string; text: string; at: number };
+export type Question = { id: string; session: string; text: string; at: number };
 
 // a message for the session's agent, sent once it's in that agent's chat
 export type Wake = { id: string; agent: string; text: string };
@@ -51,7 +52,7 @@ const NEXT: Record<Status, Partial<Record<Step, Status>>> = {
 };
 
 const SCHEMA = `
-create table if not exists work_sessions (id text primary key, name text not null, agent text not null, repo text not null, base text not null, branch text not null, worktree text not null, account text not null, model text not null, dir text not null, status text not null, sdk text not null default '', ack integer not null default 0, launches integer not null default 0, last text not null default '', made integer not null, at integer not null, archived integer not null default 0);
+create table if not exists work_sessions (id text primary key, name text not null, agent text not null, repo text not null, base text not null, branch text not null, worktree text not null, account text not null, model text not null, dir text not null, status text not null, sdk text not null default '', ack integer not null default 0, launches integer not null default 0, last text not null default '', made integer not null, at integer not null, archived integer not null default 0, seen integer not null default 0);
 create table if not exists work_runs (session text not null, n integer not null, prompt text not null, status text not null, attempts integer not null default 1, why text not null default '', report text not null default '', started integer not null, ended integer, primary key (session, n));
 create table if not exists work_asks (id text primary key, session text not null, tool text not null, input text not null, what text not null, ok integer, note text not null default '', at integer not null);
 create table if not exists work_says (id text primary key, session text not null, text text not null, mode text not null, heard integer not null default 0, at integer not null);
@@ -69,6 +70,9 @@ export namespace Session {
     const db = Owner.open();
     if (!MADE) {
       db.run(SCHEMA);
+      if (!(db.query("select name from pragma_table_info('work_sessions')").all() as Array<{ name: string }>).some((c) => c.name === "seen")) {
+        db.run("alter table work_sessions add column seen integer not null default 0");
+      }
       MADE = true;
     }
     return db;
@@ -79,7 +83,7 @@ export namespace Session {
     return NEXT[status][step] ?? null;
   }
 
-  export function add(s: Omit<Session, "status" | "sdk" | "ack" | "launches" | "last" | "made" | "at" | "archived">, prompt: string): Session {
+  export function add(s: Omit<Session, "status" | "sdk" | "ack" | "launches" | "last" | "made" | "at" | "archived" | "seen">, prompt: string): Session {
     const db = Session.db();
     const now = Date.now();
     db.transaction(() => {
@@ -98,7 +102,7 @@ export namespace Session {
     return Session.db().query("select * from work_sessions where (? is null or agent = ?) and archived = 0 order by made desc").all(agent, agent) as Session[];
   }
 
-  export function set(id: string, fields: Partial<Pick<Session, "sdk" | "ack" | "launches" | "last" | "archived">>): void {
+  export function set(id: string, fields: Partial<Pick<Session, "sdk" | "ack" | "launches" | "last" | "archived" | "seen">>): void {
     const keys = Object.keys(fields) as Array<keyof typeof fields>;
     if (keys.length > 0) {
       Session.db().query("update work_sessions set " + keys.map((k) => k + " = ?").join(", ") + ", at = ? where id = ?").run(...keys.map((k) => fields[k] ?? null), Date.now(), id);
@@ -179,6 +183,11 @@ export namespace Session {
 
   export function unsay(id: string): void {
     Session.db().query("delete from work_says where id = ?").run(id);
+  }
+
+  // every message sent to the session, heard: taken in by it
+  export function says(session: string): Array<Say & { heard: number }> {
+    return Session.db().query("select id, session, text, mode, heard, at from work_says where session = ? order by at").all(session) as Array<Say & { heard: number }>;
   }
 
   export function unheard(session: string): Say[] {
