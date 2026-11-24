@@ -148,6 +148,7 @@ const TREE: Cmd = { use: "ki", about: "Ki: open your server's address in a brows
     plan("claude", "your Claude plan (claude-sub)"),
     plan("chatgpt", "your ChatGPT plan (openai-sub)"),
   ] },
+  { use: "hold <dir>", about: "a work session's holder (the server starts it)", arg: /^[/~]/, need: true, run: async (dir) => (await import("./Hold.ts")).Hold.main(dir ?? "") },
   { use: "update", about: "check for updates, update safely (`ki update help`)" },
   { use: "version", about: "this ki's version", run: () => console.log("ki " + Update.VERSION) },
   { use: "help", about: "this" },

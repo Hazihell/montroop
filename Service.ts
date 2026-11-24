@@ -47,7 +47,7 @@ function name(part: Part): string {
 }
 
 export function command(): string[] {
-  const bun = /^bun(\.exe)?$/i.test(path.basename(process.execPath));
+  const bun = /^bun(\.native)?(\.exe)?$/i.test(path.basename(process.execPath));
   return bun ? [process.execPath, path.resolve(process.argv[1])] : [process.execPath];
 }
 
@@ -693,9 +693,14 @@ function read(file: string): string | null {
   }
 }
 
-function run(cmd: string[], env: Record<string, string> = {}): { code: number; out: string; err: string } {
+export function run(cmd: string[], env: Record<string, string> = {}): { code: number; out: string; err: string } {
   const p = Bun.spawnSync(cmd, { env: { ...process.env, ...env }, stdin: "ignore", stdout: "pipe", stderr: "pipe", windowsHide: true });
   return { code: p.exitCode ?? 1, out: p.stdout.toString().trim(), err: p.stderr.toString().trim() };
+}
+
+// what a run printed, both streams
+export function output(r: { out: string; err: string }): string {
+  return (r.out + "\n" + r.err).trim();
 }
 
 function fail(why: string): never {

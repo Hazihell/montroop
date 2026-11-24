@@ -203,8 +203,12 @@ export namespace ClaudeSub {
   export function env(dir: string): Record<string, string | undefined> {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     fs.chmodSync(dir, 0o700);
-    const ours = Object.entries(process.env).filter(([k]) => !/^(ANTHROPIC_|CLAUDE_|FORCE_PROMPT_CACHING)/.test(k));
-    return { ...Object.fromEntries(ours), ...ENV, CLAUDE_CONFIG_DIR: dir };
+    return { ...ClaudeSub.bare_env(), ...ENV, CLAUDE_CONFIG_DIR: dir };
+  }
+
+  // this process's environment without what would steer Claude Code
+  export function bare_env(): Record<string, string | undefined> {
+    return Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(ANTHROPIC_|CLAUDE_|FORCE_PROMPT_CACHING)/.test(k)));
   }
 
 
@@ -644,7 +648,7 @@ export namespace ClaudeSub {
         await new Promise<void>((ok) => (wake = ok));
       }
     }
-    return { put, close, read };
+    return { put, close, read, empty: () => queue.length === 0, open: () => !shut };
   }
 
 }
