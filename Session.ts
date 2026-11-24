@@ -185,7 +185,8 @@ export namespace Session {
     Session.db().query("delete from work_says where id = ?").run(id);
   }
 
-  // every message sent to the session, heard: taken in by it
+  // every message sent to the session; heard: 1 taken in by it, 0 not
+  // yet, -1 dropped (it was stopped first)
   export function says(session: string): Array<Say & { heard: number }> {
     return Session.db().query("select id, session, text, mode, heard, at from work_says where session = ? order by at").all(session) as Array<Say & { heard: number }>;
   }
@@ -197,6 +198,11 @@ export namespace Session {
   // messages taken in as a run's first message, as a queued one is
   export function into_run(ids: string[]): void {
     const q = Session.db().query("update work_says set heard = 1, mode = 'queue' where id = ?");
+    ids.forEach((id) => q.run(id));
+  }
+
+  export function dropped(ids: string[]): void {
+    const q = Session.db().query("update work_says set heard = -1 where id = ?");
     ids.forEach((id) => q.run(id));
   }
 

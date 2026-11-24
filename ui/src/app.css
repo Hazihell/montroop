@@ -2175,6 +2175,9 @@
     max-width: 46rem;
     padding: 0 1.375rem 0.5rem;
   }
+  .work-acts:empty {
+    display: none;
+  }
   .work-acts .branch {
     align-self: center;
     min-width: 0;

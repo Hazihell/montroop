@@ -99,8 +99,10 @@ export namespace Hold {
       const buf = Buffer.alloc(size - kept.at);
       fs.readSync(fd, buf, 0, buf.length, kept.at);
       const whole = buf.lastIndexOf(10) + 1;
-      kept = { at: kept.at + whole, told: [...kept.told, ...Hold.lines(buf.subarray(0, whole).toString("utf8"))] };
-      READ.set(file, kept);
+      if (whole > 0 || kept.at === 0) {
+        kept = { at: kept.at + whole, told: [...kept.told, ...Hold.lines(buf.subarray(0, whole).toString("utf8"))] };
+        READ.set(file, kept);
+      }
     } catch {
     } finally {
       if (fd !== null) {

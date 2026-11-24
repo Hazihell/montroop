@@ -42,6 +42,10 @@ export type Work = { id: string; name: string; branch: string; status: Status; w
 // who a work session's calls are asked by, on the owner's cards
 export const SESSION = "Session ";
 
+// a work session's media files the app shows inline, by name
+export const PICTURE = /\.(png|jpe?g|gif|webp|avif)$/i;
+export const VIDEO = /\.(mp4|webm|mov)$/i;
+
 // a subagent's page: its log as loaded (from: how many of its first
 // entries aren't yet), what it says now, whether it is done (#116)
 type Logged = Entry & { id?: number };

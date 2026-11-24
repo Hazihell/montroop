@@ -30,7 +30,7 @@ import * as Prompts from "./Prompts.ts";
 import { command, output, run } from "./Service.ts";
 import { LIVE, Session, type Mode, type Parked, type Wake } from "./Session.ts";
 import { Team } from "./Team.ts";
-import { SESSION, type Work } from "./View.ts";
+import { PICTURE, SESSION, VIDEO, type Work } from "./View.ts";
 import { Wire, type Ev, type Told } from "./Wire.ts";
 import { Worktree } from "./Worktree.ts";
 
@@ -88,9 +88,9 @@ const SENT: Record<Sent, string> = {
 };
 
 // a file of a session's media folder, as the app asks for it; only
-// pictures and videos show in the page, the rest download
+// pictures and videos (View's PICTURE, VIDEO) show in the page, the rest
+// download
 const FILE = /^[\w][\w.-]{0,200}$/;
-const SHOWN = /\.(png|jpe?g|gif|webp|avif|mp4|webm|mov)$/i;
 
 const LINKS = new Map<string, Link>();
 // each session's latest log line, once known
@@ -512,7 +512,7 @@ export namespace Sessions {
       return "Session " + s.name + " is " + s.status + " already.";
     }
     Sessions.drop(id);
-    Session.heard(Session.unheard(id).map((say) => say.id));
+    Session.dropped(Session.unheard(id).map((say) => say.id));
     Sessions.unlink(id);
     void Browser.close(s.dir);
     if (s.launches > 0) {
@@ -695,7 +695,7 @@ export namespace Sessions {
         name = decodeURIComponent(file[2]);
       } catch {}
       const at = s === null || !FILE.test(name) ? null : Bun.file(path.join(s.dir, MEDIA, name));
-      const kept: Record<string, string> = SHOWN.test(name) ? {} : { "content-type": "application/octet-stream", "content-disposition": "attachment" };
+      const kept: Record<string, string> = PICTURE.test(name) || VIDEO.test(name) ? {} : { "content-type": "application/octet-stream", "content-disposition": "attachment" };
       return at !== null && (await at.exists()) ? new Response(at, { headers: { "cache-control": "private, max-age=3600", "x-content-type-options": "nosniff", ...kept } }) : new Response("not found", { status: 404 });
     }
     const m = /^\/api\/sessions(?:\/([0-9a-f]{8})(?:\/(say|resume|stop|archive|seen))?)?$/.exec(p);

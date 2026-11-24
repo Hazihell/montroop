@@ -47,7 +47,7 @@ export function WorkFace({ w, size }: { w: View.Work; size: number }): ReactNode
   return <Face picture="" id={work_seed(w)} mood={work_mood(w) ?? "idle"} size={size} />;
 }
 
-const STATES: Record<View.Work["status"], string> = { running: "Running", waiting: "Waiting", done: "Done", failed: "Failed", stopped: "Stopped" };
+export const STATES: Record<View.Work["status"], string> = { running: "Running", waiting: "Waiting", done: "Done", failed: "Failed", stopped: "Stopped" };
 
 // what it does, in words, tinted by it; agent: its agent's name, whom its
 // question waits on

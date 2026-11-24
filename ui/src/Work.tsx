@@ -12,7 +12,7 @@ import { note, show, useKi } from "./Ki.ts";
 import { Blocks } from "./Markdown.tsx";
 import { Ask, CallBody, ToolIcon } from "./Rows.tsx";
 import { viewer_open } from "./Viewer.tsx";
-import { useNow, useWorks, work_act, work_live, work_span, work_stop, WorkFace, WorkState } from "./Works.tsx";
+import { useNow, useWorks, work_act, work_live, work_span, work_stop, STATES, WorkFace, WorkState } from "./Works.tsx";
 
 // one work session's page: what it is and does now, its log as it comes
 // (newest at the bottom, followed while at the bottom), the calls and
@@ -25,8 +25,6 @@ const PAGE = 100;
 // how near the bottom still follows what comes, in px
 const NEAR = 96;
 const TOUCH = matchMedia("(pointer: coarse)").matches;
-const PICTURE = /\.(png|jpe?g|gif|webp|avif)$/i;
-const VIDEO = /\.(mp4|webm|mov)$/i;
 // what Claude Code calls the tools the chat has icons for
 const AS: Record<string, string> = { Bash: "shell", Read: "read", Write: "write", Edit: "edit", MultiEdit: "edit", Grep: "search", Glob: "search" };
 // what a log line for each kind of entry never shows
@@ -81,10 +79,10 @@ function useDetail(id: string, moved: string): { d: Detail | null; log: Told[]; 
 // a media file of the session's, a picture opening in the viewer
 function Media({ id, name }: { id: string; name: string }): ReactNode {
   const url = "/api/sessions/" + id + "/media/" + encodeURIComponent(name);
-  if (VIDEO.test(name)) {
+  if (View.VIDEO.test(name)) {
     return <video className="media" src={url} controls playsInline preload="metadata" aria-label={name} />;
   }
-  if (PICTURE.test(name)) {
+  if (View.PICTURE.test(name)) {
     return <img className="media" src={url} alt={name} loading="lazy" role="button" tabIndex={0} onClick={(ev) => viewer_open(ev.currentTarget)} onKeyDown={(ev) => ev.key === "Enter" && viewer_open(ev.currentTarget)} />;
   }
   return <a className="pillbtn min-h-11 px-4 text-[0.875rem]" href={url} target="_blank" rel="noreferrer">{name}</a>;
@@ -114,12 +112,12 @@ function Step({ name, input, result }: { name: string; input: string; result: { 
   );
 }
 
-// a message sent to it; waiting: why it is not yet taken in
-function Sent({ text, waiting = "" }: { text: string; waiting?: string }): ReactNode {
+// a message sent to it; why: why it is not taken in, if so
+function Sent({ text, why = "" }: { text: string; why?: string }): ReactNode {
   return (
-    <div className={"msg user" + (waiting === "" ? "" : " queued")}>
+    <div className={"msg user" + (why === "" ? "" : " queued")}>
       <div className="prose"><Blocks x={Md.md_parse(text)} /></div>
-      {waiting === "" ? null : <p className="who">{waiting}</p>}
+      {why === "" ? null : <p className="who">{why}</p>}
     </div>
   );
 }
@@ -221,11 +219,11 @@ function Log({ d, log, id, agent, live, earlier }: { d: Detail; log: Told[]; id:
   });
   const all = (log[0]?.seq ?? 1) <= 1;
   const from = log[0]?.at ?? 0;
-  // each run's first message, and those steered into a run at work; one
-  // queued is a run's first once taken in
+  // each run's first message, and those steered into a run at work or
+  // dropped by a stop; one queued is a run's first once taken in
   const sent = [
-    ...d.runs.map((r) => ({ key: "run" + r.n, text: r.prompt, at: r.started })),
-    ...d.says.filter((s) => s.heard === 1 && s.mode !== "queue").map((s) => ({ key: s.id, text: s.text, at: s.at })),
+    ...d.runs.map((r) => ({ key: "run" + r.n, text: r.prompt, at: r.started, why: "" })),
+    ...d.says.filter((s) => s.heard === -1 || (s.heard === 1 && s.mode !== "queue")).map((s) => ({ key: s.id, text: s.text, at: s.at, why: s.heard === -1 ? "Dropped: it was stopped first" : "" })),
   ].filter((m) => all || m.at >= from).sort((a, b) => a.at - b.at);
   const waiting = d.says.filter((s) => s.heard === 0);
   const report = d.runs.at(-1)?.report ?? "";
@@ -234,18 +232,18 @@ function Log({ d, log, id, agent, live, earlier }: { d: Detail; log: Told[]; id:
   let k = 0;
   for (const t of log.filter((x) => !QUIET.has(x.ev.k))) {
     for (; k < sent.length && sent[k].at <= t.at; k++) {
-      flow.push({ key: sent[k].key, node: <Sent text={sent[k].text} /> });
+      flow.push({ key: sent[k].key, node: <Sent text={sent[k].text} why={sent[k].why} /> });
     }
     flow.push({ key: "e" + t.seq, node: <Entry t={t} result={t.ev.k === "tool" ? results.get(t.ev.id) : undefined} media={placed.get(t.seq) ?? []} id={id} agent={agent} /> });
   }
-  flow.push(...sent.slice(k).map((m) => ({ key: m.key, node: <Sent text={m.text} /> })));
+  flow.push(...sent.slice(k).map((m) => ({ key: m.key, node: <Sent text={m.text} why={m.why} /> })));
   return (
     <>
       {all ? null : <div className="row"><button type="button" className="pillbtn min-h-11 px-4 text-[0.875rem]" onClick={earlier}>Earlier</button></div>}
       {flow.map((f) => <div key={f.key} className="row">{f.node}</div>)}
       {!reported && report !== "" && !live ? <div className="row"><Report text={report} /></div> : null}
       {rest.length === 0 ? null : <div className="row"><p className="cap">Its media</p><div className="mt-2 flex flex-wrap gap-2">{rest.map((m) => <Media key={m} id={id} name={m} />)}</div></div>}
-      {waiting.map((m) => <div key={m.id} className="row"><Sent text={m.text} waiting={m.mode === "queue" ? "Queued for its next run" : "Goes in at its next step"} /></div>)}
+      {waiting.map((m) => <div key={m.id} className="row"><Sent text={m.text} why={m.mode === "queue" ? "Queued for its next run" : "Goes in at its next step"} /></div>)}
       {d.questions.map((q) => <div key={q.id} className="row"><p className="cap">Waits for {agent || "its agent"} to answer “{Md.md_flat(q.text)}”. A message here answers it too.</p></div>)}
       {asks.map((a) => <div key={a.id} className="row"><Ask row={View.ask_row(a)} /></div>)}
       {live && asks.length === 0 && d.questions.length === 0 ? <div className="row"><p className="wait" role="status" aria-label="Working"><i /><i /><i /></p></div> : null}
@@ -338,7 +336,7 @@ export function WorkPage({ agent, id }: { agent: string; id: string }): ReactNod
         {row === undefined ? null : <WorkFace w={row} size={44} />}
         <div className="min-w-0 flex-1 pl-0.5">
           <h1 className="truncate">{name}</h1>
-          <p className="work-sub">{row === undefined ? d?.status ?? "" : <><WorkState w={row} agent={named} /> · <span className="tabular-nums">{work_span(row, now)}</span></>}</p>
+          <p className="work-sub">{row === undefined ? d === null ? "" : d.archived > 0 ? "Archived" : STATES[d.status] : <><WorkState w={row} agent={named} /> · <span className="tabular-nums">{work_span(row, now)}</span></>}</p>
         </div>
       </header>
       <div className="work-acts">
