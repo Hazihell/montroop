@@ -22,8 +22,7 @@ type Ki = {
   tail      : View.Row[];
   stoppable : boolean;
   mood      : Mood;
-  asks      : number;
-  cards     : Asked[];
+  asks      : Asked[];
   timers    : Timer[];
   jobs      : View.BgJob[];
   talk      : View.Talk | null;
@@ -66,7 +65,7 @@ const v = View.view_new(AGENT.exec(location.pathname)?.[1] ?? localStorage.getIt
 // the chat on screen, counted read by the server while the window has focus
 const SEEN = { agent: null as string | null, at: 0, on: false, ws: null as WebSocket | null };
 
-export const useKi = create<Ki>(() => ({ signed: null, agent: v.agent, loaded: false, greeted: false, offline: false, team: [], rows: [], tail: [], stoppable: false, mood: "idle", asks: 0, cards: [], timers: [], jobs: [], talk: null, meter: null, knobs: [], plugs: [], page: null, sub: null, hearing: false, importing: null, note: "", stale: false, intro: localStorage.getItem(INTRO) === null && !new URLSearchParams(location.search).has("skip"), welcome: false }));
+export const useKi = create<Ki>(() => ({ signed: null, agent: v.agent, loaded: false, greeted: false, offline: false, team: [], rows: [], tail: [], stoppable: false, mood: "idle", asks: [], timers: [], jobs: [], talk: null, meter: null, knobs: [], plugs: [], page: null, sub: null, hearing: false, importing: null, note: "", stale: false, intro: localStorage.getItem(INTRO) === null && !new URLSearchParams(location.search).has("skip"), welcome: false }));
 
 let due = false;
 // a piece of a reply streaming in changes only the tail: the chat's rows
@@ -98,33 +97,22 @@ export function mood_of(m: View.Mate, s: { agent: string; loaded: boolean; mood:
   return (m.asks ?? 0) > 0 ? "asking" : m.busy ? "working" : m.unread > 0 ? "done" : "idle";
 }
 
-// a work session's mood: at work, waiting on someone, or ended and not yet
-// seen by the owner; null once it ended and was seen
+// a work session's mood: at work, waiting on the owner or on its agent,
+// or ended and not yet seen by the owner; null once it ended and was seen
 export function work_mood(w: View.Work): Mood | null {
   return w.status === "running" ? "working"
-    : w.status === "waiting" ? "asking"
+    : w.status === "waiting" ? (w.wait === "question" ? "listening" : "asking")
     : !w.fresh ? null
     : w.status === "done" ? "done"
     : w.status === "failed" ? "error"
     : "sleeping";
 }
 
-export function work_live(w: View.Work): boolean {
-  return w.status === "running" || w.status === "waiting";
-}
-
-// what a work session does, in words; agent: its agent's name, whom its
-// question waits on
-export function work_state(w: View.Work, agent: string): string {
-  return w.wait === "approval" ? "Needs your approval"
-    : w.wait === "question" ? "Asks " + (agent || "its agent")
-    : { running: "Running", waiting: "Waiting", done: "Done", failed: "Failed", stopped: "Stopped" }[w.status];
-}
-
 // how a screen reader hears how many work sessions are in each mood
 const WORK_SAID: Partial<Record<Mood, [string, string]>> = {
   working  : ["working", "working"],
   asking   : ["needs you", "need you"],
+  listening: ["waits on its agent", "wait on their agent"],
   done     : ["done", "done"],
   error    : ["failed", "failed"],
   sleeping : ["stopped", "stopped"],
@@ -173,8 +161,7 @@ function draw(rows = true): void {
       tail      : View.view_tail(v),
       stoppable : View.view_stoppable(v),
       mood      : mood(),
-      asks      : v.asks.length,
-      cards     : v.asks,
+      asks      : v.asks,
       timers    : v.timers,
       jobs      : v.bg,
       talk      : v.talk,

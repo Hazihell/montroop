@@ -7,6 +7,7 @@ import { Face } from "./Avatar.tsx";
 import { Back } from "./Back.tsx";
 import { MOODS, mood_of, show, useKi, work_mood, works_said } from "./Ki.ts";
 import { Minis, type Mini } from "./Minis.tsx";
+import { work_seed } from "./Works.tsx";
 import { Context, RunList } from "./Panel.tsx";
 
 // what is shown stays drawn, leaving, after it closes, until it says it
@@ -35,7 +36,7 @@ export function usePop(n: number, of = ""): string {
 function minis_of(works: View.Work[]): Mini[] {
   return works.flatMap((w) => {
     const mood = work_mood(w);
-    return mood === null ? [] : [{ key: w.id, seed: "session/" + w.id, mood }];
+    return mood === null ? [] : [{ key: w.id, seed: work_seed(w), mood }];
   });
 }
 

@@ -34,10 +34,10 @@ export type Live = { kind: Kind; text: string; of?: string };
 export type Mate = { id: string; name: string; about: string; picture: string; unread: number; last: string; busy: boolean; asks?: number; archived: number; subs?: SubRow[]; works?: Work[] };
 
 // a work session as its agent's row carries it: what it waits on (the
-// owner's approval, its agent's answer); line, its latest log line; ended,
-// when its latest run ended; seq, its latest event taken in; fresh, it
-// ended since the owner last looked at it
-export type Work = { id: string; name: string; branch: string; status: Status; wait: "approval" | "question" | ""; line: string; made: number; ended: number | null; seq: number; fresh: boolean };
+// owner's approval, its agent's answer); line, its latest log line;
+// started and ended, its latest run's; seq, its latest event taken in;
+// fresh, it ended since the owner last looked at it
+export type Work = { id: string; name: string; branch: string; status: Status; wait: "approval" | "question" | ""; line: string; started: number; ended: number | null; seq: number; fresh: boolean };
 
 // who a work session's calls are asked by, on the owner's cards
 export const SESSION = "Session ";
@@ -1115,7 +1115,7 @@ export function link_send(v: View, msg: Client, done = (a: Answer) => link_note(
 
 // a random id, as crypto.randomUUID makes one: that is only in a secure
 // context, and a page on a LAN's plain http is none
-function uuid(): string {
+export function uuid(): string {
   const hex = [...crypto.getRandomValues(new Uint8Array(16))].map((b, k) => (k === 6 ? (b & 15) | 64 : k === 8 ? (b & 63) | 128 : b).toString(16).padStart(2, "0")).join("");
   return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join("-");
 }

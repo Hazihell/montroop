@@ -71,7 +71,7 @@ export namespace Session {
     if (!MADE) {
       db.run(SCHEMA);
       if (!(db.query("select name from pragma_table_info('work_sessions')").all() as Array<{ name: string }>).some((c) => c.name === "seen")) {
-        db.run("alter table work_sessions add column seen integer not null default 0");
+        db.run("alter table work_sessions add column seen integer not null default 0; update work_sessions set seen = at");
       }
       MADE = true;
     }
@@ -192,6 +192,12 @@ export namespace Session {
 
   export function unheard(session: string): Say[] {
     return Session.db().query("select id, session, text, mode, at from work_says where session = ? and heard = 0 order by at").all(session) as Say[];
+  }
+
+  // messages taken in as a run's first message, as a queued one is
+  export function into_run(ids: string[]): void {
+    const q = Session.db().query("update work_says set heard = 1, mode = 'queue' where id = ?");
+    ids.forEach((id) => q.run(id));
   }
 
   export function heard(ids: string[]): void {

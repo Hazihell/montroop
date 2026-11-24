@@ -58,6 +58,9 @@ export const SPEC = "spec.json";
 export const START = "start.json";
 export const LOG = "log.jsonl";
 
+// each log as read so far: the bytes taken in, and what they told
+const READ = new Map<string, { at: number; told: Told[] }>();
+
 const CLIP = 2000;
 
 // how long a holder whose run is over waits for the server to take what
@@ -83,12 +86,36 @@ const SETTINGS = {
 export namespace Hold {
 
   // what the log holds, oldest first (a line cut short by a crash is
-  // skipped)
+  // skipped); the log only grows, so each read takes in only what came
+  // since the last
   export function told(dir: string): Told[] {
-    let text = "";
+    const file = path.join(dir, LOG);
+    let kept = READ.get(file) ?? { at: 0, told: [] };
+    let fd: number | null = null;
     try {
-      text = fs.readFileSync(path.join(dir, LOG), "utf8");
-    } catch {}
+      fd = fs.openSync(file, "r");
+      const size = fs.fstatSync(fd).size;
+      kept = size < kept.at ? { at: 0, told: [] } : kept;
+      const buf = Buffer.alloc(size - kept.at);
+      fs.readSync(fd, buf, 0, buf.length, kept.at);
+      const whole = buf.lastIndexOf(10) + 1;
+      kept = { at: kept.at + whole, told: [...kept.told, ...Hold.lines(buf.subarray(0, whole).toString("utf8"))] };
+      READ.set(file, kept);
+    } catch {
+    } finally {
+      if (fd !== null) {
+        fs.closeSync(fd);
+      }
+    }
+    return kept.told;
+  }
+
+  // a log no longer read
+  export function forget(dir: string): void {
+    READ.delete(path.join(dir, LOG));
+  }
+
+  export function lines(text: string): Told[] {
     return text.split("\n").flatMap((line) => {
       try {
         const t: unknown = JSON.parse(line);

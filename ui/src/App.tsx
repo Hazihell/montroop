@@ -366,7 +366,7 @@ const fresh    = createRoute({ getParentRoute: () => root, path: "/new", compone
 const edit     = createRoute({ getParentRoute: () => root, path: "/a/$agent/edit", component: () => <AgentPage agent={edit.useParams().agent} /> });
 const look     = createRoute({ getParentRoute: () => root, path: "/a/$agent/look", component: () => <Look agent={look.useParams().agent} /> });
 const running  = createRoute({ getParentRoute: () => root, path: "/a/$agent/running", component: () => <Running agent={running.useParams().agent} /> });
-const work     = createRoute({ getParentRoute: () => root, path: "/a/$agent/w/$id", component: () => <WorkPage agent={work.useParams().agent} id={work.useParams().id} /> });
+const work     = createRoute({ getParentRoute: () => root, path: "/a/$agent/w/$id", component: () => <WorkPage key={work.useParams().id} agent={work.useParams().agent} id={work.useParams().id} /> });
 const memory   = createRoute({ getParentRoute: () => root, path: "/a/$agent/memory", component: () => <Memory agent={memory.useParams().agent} /> });
 const tree     = createRoute({ getParentRoute: () => root, path: "/a/$agent/tree", component: () => <Tree agent={tree.useParams().agent} /> });
 // where these were before they became each agent's own, and the list home

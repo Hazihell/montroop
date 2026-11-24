@@ -10,6 +10,9 @@ type Kept = Mini & { gone: boolean };
 
 // how long a face takes to leave; app.css moves it as long
 const OUT = 200;
+// faces drawn before the rest are counted ("+2"), and their size in px
+const MOST = 3;
+const SIZE = 24;
 const STILL = matchMedia("(prefers-reduced-motion: reduce)");
 
 // the faces to draw: the items, and those just gone, where they were, till
@@ -29,9 +32,8 @@ function same(a: Kept[], b: Kept[]): boolean {
   return a.length === b.length && a.every((k, i) => k.key === b[i].key && k.mood === b[i].mood && k.gone === b[i].gone);
 }
 
-// most: faces drawn before the rest are counted ("+2"); label: all of them
-// in words, for a screen reader
-export function Minis({ items, label, most = 3, size = 24 }: { items: Mini[]; label: string; most?: number; size?: number }): ReactNode {
+// label: all of them in words, for a screen reader
+export function Minis({ items, label }: { items: Mini[]; label: string }): ReactNode {
   const [kept, setKept] = useState<Kept[]>(() => kept_next([], items));
   const next = kept_next(kept, items);
   if (!same(kept, next)) {
@@ -45,16 +47,16 @@ export function Minis({ items, label, most = 3, size = 24 }: { items: Mini[]; la
     const timer = setTimeout(() => setKept((all) => all.filter((k) => !k.gone)), OUT);
     return () => clearTimeout(timer);
   }, [leaving, kept]);
-  const shown = kept.slice(0, most);
+  const shown = kept.slice(0, MOST);
   const more = items.length - shown.filter((k) => !k.gone).length;
   if (kept.length === 0) {
     return null;
   }
   return (
-    <span className="minis" role="img" aria-label={label} style={{ "--mini": size + "px" } as CSSProperties}>
+    <span className="minis" {...(label === "" ? { "aria-hidden": true } : { role: "img", "aria-label": label })} style={{ "--mini": SIZE + "px" } as CSSProperties}>
       {shown.map((k) => (
         <span key={k.key} className={"mini" + (k.gone ? " gone" : "")}>
-          <Face picture="" id={k.seed} mood={k.mood} size={size} />
+          <Face picture="" id={k.seed} mood={k.mood} size={SIZE} />
         </span>
       ))}
       {more > 0 ? <span className="mini more">+{more}</span> : null}

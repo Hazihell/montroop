@@ -4,8 +4,8 @@ import { useEffect, useRef, type ReactNode } from "react";
 import type { Timer } from "../../Timer.ts";
 import { timer_when } from "../../Timer.ts";
 import * as View from "../../View.ts";
-import { act, MOODS, mood_of, useKi, work_live } from "./Ki.ts";
-import { useWorks, WorkRows } from "./Works.tsx";
+import { act, MOODS, mood_of, useKi } from "./Ki.ts";
+import { useWorks, work_live, WorkRows } from "./Works.tsx";
 
 // everything about one agent past its chat: what goes on for it, its memory,
 // its settings; a menu dropped from its face on a phone, a column beside the

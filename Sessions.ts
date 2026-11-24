@@ -87,8 +87,10 @@ const SENT: Record<Sent, string> = {
   again    : "A message with this request was sent already: not sent twice.",
 };
 
-// a file of a session's media folder, as the app asks for it
+// a file of a session's media folder, as the app asks for it; only
+// pictures and videos show in the page, the rest download
 const FILE = /^[\w][\w.-]{0,200}$/;
+const SHOWN = /\.(png|jpe?g|gif|webp|avif|mp4|webm|mov)$/i;
 
 const LINKS = new Map<string, Link>();
 // each session's latest log line, once known
@@ -364,7 +366,7 @@ export namespace Sessions {
       return;
     }
     const text = says.map((say) => say.text).join("\n\n");
-    Session.heard(says.map((say) => say.id));
+    Session.into_run(says.map((say) => say.id));
     const run = Session.again(id, text);
     const why = run === null ? null : Sessions.launch(s, text);
     if (run !== null && why !== null) {
@@ -471,7 +473,7 @@ export namespace Sessions {
       }
       return as === "answer" ? "answered" : as === "steer" ? "steered" : "queued";
     }
-    Session.heard([key]);
+    Session.into_run([key]);
     const why = Session.again(id, text) === null ? "Session " + s.name + " can't take a message now." : Sessions.launch(s, text);
     if (why !== null) {
       Session.unsay(key);
@@ -545,6 +547,7 @@ export namespace Sessions {
     Session.set(id, { archived: 1 });
     LINKS.delete(id);
     LATEST.delete(id);
+    Hold.forget(s.dir);
     HOOKS.change();
     return null;
   }
@@ -566,7 +569,7 @@ export namespace Sessions {
     const run = Session.run(s.id);
     const wait = Session.parked(s.id).length > 0 ? "approval" : Session.questions(s.id).length > 0 ? "question" : "";
     const ended = run?.ended ?? null;
-    return { id: s.id, name: s.name, branch: s.branch, status: s.status, wait, line: LATEST.get(s.id) ?? "", made: s.made, ended, seq: s.ack, fresh: ended !== null && ended > s.seen };
+    return { id: s.id, name: s.name, branch: s.branch, status: s.status, wait, line: LATEST.get(s.id) ?? "", started: run?.started ?? s.made, ended, seq: s.ack, fresh: ended !== null && ended > s.seen };
   }
 
   // the session's media files, oldest first
@@ -687,9 +690,13 @@ export namespace Sessions {
     const file = /^\/api\/sessions\/([0-9a-f]{8})\/media\/([^/]+)$/.exec(p);
     if (file !== null) {
       const s = Session.get(file[1]);
-      const name = decodeURIComponent(file[2]);
+      let name = "";
+      try {
+        name = decodeURIComponent(file[2]);
+      } catch {}
       const at = s === null || !FILE.test(name) ? null : Bun.file(path.join(s.dir, MEDIA, name));
-      return at !== null && (await at.exists()) ? new Response(at, { headers: { "cache-control": "private, max-age=3600" } }) : new Response("not found", { status: 404 });
+      const kept: Record<string, string> = SHOWN.test(name) ? {} : { "content-type": "application/octet-stream", "content-disposition": "attachment" };
+      return at !== null && (await at.exists()) ? new Response(at, { headers: { "cache-control": "private, max-age=3600", "x-content-type-options": "nosniff", ...kept } }) : new Response("not found", { status: 404 });
     }
     const m = /^\/api\/sessions(?:\/([0-9a-f]{8})(?:\/(say|resume|stop|archive|seen))?)?$/.exec(p);
     if (m === null) {

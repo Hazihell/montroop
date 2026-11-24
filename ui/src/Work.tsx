@@ -8,11 +8,11 @@ import type { Parked, Question, Run, Say, Session } from "../../Session.ts";
 import * as View from "../../View.ts";
 import type { Told } from "../../Wire.ts";
 import { Back } from "./Back.tsx";
-import { note, show, useKi, work_live, work_state } from "./Ki.ts";
+import { note, show, useKi } from "./Ki.ts";
 import { Blocks } from "./Markdown.tsx";
 import { Ask, CallBody, ToolIcon } from "./Rows.tsx";
 import { viewer_open } from "./Viewer.tsx";
-import { useNow, useWorks, work_act, work_span, work_stop, WorkFace } from "./Works.tsx";
+import { useNow, useWorks, work_act, work_live, work_span, work_stop, WorkFace, WorkState } from "./Works.tsx";
 
 // one work session's page: what it is and does now, its log as it comes
 // (newest at the bottom, followed while at the bottom), the calls and
@@ -32,14 +32,11 @@ const AS: Record<string, string> = { Bash: "shell", Read: "read", Write: "write"
 // what a log line for each kind of entry never shows
 const QUIET = new Set(["began", "heard", "replied", "dropped", "result"]);
 
-async function load(id: string, query: string): Promise<Detail | null> {
+// the session as the server has it; "gone": it has none such; null: it
+// could not be reached
+async function load(id: string, query: string): Promise<Detail | "gone" | null> {
   const res = await fetch("/api/sessions/" + id + "?" + query).catch(() => null);
-  return res?.ok === true ? ((await res.json()) as Detail) : null;
-}
-
-// a random id for a message, the same on each retry of it
-function request(): string {
-  return [...crypto.getRandomValues(new Uint8Array(12))].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return res?.status === 404 ? "gone" : res?.ok === true ? ((await res.json()) as Detail) : null;
 }
 
 // the session and its log: the latest page, then what comes after it each
@@ -58,8 +55,11 @@ function useDetail(id: string, moved: string): { d: Detail | null; log: Told[]; 
       if (!on) {
         return;
       }
-      if (got === null) {
-        setGone(after < 0);
+      if (got === null || got === "gone") {
+        setGone(got === "gone");
+        if (got === null) {
+          note("Can't reach Ki: the session shows again once it can.");
+        }
         return;
       }
       setD(got);
@@ -73,7 +73,7 @@ function useDetail(id: string, moved: string): { d: Detail | null; log: Told[]; 
   }, [id, moved, asked]);
   const earlier = () => {
     const first = log[0]?.seq ?? 0;
-    void load(id, "before=" + first + "&n=" + PAGE).then((got) => got !== null && setLog((was) => [...got.log, ...was.filter((t) => t.seq >= first)]));
+    void load(id, "before=" + first + "&n=" + PAGE).then((got) => typeof got === "object" && got !== null && setLog((was) => [...got.log, ...was.filter((t) => t.seq >= first)]));
   };
   return { d, log, gone, earlier, again: () => setAsked((n) => n + 1) };
 }
@@ -126,7 +126,7 @@ function Sent({ text, waiting = "" }: { text: string; waiting?: string }): React
 
 function Report({ text }: { text: string }): ReactNode {
   return (
-    <div className="msg work card gl report">
+    <div className="msg card gl report">
       <p className="who"><b>Report</b></p>
       <div className="prose"><Blocks x={Md.md_parse(text)} /></div>
     </div>
@@ -141,7 +141,7 @@ function Entry({ t, result, media, id, agent }: { t: Told; result: { text: strin
     : ev.k === "tool" ? <Step name={ev.name} input={ev.input} result={result} />
     : ev.k === "ask" ? <p className="cap flex items-center gap-1.5"><HandPalmIcon size={16} weight="fill" className="shrink-0 text-act-ink" />Asked for your approval: {ev.what.toLowerCase()}</p>
     : ev.k === "answered" ? <p className="cap">{ev.ok ? "You approved it." : "You denied it."}</p>
-    : ev.k === "question" ? <div className="msg work card gl"><p className="who"><ChatCircleDotsIcon size={16} /><b>Asked {agent}</b></p><div className="prose"><Blocks x={Md.md_parse(ev.text)} /></div></div>
+    : ev.k === "question" ? <div className="msg card gl"><p className="who"><ChatCircleDotsIcon size={16} /><b>Asked {agent}</b></p><div className="prose"><Blocks x={Md.md_parse(ev.text)} /></div></div>
     : ev.k === "report" ? <Report text={ev.text} />
     : ev.k === "compacted" ? <p className="cap">Its context was compacted.</p>
     : ev.k === "turn" ? (ev.ok ? null : <p className="cap text-bad">Its turn failed: {ev.text}</p>)
@@ -162,7 +162,7 @@ function SayBox({ id, name, live, sent }: { id: string; name: string; live: bool
   const [text, setText] = useState("");
   const [mode, setMode] = useState<"steer" | "queue">("steer");
   const [sending, setSending] = useState(false);
-  const req = useRef(request());
+  const req = useRef(View.uuid());
   const blank = text.trim() === "";
   const send = async () => {
     if (blank || sending) {
@@ -172,7 +172,7 @@ function SayBox({ id, name, live, sent }: { id: string; name: string; live: bool
     const out = await work_act(id, "say", { text: text.trim(), request: req.current, mode });
     setSending(false);
     if (out !== null) {
-      req.current = request();
+      req.current = View.uuid();
       setText("");
       note(text_of(get(out, "sent"), "Sent."));
       sent();
@@ -205,12 +205,59 @@ function SayBox({ id, name, live, sent }: { id: string; name: string; live: bool
   );
 }
 
+// the log and what goes with it: the messages sent, in the order things
+// came; its media under the entry that names it, the rest at the end; then
+// what waits on someone now
+function Log({ d, log, id, agent, live, earlier }: { d: Detail; log: Told[]; id: string; agent: string; live: boolean; earlier: () => void }): ReactNode {
+  const asks = useKi((s) => s.asks).filter((a) => a.who === View.SESSION + d.name);
+  const results = new Map(log.flatMap((t) => (t.ev.k === "result" ? [[t.ev.id, { text: t.ev.text, error: t.ev.error }] as const] : [])));
+  const placed = new Map<number, string[]>();
+  const rest = d.media.filter((m) => {
+    const at = log.find((t) => (t.ev.k === "tool" || t.ev.k === "result") && (t.ev.k === "tool" ? t.ev.input : t.ev.text).includes(m));
+    if (at !== undefined) {
+      placed.set(at.seq, [...(placed.get(at.seq) ?? []), m]);
+    }
+    return at === undefined;
+  });
+  const all = (log[0]?.seq ?? 1) <= 1;
+  const from = log[0]?.at ?? 0;
+  // each run's first message, and those steered into a run at work; one
+  // queued is a run's first once taken in
+  const sent = [
+    ...d.runs.map((r) => ({ key: "run" + r.n, text: r.prompt, at: r.started })),
+    ...d.says.filter((s) => s.heard === 1 && s.mode !== "queue").map((s) => ({ key: s.id, text: s.text, at: s.at })),
+  ].filter((m) => all || m.at >= from).sort((a, b) => a.at - b.at);
+  const waiting = d.says.filter((s) => s.heard === 0);
+  const report = d.runs.at(-1)?.report ?? "";
+  const reported = log.some((t) => t.ev.k === "report" && t.ev.text === report);
+  const flow: Array<{ key: string; node: ReactNode }> = [];
+  let k = 0;
+  for (const t of log.filter((x) => !QUIET.has(x.ev.k))) {
+    for (; k < sent.length && sent[k].at <= t.at; k++) {
+      flow.push({ key: sent[k].key, node: <Sent text={sent[k].text} /> });
+    }
+    flow.push({ key: "e" + t.seq, node: <Entry t={t} result={t.ev.k === "tool" ? results.get(t.ev.id) : undefined} media={placed.get(t.seq) ?? []} id={id} agent={agent} /> });
+  }
+  flow.push(...sent.slice(k).map((m) => ({ key: m.key, node: <Sent text={m.text} /> })));
+  return (
+    <>
+      {all ? null : <div className="row"><button type="button" className="pillbtn min-h-11 px-4 text-[0.875rem]" onClick={earlier}>Earlier</button></div>}
+      {flow.map((f) => <div key={f.key} className="row">{f.node}</div>)}
+      {!reported && report !== "" && !live ? <div className="row"><Report text={report} /></div> : null}
+      {rest.length === 0 ? null : <div className="row"><p className="cap">Its media</p><div className="mt-2 flex flex-wrap gap-2">{rest.map((m) => <Media key={m} id={id} name={m} />)}</div></div>}
+      {waiting.map((m) => <div key={m.id} className="row"><Sent text={m.text} waiting={m.mode === "queue" ? "Queued for its next run" : "Goes in at its next step"} /></div>)}
+      {d.questions.map((q) => <div key={q.id} className="row"><p className="cap">Waits for {agent || "its agent"} to answer “{Md.md_flat(q.text)}”. A message here answers it too.</p></div>)}
+      {asks.map((a) => <div key={a.id} className="row"><Ask row={View.ask_row(a)} /></div>)}
+      {live && asks.length === 0 && d.questions.length === 0 ? <div className="row"><p className="wait" role="status" aria-label="Working"><i /><i /><i /></p></div> : null}
+    </>
+  );
+}
+
 export function WorkPage({ agent, id }: { agent: string; id: string }): ReactNode {
   const navigate = useNavigate();
   const works = useWorks(agent);
   const row = works.find((w) => w.id === id);
   const named = useKi((s) => s.team.find((m) => m.id === agent)?.name ?? "");
-  const cards = useKi((s) => s.cards);
   const { d, log, gone, earlier, again } = useDetail(id, row === undefined ? "" : row.seq + " " + row.status + " " + row.wait);
   const scroll = useRef<HTMLDivElement>(null);
   const held = useRef({ bottom: true, height: 0, first: -1 });
@@ -272,61 +319,18 @@ export function WorkPage({ agent, id }: { agent: string; id: string }): ReactNod
     );
   }
   const name = row?.name ?? d?.name ?? "";
-  const results = new Map(log.flatMap((t) => (t.ev.k === "result" ? [[t.ev.id, { text: t.ev.text, error: t.ev.error }] as const] : [])));
-  // each media file shows under the first entry that names it, the rest at the end
-  const media = d?.media ?? [];
-  const placed = new Map<number, string[]>();
-  const rest = media.filter((m) => {
-    const at = log.find((t) => (t.ev.k === "tool" || t.ev.k === "result") && (t.ev.k === "tool" ? t.ev.input : t.ev.text).includes(m));
-    if (at !== undefined) {
-      placed.set(at.seq, [...(placed.get(at.seq) ?? []), m]);
-    }
-    return at === undefined;
-  });
-  const shown = log.filter((t) => !QUIET.has(t.ev.k));
-  const all = (log[0]?.seq ?? 1) <= 1;
-  const from = log[0]?.at ?? 0;
-  // the messages it was sent: each run's first, and those that went into a run at work
-  const runs = d?.runs ?? [];
-  const sent = [
-    ...runs.map((r) => ({ key: "run" + r.n, text: r.prompt, at: r.started, waiting: false, queue: false })),
-    ...(d?.says ?? []).filter((s) => s.heard === 0 || !runs.some((r) => r.prompt.includes(s.text))).map((s) => ({ key: s.id, text: s.text, at: s.at, waiting: s.heard === 0, queue: s.mode === "queue" })),
-  ].filter((m) => m.waiting || all || m.at >= from).sort((a, b) => a.at - b.at);
-  const said = sent.filter((m) => !m.waiting);
-  const waiting = sent.filter((m) => m.waiting);
-  const asks = cards.filter((a) => a.who === View.SESSION + name);
-  const report = runs.at(-1)?.report ?? "";
-  const reported = log.some((t) => t.ev.k === "report" && t.ev.text === report);
-  const state = row === undefined ? d?.status ?? "" : work_state(row, named);
   const stopped = row?.status === "failed" || row?.status === "stopped";
+  const archived = () => void navigate({ to: "/a/$agent/running", params: { agent }, replace: true });
   const archive = async () => {
     if (!confirm("Archive " + name + "? Its worktree and branch are removed; its record stays.")) {
       return;
     }
     const out = await View.post("/api/sessions/" + id + "/archive", { force: false });
-    if (out.ok === true) {
-      void navigate({ to: "/a/$agent/running", params: { agent }, replace: true });
-      return;
-    }
-    const why = text_of(out.error, "Could not archive it.");
-    if (confirm(why + "\n\nArchive it anyway? Work found nowhere else is lost for good.")) {
-      if ((await work_act(id, "archive", { force: true })) !== null) {
-        void navigate({ to: "/a/$agent/running", params: { agent }, replace: true });
-      }
+    const sure = out.ok === true || confirm(text_of(out.error, "Could not archive it.") + "\n\nArchive it anyway? Work found nowhere else is lost for good.");
+    if (out.ok === true || (sure && (await work_act(id, "archive", { force: true })) !== null)) {
+      archived();
     }
   };
-  // entries and the messages sent, in the order they came
-  const flow: Array<{ key: string; node: ReactNode }> = [];
-  let k = 0;
-  for (const t of shown) {
-    for (; k < said.length && said[k].at <= t.at; k++) {
-      flow.push({ key: said[k].key, node: <Sent text={said[k].text} /> });
-    }
-    flow.push({ key: "e" + t.seq, node: <Entry t={t} result={t.ev.k === "tool" ? results.get(t.ev.id) : undefined} media={placed.get(t.seq) ?? []} id={id} agent={named} /> });
-  }
-  for (; k < said.length; k++) {
-    flow.push({ key: said[k].key, node: <Sent text={said[k].text} /> });
-  }
   return (
     <section className="page work-page">
       <header className="head pl-3.5">
@@ -334,25 +338,18 @@ export function WorkPage({ agent, id }: { agent: string; id: string }): ReactNod
         {row === undefined ? null : <WorkFace w={row} size={44} />}
         <div className="min-w-0 flex-1 pl-0.5">
           <h1 className="truncate">{name}</h1>
-          <p className="work-sub"><span className={"state " + (row === undefined || row.wait === "" ? row?.status ?? "" : "waiting")}>{state}</span>{row === undefined ? null : <> · <span className="tabular-nums">{work_span(row, now)}</span></>}{d === null ? null : <> · <bdi className="font-mono">{d.branch}</bdi></>}</p>
+          <p className="work-sub">{row === undefined ? d?.status ?? "" : <><WorkState w={row} agent={named} /> · <span className="tabular-nums">{work_span(row, now)}</span></>}</p>
         </div>
       </header>
       <div className="work-acts">
         {live && row !== undefined ? <button type="button" className="pillbtn" onClick={() => work_stop(row)}>Stop</button> : null}
         {stopped ? <button type="button" className="pillbtn go" onClick={() => void work_act(id, "resume")}>Resume</button> : null}
         {row !== undefined && !live ? <button type="button" className="pillbtn" onClick={() => void archive()}>Archive</button> : null}
+        {d === null ? null : <bdi className="branch">{d.branch}</bdi>}
       </div>
       <div ref={scroll} className="scroll work-log" onScroll={scrolled}>
         <div>
-          {d === null ? <p className="wait" role="status" aria-label="Loading"><i /><i /><i /></p> : null}
-          {all ? null : <div className="row"><button type="button" className="pillbtn min-h-11 px-4 text-[0.875rem]" onClick={earlier}>Earlier</button></div>}
-          {flow.map((f) => <div key={f.key} className="row">{f.node}</div>)}
-          {!reported && report !== "" && !live ? <div className="row"><Report text={report} /></div> : null}
-          {rest.length === 0 ? null : <div className="row"><p className="cap">Its media</p><div className="mt-2 flex flex-wrap gap-2">{rest.map((m) => <Media key={m} id={id} name={m} />)}</div></div>}
-          {waiting.map((m) => <div key={m.key} className="row"><Sent text={m.text} waiting={m.queue ? "Queued for its next run" : "Goes in at its next step"} /></div>)}
-          {(d?.questions ?? []).map((q) => <div key={q.id} className="row"><p className="cap">Waits for {named || "its agent"} to answer “{Md.md_flat(q.text)}”. A message here answers it too.</p></div>)}
-          {asks.map((a) => <div key={a.id} className="row"><Ask row={View.ask_row(a)} /></div>)}
-          {live && asks.length === 0 && (d?.questions.length ?? 0) === 0 ? <div className="row"><p className="wait" role="status" aria-label="Working"><i /><i /><i /></p></div> : null}
+          {d === null ? <p className="wait" role="status" aria-label="Loading"><i /><i /><i /></p> : <Log d={d} log={log} id={id} agent={named} live={live} earlier={earlier} />}
         </div>
       </div>
       {row === undefined ? null : <SayBox id={id} name={name} live={live} sent={again} />}

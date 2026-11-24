@@ -4,15 +4,24 @@ import { useEffect, useState, type ReactNode } from "react";
 import { text_of } from "../../Json.ts";
 import * as View from "../../View.ts";
 import { Face } from "./Avatar.tsx";
-import { note, useKi, work_live, work_mood, work_state } from "./Ki.ts";
+import { note, useKi, work_mood } from "./Ki.ts";
 
-// an agent's work sessions in its list of what runs: each opens its page,
-// one at work stops from here
+// an agent's work sessions as the app shows them: in its list of what runs
+// (each opens its page, one at work stops from there), and what they do
 
 const NO_WORKS: View.Work[] = [];
 
 export function useWorks(agent: string): View.Work[] {
   return useKi((s) => s.team.find((m) => m.id === agent)?.works ?? NO_WORKS);
+}
+
+export function work_live(w: View.Work): boolean {
+  return w.status === "running" || w.status === "waiting";
+}
+
+// what a session's face is drawn from: the same face wherever it shows
+export function work_seed(w: View.Work): string {
+  return "session/" + w.id;
 }
 
 // the time now, again each second while on
@@ -28,19 +37,27 @@ export function useNow(on: boolean): number {
   return now;
 }
 
-// how long it has run: till now, or till its latest run ended
+// how long its latest run has run: till now, or till it ended
 export function work_span(w: View.Work, now: number): string {
-  const s = Math.max(0, Math.round(((work_live(w) ? now : w.ended ?? now) - w.made) / 1000));
+  const s = Math.max(0, Math.round(((w.ended ?? now) - w.started) / 1000));
   return s < 60 ? s + "s" : s < 3600 ? Math.floor(s / 60) + "m" : Math.floor(s / 3600) + "h " + Math.floor((s % 3600) / 60) + "m";
 }
 
-// a session's own face, the same in every list it is in
 export function WorkFace({ w, size }: { w: View.Work; size: number }): ReactNode {
-  return <Face picture="" id={"session/" + w.id} mood={work_mood(w) ?? "idle"} size={size} />;
+  return <Face picture="" id={work_seed(w)} mood={work_mood(w) ?? "idle"} size={size} />;
 }
 
-// act: stop, resume, archive, seen; null: done, else why not
-export async function work_act(id: string, act: string, body: object = {}): Promise<Record<string, unknown> | null> {
+const STATES: Record<View.Work["status"], string> = { running: "Running", waiting: "Waiting", done: "Done", failed: "Failed", stopped: "Stopped" };
+
+// what it does, in words, tinted by it; agent: its agent's name, whom its
+// question waits on
+export function WorkState({ w, agent }: { w: View.Work; agent: string }): ReactNode {
+  const said = w.wait === "approval" ? "Needs your approval" : w.wait === "question" ? "Asks " + (agent || "its agent") : STATES[w.status];
+  return <span className={"state " + (w.wait === "" ? w.status : "waiting")}>{said}</span>;
+}
+
+// the server's answer, or null when it refused (said in a note)
+export async function work_act(id: string, act: "say" | "stop" | "resume" | "archive", body: object = {}): Promise<Record<string, unknown> | null> {
   const out = await View.post("/api/sessions/" + id + "/" + act, body);
   if (out.ok !== true) {
     note(text_of(out.error, "Could not " + act + " the session."));
@@ -61,16 +78,16 @@ export function WorkRows({ agent }: { agent: string }): ReactNode {
   const now = useNow(works.some(work_live));
   return works.map((w) => (
     <div key={w.id} className="item work">
-      <Link to="/a/$agent/w/$id" params={{ agent, id: w.id }} className="go" aria-label={w.name + ", " + work_state(w, name)}>
+      <Link to="/a/$agent/w/$id" params={{ agent, id: w.id }} className="go">
         <WorkFace w={w} size={32} />
         <p>
           <b className="font-semibold">{w.name}</b>
-          <small><span className={"state " + (w.wait === "" ? w.status : "waiting")}>{work_state(w, name)}</span> · <span className="tabular-nums">{work_span(w, now)}</span></small>
+          <small><WorkState w={w} agent={name} /> · <span className="tabular-nums">{work_span(w, now)}</span></small>
           {w.line === "" ? null : <small className="said">{w.line}</small>}
         </p>
         {work_live(w) ? null : <CaretRightIcon size={16} className="self-center" />}
       </Link>
-      {work_live(w) ? <button type="button" className="pillbtn min-h-11 self-center px-4 text-[0.875rem]" onClick={() => work_stop(w)}>Stop</button> : null}
+      {work_live(w) ? <button type="button" className="pillbtn min-h-11 self-center px-4 text-[0.875rem]" aria-label={"Stop " + w.name} onClick={() => work_stop(w)}>Stop</button> : null}
     </div>
   ));
 }
