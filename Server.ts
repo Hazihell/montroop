@@ -1,9 +1,7 @@
 #!/usr/bin/env bun
 
 import * as fs from "node:fs";
-import * as net from "node:net";
 import * as path from "node:path";
-import * as zlib from "node:zlib";
 import type { ServerWebSocket } from "bun";
 import type { Out as Done } from "./Agent.ts";
 import { AskAI, type Ask, type Block, type Call, type End, type Event, type Kind, type Parked, type Said, type Say, type Vendor } from "./AskAI.ts";
@@ -14,7 +12,7 @@ import { Disk } from "./Disk.ts";
 import { Mcp } from "./Mcp.ts";
 import * as Import from "./Import.ts";
 import * as Md from "./Md.ts";
-import { JOBS, Memory, type Msg as Log, type Pair, type Room, type Root, type Share } from "./Memory.ts";
+import { JOBS, Memory, type Msg as Log, type Pair, type Root, type Share } from "./Memory.ts";
 import { OpenAI } from "./OpenAI.ts";
 import { Owner } from "./Owner.ts";
 import { Pick } from "./Pick.ts";
@@ -26,6 +24,7 @@ import * as Prompts from "./Prompts.ts";
 import { install_cmd } from "./Update.ts";
 import { move_over } from "./Write.ts";
 import { LIMIT, Limit } from "./Limit.ts";
+import * as Lock from "./Lock.ts";
 import { Run, type Heard } from "./Run.ts";
 import * as Service from "./Service.ts";
 import * as Timer from "./Timer.ts";
@@ -33,12 +32,12 @@ import * as Pins from "./Pins.ts";
 import { Gate, type Asked } from "./Gate.ts";
 import { SEARCHES, Tools, type Seat, type Subs } from "./Tools.ts";
 import { JOB } from "./Machine.ts";
-import { ACTIVE, ASKS, FRAME, IDLE, IMAGES, limit_note, LINES, LINES_MOST, live_push, MEDIA, PING, QUIT, SUMMARIES, TICK, TURN, WIRE, type Answer, type Live, type Part, type Pending, type Queued, type Server as Out, type Sums, type Talk as Meter, TOKEN, type Wait, type Mate } from "./View.ts";
+import { ACTIVE, ASKS, FRAME, IDLE, IMAGES, limit_note, LINES, LINES_MOST, live_push, PING, QUIT, SUMMARIES, TICK, TURN, WIRE, type Answer, type Live, type Part, type Pending, type Queued, type Server as Out, type Sums, type Talk as Meter, TOKEN, type Wait, type Mate } from "./View.ts";
+import * as Web from "./Web.ts";
 import * as config from "./Config.ts";
-import { err_code, err_stack, err_why } from "./Err.ts";
+import { err_stack, err_why } from "./Err.ts";
 import { get, rec, text_of } from "./Json.ts";
 import hello_md from "./prompts/hello.md" with { type: "text" };
-import files from "./ui/dist/files.ts";
 
 // agent: the chat a browser shows, by its agent's id
 type Sock = ServerWebSocket<{ who: string; tab: string; wire: string | null; host: string | null; work: string; scratch: string | null; shell: string | null; device: string | null; seen: Set<string>; active: number; agent: string }>;
@@ -99,10 +98,6 @@ type Turn = {
 
 type Chat = Parts & Doing & Turn;
 
-const LOCK       = config.DIR + "/lock";
-const LOCK_PID   = LOCK + ".pid";
-const LOCK_BEAT  = 5000;
-const LOCK_DEAD  = 30000;
 const WIN        = process.platform === "win32";
 const PID        = config.DIR + "/server.pid";
 const SETTLE     = 200;
@@ -128,9 +123,7 @@ const TALK_OFF_AT = 0.9;
 // the user's Stop: no note in the chat; the next turn starts with it
 const STOPPED    = "Stopped by the user.";
 const STOPPED_TOLD = "(Your last turn was stopped by the user.)";
-const FULL       = "Ki's disk is full; try again soon.";
 const BATCH      = "/import.json";
-const SPARE      = 2 ** 30;
 
 const TIMER_TEXT = 200;
 const LAST       = 120;
@@ -145,9 +138,6 @@ const BODIES     = ["say", "import", "voice"];
 
 const PAIR       = 200;
 
-const PAGE_CSP   = "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; media-src 'self'; font-src data:; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; sandbox allow-same-origin allow-popups";
-const PAGE_BASE  = `<!doctype html><meta charset="utf-8"><base target="_blank"><style>:root { color-scheme: light dark; } body { margin: 10px 12px; font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif; color: #111111; background: #ffffff; } a { color: inherit; } @media (prefers-color-scheme: dark) { body { color: #e3e3e6; background: #171719; } }</style>\n`;
-
 const PICTURED   = 20;
 
 const READ       = 2 ** 20;
@@ -160,77 +150,9 @@ const OWN        = ["/ws"];
 const HELLO      = hello_md.trim().replace("{install}", install_cmd(false));
 const HELLO_LINE = "reply: hello: Ki, one endless chat kept in a memory tree, recent days in more detail; build anything for years; recalls the past (ad2cat.py); a chatbot with a memory system; ki device on the user's computers.";
 
-// the app's files as vite built them (bun run ui), each path a browser
-// asks with its file: imported as files, paths
-const UI         = Object.fromEntries(Object.entries(files).map(([name, file]) => [name, file_path(file)]));
-const PAGE       = file_path(UI["/index.html"]);
-const SW         = file_path(UI["/sw.js"]);
-
-const WEB: Record<string, string> = { ...UI, "/": PAGE };
-
-// the app's own places, each the page; an agent's are AGENT_PAGE's
-for (const place of ["/settings", "/tree", "/new", "/running", "/memory", "/team"]) {
-  WEB[place] = PAGE;
-}
-
-// an agent's pages: /a/<id>, /a/<id>/edit, /a/<id>/look, /a/<id>/s/<Name>
-// (a subagent's chat)
-const AGENT_PAGE = /^\/a\/[a-z0-9]{1,16}(\/edit|\/look|\/s\/[A-Za-z]{2,40})?$/;
-
-// vite names these by what is in them, so one never changes
-const NAMED_BY_HASH = "/assets/";
-// asked again each time, and answered "the same" while the build is
-const ASKED_AGAIN = [PAGE, SW, file_path(UI["/manifest.webmanifest"])];
-// what a page needs to open with no network: the service worker keeps them
-const SHELL      = ["/", ...Object.keys(UI).filter((name) => name.startsWith(NAMED_BY_HASH) && !name.endsWith(".br")), "/mark.svg", "/manifest.webmanifest", "/icon-192.png"];
-const BUILD      = Bun.hash(Buffer.concat(Object.keys(UI).sort().map((name) => fs.readFileSync(file_path(UI[name]))))).toString(36);
-const INDEX      = fs.readFileSync(PAGE, "utf8").replace("<html ", `<html data-build="${BUILD}" `);
-const WORKER     = fs.readFileSync(SW, "utf8").replace("{build}", BUILD).replace("{shell}", SHELL.join(" "));
-const STAMPED_WITH_BUILD = new Map([[SW, WORKER]]);
-// the scripts and styles, as a browser that takes gzip gets them; one that
-// takes brotli gets the build's NAME.br
-const ZIPPED     = new Map(Object.keys(UI).filter((name) => name.startsWith(NAMED_BY_HASH) && /\.(js|css)$/.test(name)).map((name) => [name, Bun.gzipSync(fs.readFileSync(file_path(UI[name])))]));
 // a message to a page this long or longer goes deflated, if the page takes
 // that: a chat's messages, as it opens, are most of what a page gets
 const WS_ZIP      = 64;
-// a page made at each ask, with its chat's first messages, brotli'd fast
-const PAGE_BROTLI = { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 5 } };
-
-let held = 0;
-
-// whether a browser takes a coding: named in its accept-encoding, and not
-// with q=0
-function takes(req: Request, coding: string): boolean {
-  return (req.headers.get("accept-encoding") ?? "").split(",").some((part) => {
-    const [name, ...params] = part.split(";").map((word) => word.trim());
-    return name === coding && !params.some((param) => /^q=0(\.0*)?$/.test(param));
-  });
-}
-
-function stream_after(head: Uint8Array, tail: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
-  const reader = tail.getReader();
-  let first = true;
-  return new ReadableStream({
-    async pull(out) {
-      if (first) {
-        first = false;
-        return out.enqueue(head);
-      }
-      const got = await reader.read();
-      return got.done ? out.close() : out.enqueue(got.value);
-    },
-    cancel() {
-      return reader.cancel();
-    },
-  });
-}
-
-function file_path(x: unknown): string {
-  if (typeof x !== "string") {
-    throw new Error("an imported file is no path: " + String(x));
-  }
-  return x;
-}
 
 export namespace Chat {
 
@@ -1591,8 +1513,8 @@ export namespace Chat {
       const at = Math.max(now, Date.now());
       const dues = mem.timers.filter((t) => Date.parse(t.at) <= at);
       try {
-        if (dues.length > 0 && Chat.full()) {
-          console.error("ki: the schedules wait: " + FULL);
+        if (dues.length > 0 && Web.full()) {
+          console.error("ki: the schedules wait: " + Web.FULL);
           return Chat.timed(chat, true);
         }
         if (dues.length > 0) {
@@ -1610,11 +1532,6 @@ export namespace Chat {
         Chat.timed(chat, true);
       }
     });
-  }
-
-  export function full(): boolean {
-    const disk = fs.statfsSync(config.DIR);
-    return disk.bavail * disk.bsize < SPARE;
   }
 
   export function running(chat: Chat): string[] {
@@ -1673,7 +1590,7 @@ export namespace Chat {
     const queue: Queued[] = run.queue.map(({ q }) => ({ kind: q.kind, text: shown(q.text) }));
     const sent = run.sent.flatMap(({ m }) => Array.from({ length: m.end - m.id }, (_, k) => m.id + k));
     const bg = Tools.bg(chat.tools, (agent) => agent === chat.who || chat.subs.has(agent) || chat.gone.has(agent));
-    return { $: "state", agent: chat.id, busy: run.busy, wait: Chat.waits(chat), pick: chat.pick, ...config.OFFER, importing, limit: run.limit, queue, sent, sums: Chat.sums(chat), again: chat.mem.again, timers, mcp, talk, bg, asks: Gate.shown(chat.tools.gate, chat.id), build: BUILD, thinking: config.THINKING };
+    return { $: "state", agent: chat.id, busy: run.busy, wait: Chat.waits(chat), pick: chat.pick, ...config.OFFER, importing, limit: run.limit, queue, sent, sums: Chat.sums(chat), again: chat.mem.again, timers, mcp, talk, bg, asks: Gate.shown(chat.tools.gate, chat.id), build: Web.BUILD, thinking: config.THINKING };
   }
 
   export function sums(chat: Chat): Sums | null {
@@ -1949,8 +1866,8 @@ export namespace Chat {
   }
 
   export async function post(chat: Chat, id: string, what: string, req: Request, msg: Record<string, unknown>): Promise<Answer> {
-    if (Chat.full()) {
-      return { error: FULL, status: 507 };
+    if (Web.full()) {
+      return { error: Web.FULL, status: 507 };
     }
     const file = chat.mem.dir + "/up/" + crypto.randomUUID();
     fs.mkdirSync(chat.mem.dir + "/up", { recursive: true });
@@ -2534,120 +2451,6 @@ export namespace Main {
     return {};
   }
 
-  export async function lock(): Promise<void> {
-    fs.mkdirSync(config.DIR, { recursive: true });
-    while (WIN) {
-      try {
-        fs.writeFileSync(LOCK_PID, String(process.pid), { flag: "wx" });
-        setInterval(() => {
-          try {
-            fs.utimesSync(LOCK_PID, new Date(), new Date());
-          } catch {}
-        }, LOCK_BEAT).unref();
-        process.on("exit", () => fs.rmSync(LOCK_PID, { force: true }));
-        return;
-      } catch (err) {
-        if (err_code(err) !== "EEXIST") {
-          throw err;
-        }
-      }
-      if (!Main.locked()) {
-        fs.rmSync(LOCK_PID, { force: true });
-        continue;
-      }
-      await Bun.sleep(1000);
-    }
-    while (true) {
-      try {
-        Bun.listen({ unix: LOCK, socket: { data() {} } });
-        return;
-      } catch (err) {
-        if (err_code(err) !== "EADDRINUSE") {
-          throw err;
-        }
-      }
-      const live = await new Promise<boolean>((done) => {
-        const sock = net.connect(LOCK);
-        sock.on("connect", () => sock.on("close", () => done(true)));
-        sock.on("error", () => done(false));
-      });
-      if (!live) {
-        fs.rmSync(LOCK, { force: true });
-      }
-    }
-  }
-
-  export function locked(): boolean {
-    try {
-      const text = fs.readFileSync(LOCK_PID, "utf8");
-      if (Date.now() - fs.statSync(LOCK_PID).mtimeMs > LOCK_DEAD || text === String(process.pid)) {
-        return false;
-      }
-      if (text !== "") {
-        process.kill(Number(text), 0);
-      }
-      return true;
-    } catch (err) {
-      return err_code(err) === "EPERM";
-    }
-  }
-
-  export function file(pathname: string, req: Request): Response {
-    const file = WEB[pathname];
-    if (file === undefined) {
-      return new Response("not found", { status: 404 });
-    }
-    if (pathname.startsWith(NAMED_BY_HASH)) {
-      const headers = { "cache-control": "public, max-age=31536000, immutable", vary: "accept-encoding" };
-      const brotli = WEB[pathname + ".br"];
-      if (brotli !== undefined && takes(req, "br")) {
-        return new Response(Bun.file(brotli), { headers: { ...headers, "content-encoding": "br", "content-type": Bun.file(file).type } });
-      }
-      const zipped = ZIPPED.get(pathname);
-      if (zipped !== undefined && takes(req, "gzip")) {
-        return new Response(zipped, { headers: { ...headers, "content-encoding": "gzip", "content-type": Bun.file(file).type } });
-      }
-      return new Response(Bun.file(file), { headers });
-    }
-    if (!ASKED_AGAIN.includes(file)) {
-      return new Response(Bun.file(file));
-    }
-    // the page also names the first agent in the list, so a page cached for another goes
-    const first = file === PAGE ? Team.first().id : "";
-    if (file === PAGE && req.headers.get("sec-fetch-mode") === "navigate") {
-      return Main.navigated(req, first);
-    }
-    const headers = new Headers({ "cache-control": "no-cache", etag: `"${BUILD}${first === "" ? "" : "-" + first}"` });
-    if (req.headers.get("if-none-match") === headers.get("etag")) {
-      return new Response(null, { status: 304, headers });
-    }
-    const made = file === PAGE ? INDEX.replace("<html ", `<html data-first="${first}" `) : STAMPED_WITH_BUILD.get(file) ?? null;
-    if (made === null) {
-      return new Response(Bun.file(file), { headers });
-    }
-    headers.set("content-type", file === PAGE ? "text/html;charset=utf-8" : "text/javascript;charset=utf-8");
-    return new Response(made, { headers });
-  }
-
-  // a page the browser opens itself, not one the service worker keeps,
-  // says whether it is signed in, and brings its chat's first messages
-  // (#185): /a/<id>'s, the tree's, else the first agent's
-  export function navigated(req: Request, first: string): Response {
-    const url = new URL(req.url);
-    const signed = Owner.is(req);
-    const id = /^\/a\/([a-z0-9]{1,16})/.exec(url.pathname)?.[1] ?? (url.pathname === "/tree" ? url.searchParams.get("a") : null);
-    const page = INDEX.replace("<html ", `<html data-first="${first}" data-signed="${signed ? "in" : "out"}" `);
-    const made = signed ? page.replace("</body>", () => `<script type="application/json" id="opening">${Chat.opening(Main.chat_of(id))}</script>\n</body>`) : page;
-    const headers = { "content-type": "text/html;charset=utf-8", "cache-control": "no-store", vary: "accept-encoding" };
-    if (takes(req, "br")) {
-      return new Response(zlib.brotliCompressSync(made, PAGE_BROTLI), { headers: { ...headers, "content-encoding": "br" } });
-    }
-    if (takes(req, "gzip")) {
-      return new Response(Bun.gzipSync(made), { headers: { ...headers, "content-encoding": "gzip" } });
-    }
-    return new Response(made, { headers });
-  }
-
   export async function page(p: string, req: Request): Promise<Response> {
     const chat = Main.chat_of(new URL(req.url).searchParams.get("agent"));
     const mem = chat.mem;
@@ -2705,87 +2508,17 @@ export namespace Main {
         const to = (who === null ? undefined : Main.by_who(who)) ?? chat;
         const file = q.get("name") ?? "";
         const size = req.headers.get("content-length");
-        const room = Main.room(file, size === null ? null : Number(size));
+        const room = Web.room(file, size === null ? null : Number(size));
         const out = typeof room === "string" ? { error: room } : await Memory.media_add(to.mem, req.body, file, room);
         return Response.json("error" in out ? out : { ...out, url: "/media/" + to.id + "/" + out.name }, { status: "error" in out ? 400 : 200 });
       }
     }
     if (p.startsWith("/media/")) {
-      return Main.media(Main.stored(p), req);
+      return Web.media(Main.stored(p), req);
     }
     const file = Main.stored(p);
     const keep = { "cache-control": "private, max-age=31536000, immutable" };
     return file === null ? new Response("not found", { status: 404 }) : new Response(Bun.file(file), { headers: keep });
-  }
-
-  export function room(file: string, size: number | null): Room | string {
-    const free = () => {
-      const disk = fs.statfsSync(config.DIR);
-      return disk.bavail * disk.bsize - SPARE - held;
-    };
-    const cap = file + " is over the media store's " + Math.round(config.MEDIA_MAX / 2 ** 20) + " MB (config media_mb).";
-    if (size !== null && !(size >= 0)) {
-      return "An upload says no size it can have.";
-    }
-    if (size !== null && size > config.MEDIA_MAX) {
-      return cap;
-    }
-    if (size !== null && size > free()) {
-      return FULL;
-    }
-    let [mine, got] = [size ?? 0, 0];
-    held += mine;
-    return {
-      take(n) {
-        if (got + n > (size ?? config.MEDIA_MAX)) {
-          return size === null ? cap : file + " is longer than its upload said.";
-        }
-        if (size === null && n > free()) {
-          return FULL;
-        }
-        held += size === null ? n : 0;
-        mine += size === null ? n : 0;
-        got += n;
-        return null;
-      },
-      wrote(n) {
-        held -= n;
-        mine -= n;
-      },
-      end() {
-        held -= mine;
-        mine = 0;
-      },
-    };
-  }
-
-  export function media(file: string | null, req: Request): Response {
-    if (file === null) {
-      return new Response("not found", { status: 404 });
-    }
-    const type = MEDIA.get(file.split(".").pop() ?? "");
-    const size = fs.statSync(file).size;
-    const headers: Record<string, string> = { "content-type": type ?? "application/octet-stream", "cache-control": "private, max-age=31536000, immutable", "accept-ranges": "bytes", "x-content-type-options": "nosniff" };
-    if (type === undefined) {
-      headers["content-disposition"] = "attachment";
-      headers["content-security-policy"] = "default-src 'none'; sandbox";
-    }
-    if (type === "image/svg+xml") {
-      headers["content-security-policy"] = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
-    }
-    if (type === "text/html") {
-      headers["content-security-policy"] = PAGE_CSP;
-      return new Response(stream_after(new TextEncoder().encode(PAGE_BASE), Bun.file(file).stream()), { headers });
-    }
-    const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.get("range") ?? "");
-    if (range === null || range[1] + range[2] === "") {
-      return new Response(Bun.file(file), { headers });
-    }
-    const [a, b] = range[1] === "" ? [Math.max(0, size - Number(range[2])), size - 1] : [Number(range[1]), Math.min(size - 1, range[2] === "" ? Infinity : Number(range[2]))];
-    if (a > b) {
-      return new Response(null, { status: 416, headers: { ...headers, "content-range": "bytes */" + size } });
-    }
-    return new Response(Bun.file(file).slice(a, b + 1), { status: 206, headers: { ...headers, "content-range": "bytes " + a + "-" + b + "/" + size } });
   }
 
   export async function http(req: Request, server: Bun.Server<Sock["data"]>): Promise<Response | undefined> {
@@ -2800,7 +2533,7 @@ export namespace Main {
         return own;
       }
       if (!OWN.includes(p) && !p.startsWith("/image/") && !p.startsWith("/media/") && !p.startsWith("/api/")) {
-        return Main.file(AGENT_PAGE.test(p) ? "/" : p, req);
+        return Web.file(p, req, (id) => Chat.opening(Main.chat_of(id)));
       }
       if (!Owner.is(req)) {
         return new Response("sign in first", { status: 401 });
@@ -2832,7 +2565,7 @@ export namespace Main {
 
   export async function start(port: number): Promise<void> {
     Reap.start();
-    await Main.lock();
+    await Lock.lock();
     const older = config.config_older();
     if (older !== null) {
       throw new Error(older);
@@ -2880,7 +2613,7 @@ export namespace Main {
         open(ws: Sock) {
           Main.event("a socket", () => {
             if (ws.data.wire !== String(WIRE)) {
-              ws.send(JSON.stringify({ $: "error", text: "This page or ki is older than the server: reload or reopen it (`ki update` for the latest).", build: BUILD, wire: WIRE }));
+              ws.send(JSON.stringify({ $: "error", text: "This page or ki is older than the server: reload or reopen it (`ki update` for the latest).", build: Web.BUILD, wire: WIRE }));
               return;
             }
             Main.socks.add(ws);
