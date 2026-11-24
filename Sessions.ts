@@ -19,7 +19,7 @@ import { get, rec, str } from "./Json.ts";
 import { Machine } from "./Machine.ts";
 import { Owner } from "./Owner.ts";
 import * as Pins from "./Pins.ts";
-import { command, run } from "./Service.ts";
+import { command, run, said } from "./Service.ts";
 import { LIVE, Session, type Parked } from "./Session.ts";
 import { Team } from "./Team.ts";
 import { Wire, type Ev, type Told } from "./Wire.ts";
@@ -55,6 +55,10 @@ const AGAIN = "Your process was stopped before you were done, so the outcome of 
 
 const GONE = "its holder ended before the run did";
 
+// a stop doesn't wait for the unit to end, which takes up to its
+// TimeoutStopSec; nothing new starts in the worktree till it has
+const STOPPING = "Its holder is still stopping: try again in a few seconds.";
+
 const LINKS = new Map<string, Link>();
 const CARDS = { gate: null as Gate | null, asked: (_: Asked) => {} };
 
@@ -70,7 +74,7 @@ export namespace Sessions {
 
   export function systemctl(args: string[]): string {
     const r = run(["systemctl", "--user", ...args]);
-    return (r.out + "\n" + r.err).trim();
+    return said(r);
   }
 
   export function alive(s: Session): boolean {
@@ -122,7 +126,7 @@ export namespace Sessions {
       return top.why;
     }
     const id = crypto.randomUUID().slice(0, 8);
-    const base = b.base || "HEAD";
+    const base = Worktree.named(top.dir, b.base || "HEAD");
     const branch = b.branch || "ki/" + b.name;
     const worktree = path.join(Machine.agent_dir(b.agent), "sessions", b.name);
     fs.mkdirSync(path.dirname(worktree), { recursive: true });
@@ -149,7 +153,7 @@ export namespace Sessions {
     const env = Object.entries({ ...Object.fromEntries(ENV.flatMap((k) => (process.env[k] ? [[k, process.env[k]]] : []))), KI_DIR: config.DIR });
     const r = run(["systemd-run", "--user", "--collect", "--quiet", "--unit=" + Sessions.unit(next), "--description=Ki work session " + s.name, "-p", "TimeoutStopSec=10", ...env.map(([k, v]) => "--setenv=" + k + "=" + v), "--", ...command(), "hold", s.dir]);
     if (r.code !== 0) {
-      const why = "systemd-run failed: " + (r.out + "\n" + r.err).trim();
+      const why = "systemd-run failed: " + said(r);
       Session.move(s.id, "failed", why);
       return why;
     }
@@ -371,6 +375,9 @@ export namespace Sessions {
     if (s.status === "done" || LIVE.includes(s.status)) {
       return "Session " + s.name + " is " + s.status + ": nothing to resume.";
     }
+    if (Sessions.alive(s)) {
+      return STOPPING;
+    }
     Session.again(id, null);
     return Sessions.launch(s, s.sdk === "" ? last.prompt : AGAIN + last.prompt);
   }
@@ -404,7 +411,10 @@ export namespace Sessions {
     if (LIVE.includes(s.status)) {
       return "Session " + s.name + " is " + s.status + ": stop it first.";
     }
-    const why = Worktree.remove(s.repo, s.base, s.worktree, s.branch, force);
+    if (Sessions.alive(s)) {
+      return STOPPING;
+    }
+    const why = Worktree.remove(s.repo, s.base, s.branch, s.worktree, force);
     if (why !== null) {
       return why;
     }
@@ -433,7 +443,8 @@ export namespace Sessions {
       }
       const s = Session.get(id);
       const after = Number(url.searchParams.get("after") ?? 0) || 0;
-      const n = Math.min(Math.max(0, Number(url.searchParams.get("n") ?? PAGE) || 0), PAGE_MOST);
+      const asked = Number(url.searchParams.get("n") ?? PAGE);
+      const n = Math.min(Math.max(0, Number.isNaN(asked) ? PAGE : asked), PAGE_MOST);
       return s === null ? Response.json({ error: "No session " + id + "." }, { status: 404 }) : Response.json({ ...s, runs: Session.runs(id), parked: Session.parked(id), log: Sessions.log(id, after, n) });
     }
     if (req.method !== "POST") {

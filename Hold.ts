@@ -32,7 +32,8 @@ type Parked = { ask: Ask; done: (r: PermissionResult) => void };
 
 // a holder's state: what it told and the server hasn't acked, the calls
 // parked, the notes the owner approved some with, the messages the server
-// sent (by id), Claude Code's input, the connection that owns it now
+// sent (by id), Claude Code's input, the rules that park a call, the
+// connection that owns it now, how it tells an event
 type Held = {
   out   : Outbox;
   asks  : Map<string, Parked>;
@@ -60,7 +61,7 @@ const ENV = {
 };
 
 // a session asks no one in it: the owner's answers come through the gate
-const NO_TOOLS = ["AskUserQuestion"];
+const DISALLOWED = ["AskUserQuestion"];
 
 // claude.ai's connectors left out; a project's AGENTS.md loaded beside any
 // CLAUDE.md (by default it's skipped when one is found further up, as the
@@ -238,7 +239,7 @@ export namespace Hold {
         tools                      : { type: "preset", preset: "claude_code" },
         settingSources             : ["user", "project", "local"],
         permissionMode             : "default",
-        disallowedTools            : NO_TOOLS,
+        disallowedTools            : DISALLOWED,
         settings                   : SETTINGS,
         resume                     : sdk === "" ? undefined : sdk,
         canUseTool                 : can,

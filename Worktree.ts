@@ -5,19 +5,30 @@
 // while it holds work found nowhere else (unless forced).
 
 import * as fs from "node:fs";
-import { run } from "./Service.ts";
+import { run, said } from "./Service.ts";
 
 export namespace Worktree {
 
   export function git(dir: string, args: string[]): { ok: boolean; out: string } {
     const r = run(["git", "-C", dir, ...args], { GIT_TERMINAL_PROMPT: "0" });
-    return { ok: r.code === 0, out: (r.out + "\n" + r.err).trim() };
+    return { ok: r.code === 0, out: said(r) };
   }
 
   // the repo's top folder, or why it's none
   export function top(repo: string): { dir: string } | { why: string } {
     const r = Worktree.git(repo, ["rev-parse", "--show-toplevel"]);
     return r.ok ? { dir: r.out } : { why: repo + " is no git repository: " + r.out };
+  }
+
+  // the ref a session starts from, by name: HEAD is the repo's branch (its
+  // commit when detached), so archive later counts the session's own
+  // commits, not the ones its branch adds to HEAD
+  export function named(repo: string, ref: string): string {
+    if (ref !== "HEAD") {
+      return ref;
+    }
+    const branch = Worktree.git(repo, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
+    return branch.ok ? branch.out : Worktree.git(repo, ["rev-parse", "HEAD"]).out;
   }
 
   // null: made; else why not
@@ -45,7 +56,7 @@ export namespace Worktree {
 
   // the worktree and its branch removed; null: done (or gone already),
   // else why not
-  export function remove(repo: string, base: string, dir: string, branch: string, force: boolean): string | null {
+  export function remove(repo: string, base: string, branch: string, dir: string, force: boolean): string | null {
     if (fs.existsSync(dir)) {
       const lost = Worktree.unsaved(dir, base);
       if (lost.length > 0 && !force) {

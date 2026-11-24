@@ -698,6 +698,11 @@ export function run(cmd: string[], env: Record<string, string> = {}): { code: nu
   return { code: p.exitCode ?? 1, out: p.stdout.toString().trim(), err: p.stderr.toString().trim() };
 }
 
+// what a run printed, both streams
+export function said(r: { out: string; err: string }): string {
+  return (r.out + "\n" + r.err).trim();
+}
+
 function fail(why: string): never {
   console.error("ki: " + why);
   process.exit(1);
