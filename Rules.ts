@@ -48,19 +48,19 @@ export namespace Rules {
     for (const [k, r] of x.entries()) {
       const [what, tools, args] = rec(r) ? [r.what, r.tools, r.args ?? ""] : [];
       const line = (t: unknown): t is string => typeof t === "string" && t.length <= TEXT && !/[\x00-\x1f\x7f]/.test(t);
-      if (!line(what) || what.trim() === "" || !line(tools) || Rules.globs(tools).length === 0 || !line(args)) {
+      if (!line(what) || what.trim() === "" || !line(tools) || globs(tools).length === 0 || !line(args)) {
         return "Rule " + (k + 1) + " needs what it is, the tools it's for, and the arguments, if any, on one line each";
       }
-      const bad = Rules.bad(args);
-      if (bad !== null) {
-        return "Rule " + (k + 1) + "'s arguments are no regular expression: " + bad;
+      const why = bad(args);
+      if (why !== null) {
+        return "Rule " + (k + 1) + "'s arguments are no regular expression: " + why;
       }
       out.push({ what: what.trim(), tools: tools.trim(), args: args.trim() });
     }
     return out;
   }
 
-  export function bad(args: string): string | null {
+  function bad(args: string): string | null {
     try {
       new RegExp(args, "i");
       return null;
@@ -69,26 +69,26 @@ export namespace Rules {
     }
   }
 
-  export function globs(tools: string): string[] {
+  function globs(tools: string): string[] {
     return tools.split(",").map((g) => g.trim()).filter((g) => g !== "" && g !== "!");
   }
 
-  export function glob(pattern: string, name: string): boolean {
+  function glob(pattern: string, name: string): boolean {
     const re = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".");
     return new RegExp("^" + re + "$", "i").test(name);
   }
 
-  export function named(tools: string, name: string): boolean {
-    const all = Rules.globs(tools);
+  function named(tools: string, name: string): boolean {
+    const all = globs(tools);
     const [no, yes] = [all.filter((g) => g.startsWith("!")).map((g) => g.slice(1)), all.filter((g) => !g.startsWith("!"))];
-    return yes.some((g) => Rules.glob(g, name)) && !no.some((g) => Rules.glob(g, name));
+    return yes.some((g) => glob(g, name)) && !no.some((g) => glob(g, name));
   }
 
   // the arguments as a rule's regular expression reads them: each string or
   // number on its own line, the device's scratch dir (also from ~) as
   // <scratch>, but not a dir that only starts like it, nor in a value that
   // climbs out of it with /..
-  export function text(args: Record<string, unknown>, scratch: string | null): string {
+  function text(args: Record<string, unknown>, scratch: string | null): string {
     const values = (x: unknown): string[] => (Array.isArray(x) ? x.flatMap(values) : rec(x) ? Object.values(x).flatMap(values) : typeof x === "string" ? [x] : typeof x === "number" ? [String(x)] : []);
     const { device: _, ...rest } = args;
     const text = values(rest).join("\n");
@@ -102,8 +102,8 @@ export namespace Rules {
   }
 
   export function match(rules: Rule[], tool: string, args: Record<string, unknown>, scratch: string | null): Rule | null {
-    const text = Rules.text(args, scratch);
-    return rules.find((r) => Rules.named(r.tools, tool) && (r.args === "" || new RegExp(r.args, "i").test(text))) ?? null;
+    const flat = text(args, scratch);
+    return rules.find((r) => named(r.tools, tool) && (r.args === "" || new RegExp(r.args, "i").test(flat))) ?? null;
   }
 
 }

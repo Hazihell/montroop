@@ -82,22 +82,22 @@ export namespace Run {
       return promise;
     });
     if (!run.busy) {
-      run.going = Run.loop(run);
+      run.going = loop(run);
       return Promise.all(dones);
     }
     run.queue.slice(run.queue.length - qs.length).forEach((x) => x.done(null));
-    Run.safe(run, () => run.kind.queued(run));
+    safe(run, () => run.kind.queued(run));
     run.call?.wake();
     return Promise.all(dones);
   }
 
-  export async function loop<Q, M>(run: Run<Q, M>): Promise<void> {
+  async function loop<Q, M>(run: Run<Q, M>): Promise<void> {
     const kind = run.kind;
     run.busy = true;
     run.halt = new AbortController();
     let again = false;
     try {
-      await Run.logs(run);
+      await logs(run);
       kind.begin(run);
       for (let go = true; go && run.wait.length > 0; ) {
         const asked = kind.ask(run, () => run.wait.splice(0));
@@ -106,8 +106,8 @@ export namespace Run {
           break;
         }
         let live = true;
-        const steer: Steer = { pending: () => live && run.queue.length > 0, take: () => (live ? Run.steers(run) : Promise.resolve([])), taken: [] };
-        const call = (run.call = AskAI.ask({ ...ask, steer }, (ev) => Run.heard(run, ev)));
+        const steer: Steer = { pending: () => live && run.queue.length > 0, take: () => (live ? steers(run) : Promise.resolve([])), taken: [] };
+        const call = (run.call = AskAI.ask({ ...ask, steer }, (ev) => heard(run, ev)));
         kind.change();
         const end = await call.done;
         live = false;
@@ -122,13 +122,13 @@ export namespace Run {
           run.wait.unshift(...taken.map((s) => s.m));
         }
         if (go) {
-          await Run.logs(run);
+          await logs(run);
         }
       }
     } catch (err) {
-      Run.safe(run, () => kind.failed(run, err_why(err)));
+      safe(run, () => kind.failed(run, err_why(err)));
     } finally {
-      Run.safe(run, () => kind.ending(run));
+      safe(run, () => kind.ending(run));
       run.call = null;
       // unanswered, so the next call carries them whole: messages taken into
       // a call (a new turn for them, as for messages still queued), and every
@@ -137,25 +137,25 @@ export namespace Run {
       const taken = run.sent.filter((s) => s.taken);
       const missed = run.sent.filter((s) => parked || s.taken);
       taken.forEach((s) => (s.taken = false));
-      const left = await Run.logs(run);
+      const left = await logs(run);
       again = [...(parked ? [] : taken.map((s) => s.q)), ...left].some(kind.again);
       run.wait = again || parked ? [...missed.map((s) => s.m), ...run.wait] : [];
       run.busy = false;
       if (!again && run.queue.length === 0 && !parked) {
         run.sent = [];
       }
-      Run.safe(run, () => kind.finish(run));
+      safe(run, () => kind.finish(run));
     }
     if ((again || run.queue.length > 0) && !run.busy) {
-      run.going = Run.loop(run);
+      run.going = loop(run);
     }
   }
 
-  export async function logs<Q, M>(run: Run<Q, M>): Promise<Q[]> {
+  async function logs<Q, M>(run: Run<Q, M>): Promise<Q[]> {
     const logged: Q[] = [];
     let changed = false;
     for (let x = run.queue.shift(); x !== undefined; x = run.queue.shift()) {
-      const msg = await Run.log(run, x, false);
+      const msg = await log(run, x, false);
       if (msg !== null) {
         run.wait.push(msg);
         logged.push(x.q);
@@ -163,30 +163,30 @@ export namespace Run {
       changed = true;
     }
     if (changed) {
-      Run.safe(run, () => run.kind.queued(run));
+      safe(run, () => run.kind.queued(run));
     }
     return logged;
   }
 
   // the messages queued, each taken off the queue before it is logged, for
   // the running call to put in its next request
-  export async function steers<Q, M>(run: Run<Q, M>): Promise<Said[]> {
+  async function steers<Q, M>(run: Run<Q, M>): Promise<Said[]> {
     const says: Said[] = [];
     let changed = false;
     for (let x = run.queue.shift(); x !== undefined; x = run.queue.shift()) {
-      const msg = await Run.log(run, x, true);
+      const msg = await log(run, x, true);
       if (msg !== null) {
         says.push(run.kind.say(x.q, msg));
       }
       changed = true;
     }
     if (changed) {
-      Run.safe(run, () => run.kind.queued(run));
+      safe(run, () => run.kind.queued(run));
     }
     return says;
   }
 
-  export async function log<Q, M>(run: Run<Q, M>, { q, done }: Queued<Q>, taken: boolean): Promise<M | null> {
+  async function log<Q, M>(run: Run<Q, M>, { q, done }: Queued<Q>, taken: boolean): Promise<M | null> {
     try {
       const got = run.kind.log(run, q);
       const msg = got instanceof Promise ? await got : got;
@@ -196,15 +196,15 @@ export namespace Run {
     } catch (err) {
       const why = "a message couldn't be logged: " + err_why(err);
       done(why);
-      Run.safe(run, () => run.kind.failed(run, why));
+      safe(run, () => run.kind.failed(run, why));
       return null;
     }
   }
 
-  export function heard<Q, M>(run: Run<Q, M>, ev: Event): void {
+  function heard<Q, M>(run: Run<Q, M>, ev: Event): void {
     if (run.sent.length > 0 && AskAI.answers(ev)) {
       run.sent = [];
-      Run.safe(run, run.kind.change);
+      safe(run, run.kind.change);
     }
     run.kind.on(run, ev);
   }
@@ -215,7 +215,7 @@ export namespace Run {
     return run.queue.length + run.sent.length > 0;
   }
 
-  export function safe<Q, M>(run: Run<Q, M>, step: () => void): void {
+  function safe<Q, M>(run: Run<Q, M>, step: () => void): void {
     try {
       step();
     } catch (err) {

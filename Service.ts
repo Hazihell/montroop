@@ -9,7 +9,7 @@ const WIN  = process.platform === "win32";
 const MAC  = process.platform === "darwin";
 const HOME = os.homedir();
 
-export const MARK = "ki-made";
+const MARK = "ki-made";
 
 const DATA  = (process.env.KI_DIR ?? "~/.ki").replace(/^~(?=[\\/]|$)/, HOME);
 const LOGS  = DATA + "/logs";
@@ -31,7 +31,7 @@ const UP       = 20000;
 
 let SERVED: Part | null = null;
 
-export const DIRS = ["KI_DIR", "XDG_CONFIG_HOME"];
+const DIRS = ["KI_DIR", "XDG_CONFIG_HOME"];
 
 const ABOUT: Record<Part, string> = { serve: "Ki server (ki serve)", device: "Ki device (ki device)" };
 
@@ -42,7 +42,7 @@ const ASK_ADMIN: Record<Part, string> = {
 
 const ADMIN_TASK = /<RunLevel>\s*HighestAvailable\s*<\/RunLevel>/;
 
-export function name(part: Part): string {
+function name(part: Part): string {
   return "ki-" + part;
 }
 
@@ -650,7 +650,7 @@ function pwsh(): string {
 // an argument as Windows reads it back from a command line
 // (CommandLineToArgvW): quoted if need be, a backslash run before a quote
 // or the end doubled
-export function winq(a: string): string {
+function winq(a: string): string {
   if (a !== "" && !/[\s"]/.test(a)) {
     return a;
   }

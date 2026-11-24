@@ -39,20 +39,20 @@ export namespace Limit {
 
   export async function hit(l: Limit, told: number | null, acted: boolean, why: string): Promise<Off | null> {
     const { ms, known } = Limit.wait_for(told, l.n, l.ask.patient ? AGAIN : LIMIT);
-    if (Limit.ends(l.ask, acted, ms)) {
-      return Limit.off(why, told, l.ask, l.n);
+    if (ends(l.ask, acted, ms)) {
+      return off(why, told, l.ask, l.n);
     }
-    await Limit.park(l, ms, known);
+    await park(l, ms, known);
     return null;
   }
 
   export async function guard(l: Limit, key: string, acted: boolean): Promise<Off | null> {
-    for (let until = Limit.under([key]); until !== null && !l.signal.aborted; until = Limit.under([key])) {
+    for (let until = under([key]); until !== null && !l.signal.aborted; until = under([key])) {
       const ms = until - Date.now();
-      if (Limit.ends(l.ask, acted, ms)) {
-        return Limit.off("usage limit", until, l.ask, l.n);
+      if (ends(l.ask, acted, ms)) {
+        return off("usage limit", until, l.ask, l.n);
       }
-      await Limit.park(l, ms, true);
+      await park(l, ms, true);
     }
     return null;
   }
@@ -64,7 +64,7 @@ export namespace Limit {
     return { ms, known: left > 0 && ms === left };
   }
 
-  export function ends(ask: { fallback?: boolean; repick?: unknown; no_wait?: boolean }, acted: boolean, ms: number): boolean {
+  function ends(ask: { fallback?: boolean; repick?: unknown; no_wait?: boolean }, acted: boolean, ms: number): boolean {
     return ms >= LONG && (ask.no_wait === true || ((ask.fallback === true || ask.repick !== undefined) && !acted));
   }
 
@@ -72,12 +72,12 @@ export namespace Limit {
     ANSWERING = turn;
   }
 
-  export function off(why: string, until: number | null, ask: { vendor: Vendor }, n: number): Off {
+  function off(why: string, until: number | null, ask: { vendor: Vendor }, n: number): Off {
     const say = limit_note(ask.vendor, "resets", until);
     return { why: why + "; " + say, say, until: until ?? undefined, limits: n };
   }
 
-  export async function park(l: Limit, ms: number, known: boolean): Promise<void> {
+  async function park(l: Limit, ms: number, known: boolean): Promise<void> {
     const wake = new AbortController();
     l.poke = () => wake.abort();
     const parked = ms >= LONG;
@@ -92,7 +92,7 @@ export namespace Limit {
     try {
       await Limit.wait(vendor, ms, until);
       if (parked && l.ask.agent === true && !until.aborted && ANSWERING().queued) {
-        await Limit.let_lead_answer_first(l, until);
+        await let_lead_answer_first(l, until);
       }
     } finally {
       l.poke = () => {};
@@ -106,7 +106,7 @@ export namespace Limit {
     on({ $: "Entry", kind: "mind", text: "The AI service is busy: asking again in " + Math.ceil(ms / 1e3) + " s." });
   }
 
-  export async function let_lead_answer_first(l: Limit, until: AbortSignal): Promise<void> {
+  async function let_lead_answer_first(l: Limit, until: AbortSignal): Promise<void> {
     const end = Date.now() + STAGGER;
     const answering = () => ANSWERING().queued || ANSWERING().busy;
     l.on({ $: "Limit", limit: { until: end, known: false, vendor: l.ask.vendor } });
@@ -119,12 +119,12 @@ export namespace Limit {
     const wake = new AbortController();
     const me = { vendor, poke: () => wake.abort() };
     PARKED.add(me);
-    Limit.poll_soon(vendor);
+    poll_soon(vendor);
     try {
       await Machine.nap(ms, AbortSignal.any([signal, wake.signal]));
     } finally {
       PARKED.delete(me);
-      Limit.poll_off(vendor);
+      poll_off(vendor);
     }
   }
 
@@ -136,7 +136,7 @@ export namespace Limit {
     }
   }
 
-  export function under(keys: string[]): number | null {
+  function under(keys: string[]): number | null {
     const now = Date.now();
     const told = keys.map((k) => LIMITS.get(k) ?? 0).filter((until) => until > now);
     return told.length > 0 ? Math.max(...told) : null;
@@ -148,26 +148,26 @@ export namespace Limit {
     return woken.length;
   }
 
-  export function poll_soon(vendor: Vendor): void {
+  function poll_soon(vendor: Vendor): void {
     if (USAGE[vendor] === undefined || POLLS.has(vendor)) {
       return;
     }
     const timer = setTimeout(() => {
       POLLS.delete(vendor);
-      void Limit.poll(vendor);
+      void poll(vendor);
     }, POLL);
     timer.unref?.();
     POLLS.set(vendor, timer);
   }
 
-  export function poll_off(vendor: Vendor): void {
+  function poll_off(vendor: Vendor): void {
     if (![...PARKED].some((p) => p.vendor === vendor)) {
       clearTimeout(POLLS.get(vendor));
       POLLS.delete(vendor);
     }
   }
 
-  export async function poll(vendor: Vendor): Promise<boolean> {
+  async function poll(vendor: Vendor): Promise<boolean> {
     if (![...PARKED].some((p) => p.vendor === vendor)) {
       return false;
     }
@@ -175,7 +175,7 @@ export namespace Limit {
     if (clear === true) {
       Limit.resume(vendor);
     } else if ([...PARKED].some((p) => p.vendor === vendor)) {
-      Limit.poll_soon(vendor);
+      poll_soon(vendor);
     }
     return clear === true;
   }

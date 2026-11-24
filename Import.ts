@@ -23,16 +23,16 @@ type Slot = { m: Said; echo: Said | null; open: boolean };
 // sizes: its pages', all of it and its result alone (Part)
 type Head = { kind: Kind; date: string; call?: string; sizes: Record<Part, number[]>; n: number };
 
-export type Form = "log" | "msgs";
+type Form = "log" | "msgs";
 
 // last: the date of the last message imported of it, once planned
 export type Session = { app: string; form: Form; where: string; start: string; file: Blob; heads: Head[]; last?: string };
 
 export type Done = Record<string, string>;
 
-export type Want = { off: string[]; since: string; tools: boolean };
+type Want = { off: string[]; since: string; tools: boolean };
 
-export type Plan = { sessions: Session[]; picked: Session[]; msgs: number; first: string; sizes: number[] };
+type Plan = { sessions: Session[]; picked: Session[]; msgs: number; first: string; sizes: number[] };
 
 type Node = { bytes: number; depth: number };
 

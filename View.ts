@@ -112,7 +112,7 @@ type Chat = { [K in (typeof CHAT)[number]]: View[K] };
 // the link sends first on it has come, the chat's live part last; held: whose
 // chat the view holds, "" for none yet, kept over a reconnect (#114); kept:
 // the one it held before the last switch, shown again on a switch back
-export type View = State & {
+type View = State & {
   agent : string;
   on    : string;
   greeted : boolean;
@@ -168,7 +168,7 @@ export type Answer = { error?: string; status?: number; text?: string; going?: b
 type Upload = BodyInit | AsyncIterable<string>;
 type Body   = () => Upload | Promise<Upload>;
 
-export type Client =
+type Client =
   | { $: "say"; sizes: number[]; body: Body; agent?: string }
   | { $: "import"; body: Body; agent: string }
   | { $: "voice"; type: string; body: Body }
@@ -188,7 +188,7 @@ export type Client =
 
 type Post = { msg: Client & { id: string }; ws: WebSocket | null; done: (a: Answer) => void; said: string };
 
-export type Link = {
+type Link = {
   open : (query: string) => WebSocket;
   post : (path: string, body: Upload) => Promise<Response>;
   hear : (msg: Server) => void;

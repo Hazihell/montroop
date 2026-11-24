@@ -32,7 +32,7 @@ const KEPT = 24 * 60 * 60 * 1000;
 
 export namespace Gate {
 
-  export function key(x: unknown): string {
+  function key(x: unknown): string {
     const sorted = (y: unknown): unknown => (Array.isArray(y) ? y.map(sorted) : rec(y) ? Object.fromEntries(Object.keys(y).sort().map((k) => [k, sorted(y[k])])) : y);
     return JSON.stringify(sorted(x));
   }
@@ -44,44 +44,44 @@ export namespace Gate {
       held = (Array.isArray(kept) ? kept : []).filter((h): h is Held => rec(h) && typeof h.id === "string" && typeof h.key === "string" && typeof h.agent === "string");
     } catch {}
     const gate = { file, held, waits: new Map(), change };
-    Gate.prune(gate, Date.now());
+    prune(gate, Date.now());
     return gate;
   }
 
-  export function save(gate: Gate): void {
+  function save(gate: Gate): void {
     write_whole(gate.file, gate.held.length === 0 ? null : JSON.stringify(gate.held) + "\n");
   }
 
-  export function prune(gate: Gate, now: number): void {
+  function prune(gate: Gate, now: number): void {
     const left = gate.held.filter((h) => h.ok !== true || now - h.at < KEPT);
     if (left.length !== gate.held.length) {
       gate.held = left;
-      Gate.save(gate);
+      save(gate);
     }
   }
 
-  export function drop(gate: Gate, h: Held): void {
+  function drop(gate: Gate, h: Held): void {
     gate.held = gate.held.filter((x) => x !== h);
-    Gate.save(gate);
+    save(gate);
   }
 
   // the owner's answer to a call a rule named; null: the call was stopped
   // first. asked runs for a new card, not when a call re-attaches to one
   export function wait(gate: Gate, agent: string, who: string, tool: string, args: Record<string, unknown>, what: string, signal: AbortSignal, asked: (a: Asked) => void): Promise<Said | null> {
     const now = Date.now();
-    Gate.prune(gate, now);
-    const key = Gate.key(args);
-    const same = (h: Held) => h.agent === agent && h.who === who && h.tool === tool && h.key === key;
+    prune(gate, now);
+    const keyed = key(args);
+    const same = (h: Held) => h.agent === agent && h.who === who && h.tool === tool && h.key === keyed;
     const yes = gate.held.find((h) => same(h) && h.ok === true);
     if (yes !== undefined) {
-      Gate.drop(gate, yes);
+      drop(gate, yes);
       return Promise.resolve({ ok: true, note: yes.note });
     }
     let h = gate.held.find((x) => same(x) && x.ok === null && !gate.waits.has(x.id));
     if (h === undefined) {
-      h = { id: crypto.randomUUID().slice(0, 8), agent, who, tool, input: JSON.stringify(args), what, at: now, key, ok: null, note: "" };
+      h = { id: crypto.randomUUID().slice(0, 8), agent, who, tool, input: JSON.stringify(args), what, at: now, key: keyed, ok: null, note: "" };
       gate.held = [...gate.held, h];
-      Gate.save(gate);
+      save(gate);
       asked(h);
     }
     const held = h;
@@ -94,7 +94,7 @@ export namespace Gate {
       };
       const off = () => {
         if (gate.waits.get(held.id) === done) {
-          Gate.drop(gate, held);
+          drop(gate, held);
           done(null);
           gate.change();
         }
@@ -115,22 +115,22 @@ export namespace Gate {
     }
     const wait = gate.waits.get(id);
     if (wait !== undefined || !said.ok) {
-      Gate.drop(gate, h);
+      drop(gate, h);
     } else {
       Object.assign(h, { ok: true, note: said.note, at: Date.now() });
-      Gate.save(gate);
+      save(gate);
     }
     wait?.(said);
     gate.change();
-    return { held: Gate.card(h), waited: wait !== undefined };
+    return { held: card(h), waited: wait !== undefined };
   }
 
   // the calls waiting in one agent's chat
   export function shown(gate: Gate, agent: string): Asked[] {
-    return gate.held.filter((h) => h.ok === null && h.agent === agent).map(Gate.card);
+    return gate.held.filter((h) => h.ok === null && h.agent === agent).map(card);
   }
 
-  export function card({ id, agent, who, tool, input, what, at }: Held): Asked {
+  function card({ id, agent, who, tool, input, what, at }: Held): Asked {
     return { id, agent, who, tool, input, what, at };
   }
 

@@ -47,7 +47,7 @@ export namespace OpenAI {
       service_tier         : tier,
       prompt_cache_options : cache,
       prompt_cache_key     : OpenAI.session(ask),
-      input                : [system, ...items.flatMap(OpenAI.input)],
+      input                : [system, ...items.flatMap(input)],
     };
   }
 
@@ -64,25 +64,25 @@ export namespace OpenAI {
     return ask.agent === true ? "sub" : ask.who ?? "main";
   }
 
-  export function input(item: Item): unknown[] {
+  function input(item: Item): unknown[] {
     switch (item.$) {
       case "User": {
         const texts = item.parts.map((p) => ({ type: "input_text", text: p.text, prompt_cache_breakpoint: p.mark ? MARK : undefined }));
-        return [{ role: "user", content: [...texts, ...item.imgs.map(OpenAI.image)] }];
+        return [{ role: "user", content: [...texts, ...item.imgs.map(image)] }];
       }
       case "Turn": {
         return item.out;
       }
       case "Back": {
         return item.backs.map((b) => {
-          const output = [{ type: "input_text", text: b.out.text }, ...(b.out.imgs ?? []).map(OpenAI.image)];
+          const output = [{ type: "input_text", text: b.out.text }, ...(b.out.imgs ?? []).map(image)];
           return { type: "function_call_output", call_id: b.id, output };
         });
       }
     }
   }
 
-  export function image(img: Img): unknown {
+  function image(img: Img): unknown {
     return { type: "input_image", image_url: "data:" + img.type + ";base64," + img.data };
   }
 
@@ -93,7 +93,7 @@ export namespace OpenAI {
         return false;
       }
       case "response.output_item.added": {
-        OpenAI.live(ev.item ?? { type: "" }, on);
+        live(ev.item ?? { type: "" }, on);
         return false;
       }
       // a search's query comes only with its item done
@@ -131,7 +131,7 @@ export namespace OpenAI {
     return false;
   }
 
-  export function live(item: Output, on: Emit): void {
+  function live(item: Output, on: Emit): void {
     if (item.type === "function_call") {
       on("tool", (item.name ?? "") + " ", true);
     }
@@ -143,7 +143,7 @@ export namespace OpenAI {
     }
   }
 
-  export function tier(res: Res): string {
+  function tier(res: Res): string {
     const tier = res.service_tier === "priority" ? "fast" : res.service_tier;
     return tier !== undefined && tier in TIERS ? tier : "slow";
   }
@@ -160,10 +160,10 @@ export namespace OpenAI {
     const out = res.output ?? [];
     const calls = out.filter((o) => o.type === "function_call");
     const uses: Use[] = calls.map((o) => ({ id: o.call_id ?? "", name: o.name ?? "", input: Agent.parse(o.arguments ?? "") }));
-    const ran = OpenAI.tier(res);
+    const ran = tier(res);
     const note = ran !== ask.speed ? "ran at " + ran + " speed" : "";
     const refusals = out.flatMap((o) => (o.type === "message" ? o.content ?? [] : [])).filter((c) => c.type === "refusal");
-    const step: Step = { out, uses, entries: out.flatMap(OpenAI.entries), stop: "done", why: "", note };
+    const step: Step = { out, uses, entries: out.flatMap(entries), stop: "done", why: "", note };
     if (res.status === "failed") {
       const stop = res.error?.code === "server_error" ? "busy" : res.error?.code === "rate_limit_exceeded" ? "limit" : "fail";
       return { ...step, stop, why: res.error?.message ?? "failed" };
@@ -177,7 +177,7 @@ export namespace OpenAI {
     return { ...step, stop: uses.length > 0 ? "tools" : "done" };
   }
 
-  export function entries(o: Output): Entry[] {
+  function entries(o: Output): Entry[] {
     switch (o.type) {
       case "reasoning": {
         const text = (o.summary ?? []).map((s) => s.text).join("\n\n").trim();

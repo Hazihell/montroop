@@ -12,7 +12,7 @@ import { write_whole } from "./Write.ts";
 
 type ServerOnly = "runs a command";
 
-export type Setting = { key: string; def: string; server_only: ServerOnly | null };
+type Setting = { key: string; def: string; server_only: ServerOnly | null };
 
 export type From = "env" | "file" | "default";
 

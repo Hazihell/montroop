@@ -55,7 +55,7 @@ const QUEUED_SHOWN = 4000;
 export namespace Sub {
 
   // the models a task may name: those offered now
-  export function models(): string[] {
+  function models(): string[] {
     return [...new Set(Pick.models(config.OFFER.vendors, config.OFFER.models).map(([, m]) => m.label))];
   }
 
@@ -63,14 +63,14 @@ export namespace Sub {
     if (Object.keys(args).some((k) => k !== "tasks")) {
       return "Give model and effort per task, in each of tasks: { task, model?, effort?, memory?, mcp? }. Nothing started.";
     }
-    const models = Sub.models();
+    const offered = models();
     const out: Spawn[] = [];
     for (const [k, t] of items(args.tasks).entries()) {
       const x: Record<string, unknown> = typeof t === "string" ? { task: t } : rec(t) ? t : {};
       const task = typeof x.task === "string" ? x.task.trim() : "";
       const model = x.model === undefined ? null : text_of(x.model, "null");
       const effort = x.effort === undefined ? null : text_of(x.effort, "null");
-      const bad = task === "" ? "no task text" : model !== null && !models.includes(model) ? "no model " + model + "; one of " + models.join(", ") : null;
+      const bad = task === "" ? "no task text" : model !== null && !offered.includes(model) ? "no model " + model + "; one of " + offered.join(", ") : null;
       if (bad !== null) {
         return Sub.refused(k, task, bad);
       }

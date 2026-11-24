@@ -27,17 +27,17 @@ export namespace Disk {
       return RUN ?? Promise.resolve();
     }
     const done = new Promise<void>((ok) => WAITS.push(ok));
-    RUN ??= Disk.run();
+    RUN ??= run();
     return done;
   }
 
-  export async function run(): Promise<void> {
+  async function run(): Promise<void> {
     while (DIRTY.size > 0) {
       const files = [...DIRTY];
       const waits = WAITS;
       DIRTY.clear();
       WAITS = [];
-      await Disk.flush(files).catch((err: unknown) => console.error("disk: a flush failed: " + err_why(err)));
+      await flush(files).catch((err: unknown) => console.error("disk: a flush failed: " + err_why(err)));
       waits.forEach((ok) => ok());
     }
     RUN = null;
@@ -46,17 +46,17 @@ export namespace Disk {
   // each file fsynced, then (but on Windows, which can't open a folder to
   // sync it) each folder they are in, so a file new there or moved in
   // place (a rename) is durable too
-  export async function flush(files: string[]): Promise<void> {
-    await Promise.all(files.map(Disk.fsync));
+  async function flush(files: string[]): Promise<void> {
+    await Promise.all(files.map(fsync));
     if (process.platform !== "win32") {
-      await Promise.all([...new Set(files.map((file) => path.dirname(file)))].map(Disk.fsync));
+      await Promise.all([...new Set(files.map((file) => path.dirname(file)))].map(fsync));
     }
   }
 
   // a file (or folder) gone since needs none. Windows flushes only a file
   // opened to write (FlushFileBuffers), so there it is opened so, writing
   // nothing
-  export async function fsync(file: string): Promise<void> {
+  async function fsync(file: string): Promise<void> {
     const handle = await fs.promises.open(file, process.platform === "win32" ? "r+" : "r").catch((err: unknown) => {
       if (err_code(err) !== "ENOENT") {
         throw err;

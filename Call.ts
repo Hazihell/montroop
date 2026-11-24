@@ -30,7 +30,7 @@ const READS = new Map<string, (x: Input) => Shown>([
   ["schedule", (x) => ({ head: (x.cron === undefined ? text_of(x.at) : "cron " + text_of(x.cron, "null")) + " " + text_of(x.zone), blocks: text_block(x.message) })],
 ]);
 
-export type Report = { name: string; text: string };
+type Report = { name: string; text: string };
 
 export function report_read(text: string): Report | null {
   const m = /^\[([^\]\n]+)\]\s*([\s\S]*?)\s*$/.exec(text);
