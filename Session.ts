@@ -10,9 +10,7 @@ import { Owner } from "./Owner.ts";
 
 export type Status = "running" | "waiting" | "done" | "failed" | "stopped";
 
-// ask: a call parked; answered: the last parked call answered; ended,
-// failed: a run's end; stop: the owner or agent stopped it; run: a new run
-// or attempt began
+// answered: the last call parked answered; run: a new run or attempt
 type Step = "ask" | "answered" | "ended" | "failed" | "stop" | "run";
 
 // account: its Claude account ("": personal); dir: its folder in Ki's,
@@ -68,8 +66,9 @@ export namespace Session {
     return NEXT[status][step] ?? null;
   }
 
-  export function add(s: Omit<Session, "status" | "sdk" | "ack" | "launches" | "last" | "made" | "at" | "archived">, prompt: string, now = Date.now()): Session {
+  export function add(s: Omit<Session, "status" | "sdk" | "ack" | "launches" | "last" | "made" | "at" | "archived">, prompt: string): Session {
     const db = Session.db();
+    const now = Date.now();
     db.transaction(() => {
       db.query("insert into work_sessions (id, name, agent, repo, base, branch, worktree, account, model, dir, status, made, at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)").run(s.id, s.name, s.agent, s.repo, s.base, s.branch, s.worktree, s.account, s.model, s.dir, now, now);
       db.query("insert into work_runs (session, n, prompt, status, started) values (?, 1, ?, 'running', ?)").run(s.id, prompt, now);
@@ -81,17 +80,15 @@ export namespace Session {
     return (Session.db().query("select * from work_sessions where id = ?").get(id) as Session | null) ?? null;
   }
 
-  // an agent's sessions, or everyone's, newest first; archived ones too
-  // with all
-  export function list(agent: string | null, all = false): Session[] {
-    const rows = Session.db().query("select * from work_sessions where (? is null or agent = ?) and (? or archived = 0) order by made desc").all(agent, agent, all) as Session[];
-    return rows;
+  // an agent's sessions not archived, or everyone's, newest first
+  export function list(agent: string | null): Session[] {
+    return Session.db().query("select * from work_sessions where (? is null or agent = ?) and archived = 0 order by made desc").all(agent, agent) as Session[];
   }
 
-  export function set(id: string, fields: Partial<Pick<Session, "sdk" | "ack" | "launches" | "last" | "archived">>, now = Date.now()): void {
+  export function set(id: string, fields: Partial<Pick<Session, "sdk" | "ack" | "launches" | "last" | "archived">>): void {
     const keys = Object.keys(fields) as Array<keyof typeof fields>;
     if (keys.length > 0) {
-      Session.db().query("update work_sessions set " + keys.map((k) => k + " = ?").join(", ") + ", at = ? where id = ?").run(...keys.map((k) => fields[k] ?? null), now, id);
+      Session.db().query("update work_sessions set " + keys.map((k) => k + " = ?").join(", ") + ", at = ? where id = ?").run(...keys.map((k) => fields[k] ?? null), Date.now(), id);
     }
   }
 
@@ -105,8 +102,9 @@ export namespace Session {
 
   // a step taken by the session and its latest run; the status it's in
   // now, or null if the step can't happen in the one it was in
-  export function move(id: string, step: Step, why = "", now = Date.now()): Status | null {
+  export function move(id: string, step: Step, why = ""): Status | null {
     const db = Session.db();
+    const now = Date.now();
     return db.transaction(() => {
       const s = Session.get(id);
       const to = s === null ? null : Session.next(s.status, step);
@@ -122,8 +120,9 @@ export namespace Session {
 
   // a new run (prompt) or, without, the latest run tried again; null: the
   // session is at work, or has none
-  export function again(id: string, prompt: string | null, now = Date.now()): Run | null {
+  export function again(id: string, prompt: string | null): Run | null {
     const db = Session.db();
+    const now = Date.now();
     return db.transaction(() => {
       const s = Session.get(id);
       const run = Session.run(id);

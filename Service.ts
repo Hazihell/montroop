@@ -693,7 +693,7 @@ function read(file: string): string | null {
   }
 }
 
-function run(cmd: string[], env: Record<string, string> = {}): { code: number; out: string; err: string } {
+export function run(cmd: string[], env: Record<string, string> = {}): { code: number; out: string; err: string } {
   const p = Bun.spawnSync(cmd, { env: { ...process.env, ...env }, stdin: "ignore", stdout: "pipe", stderr: "pipe", windowsHide: true });
   return { code: p.exitCode ?? 1, out: p.stdout.toString().trim(), err: p.stderr.toString().trim() };
 }

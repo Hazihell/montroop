@@ -11,12 +11,12 @@
 import * as fs from "node:fs";
 import * as net from "node:net";
 import * as path from "node:path";
-import type { CanUseTool, HookCallback, PermissionResult, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { CanUseTool, HookCallback, PermissionResult, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import { ClaudeSub } from "./ClaudeSub.ts";
 import { err_why } from "./Err.ts";
 import { get, list, rec, str } from "./Json.ts";
 import { Rules, type Rule } from "./Rules.ts";
-import { Wire, type Ask, type Ev, type Told } from "./Wire.ts";
+import { Wire, type Ask, type Ev, type Outbox, type Told } from "./Wire.ts";
 
 // what a session keeps for its life: its worktree, its Claude account's
 // folder, its model ("": the account's default) and what its system
@@ -27,6 +27,22 @@ export type Spec = { cwd: string; claude: string; model: string; append: string 
 // it resumes ("": a new one), the rules that ask the owner first, the
 // socket it listens on
 export type Start = { prompt: string; resume: string; rules: Rule[]; sock: string };
+
+type Parked = { ask: Ask; done: (r: PermissionResult) => void };
+
+// a holder's state: what it told and the server hasn't acked, the calls
+// parked, the notes the owner approved some with, the messages the server
+// sent (by id), Claude Code's input, the connection that owns it now
+type Held = {
+  out   : Outbox;
+  asks  : Map<string, Parked>;
+  notes : Map<string, string>;
+  says  : Set<string>;
+  inbox : ReturnType<typeof ClaudeSub.inbox>;
+  rules : Rule[];
+  conn  : net.Socket | null;
+  emit  : (ev: Ev) => void;
+};
 
 export const SPEC = "spec.json";
 export const START = "start.json";
@@ -44,7 +60,15 @@ const ENV = {
 };
 
 // a session asks no one in it: the owner's answers come through the gate
-const NOT = ["AskUserQuestion"];
+const NO_TOOLS = ["AskUserQuestion"];
+
+// claude.ai's connectors left out; a project's AGENTS.md loaded beside any
+// CLAUDE.md (by default it's skipped when one is found further up, as the
+// account's own often is)
+const SETTINGS = {
+  disableClaudeAiConnectors : true,
+  pluginConfigs             : { "cc-plugin-agents-md@builtin": { options: { instructionFiles: "claude-md-and-agents-md" } } },
+};
 
 export namespace Hold {
 
@@ -78,94 +102,86 @@ export namespace Hold {
     return blocks.length > 0 ? blocks.join("\n") : JSON.stringify(x);
   }
 
-  // the messages Claude Code reads, as they come; closed: it ends
-  export function inbox() {
-    const queue: SDKUserMessage[] = [];
-    let wake = () => {};
-    let shut = false;
-    const put = (text: string) => {
-      queue.push({ type: "user", message: { role: "user", content: text }, parent_tool_use_id: null });
-      wake();
-    };
-    const close = () => {
-      shut = true;
-      wake();
-    };
-    async function* read(): AsyncGenerator<SDKUserMessage> {
-      for (;;) {
-        for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
-          yield next;
-        }
-        if (shut) {
-          return;
-        }
-        await new Promise<void>((ok) => (wake = ok));
+  // a message from a connection: a hello takes the holder over (closing
+  // the one it had) and gets a welcome, then what isn't acked yet; the
+  // rest counts only from the connection that owns it
+  export function got(h: Held, msg: Record<string, unknown>, s: net.Socket): void {
+    if (msg.$ === "hello") {
+      if (h.conn !== null && h.conn !== s) {
+        h.conn.destroy();
       }
+      h.conn = s;
+      h.rules = Array.isArray(msg.rules) ? (msg.rules as Rule[]) : h.rules;
+      Wire.ack(h.out, Number(msg.ack) || 0);
+      Wire.send(s, { $: "welcome", seq: h.out.seq, asks: [...h.asks.values()].map((a) => a.ask) });
+      h.out.kept.forEach((t) => Wire.send(s, { $: "ev", ...t }));
+    } else if (s !== h.conn) {
+      return;
+    } else if (msg.$ === "ack") {
+      Wire.ack(h.out, Number(msg.seq) || 0);
+    } else if (msg.$ === "rules" && Array.isArray(msg.rules)) {
+      h.rules = msg.rules as Rule[];
+    } else if (msg.$ === "answer") {
+      Hold.answer(h, String(msg.id), msg.ok === true, str(msg.note) ?? "");
+    } else if (msg.$ === "say" && typeof msg.id === "string" && typeof msg.text === "string" && !h.says.has(msg.id) && h.inbox.open()) {
+      h.says.add(msg.id);
+      h.inbox.put([msg.text], []);
+      h.emit({ k: "heard", id: msg.id });
     }
-    return { put, close, read, empty: () => queue.length === 0, open: () => !shut };
+  }
+
+  // the owner's answer to a parked call; one it already had, or for a
+  // call no longer parked, does nothing
+  export function answer(h: Held, id: string, ok: boolean, note: string): void {
+    const parked = h.asks.get(id);
+    if (parked === undefined) {
+      return;
+    }
+    h.asks.delete(id);
+    h.emit({ k: "answered", id, ok });
+    if (ok && note !== "") {
+      h.notes.set(id, note);
+    }
+    const said = note === "" ? "." : ": “" + note + "”.";
+    parked.done(ok ? { behavior: "allow", updatedInput: parked.ask.input } : { behavior: "deny", message: "The user denied this (" + parked.ask.what.toLowerCase() + ")" + said + " Don't do it another way; if it's still needed, say so when you finish." });
+  }
+
+  export function outcome(msg: SDKResultMessage): { ok: boolean; text: string } {
+    return { ok: msg.subtype === "success" && !msg.is_error, text: msg.subtype === "success" ? msg.result : msg.errors.join("; ") };
   }
 
   export async function main(dir: string): Promise<void> {
     const spec = JSON.parse(fs.readFileSync(path.join(dir, SPEC), "utf8")) as Spec;
     const start = JSON.parse(fs.readFileSync(path.join(dir, START), "utf8")) as Start;
-    const log = fs.openSync(path.join(dir, LOG), "a");
-    const box = Wire.outbox(Hold.told(dir).at(-1)?.seq ?? 0);
-    const asks = new Map<string, { ask: Ask; done: (r: PermissionResult) => void }>();
+    const file = path.join(dir, LOG);
+    const log = fs.openSync(file, "a");
+    // a holder killed mid-line left it unended: the next line starts anew
+    const size = fs.fstatSync(log).size;
+    if (size > 0 && fs.readFileSync(file).at(size - 1) !== 0x0a) {
+      fs.writeSync(log, "\n");
+    }
+    const h: Held = { out: Wire.outbox(Hold.told(dir).at(-1)?.seq ?? 0), asks: new Map(), notes: new Map(), says: new Set(), inbox: ClaudeSub.inbox(), rules: start.rules, conn: null, emit: () => {} };
+    h.emit = (ev) => {
+      const told = Wire.push(h.out, ev, Date.now());
+      fs.writeSync(log, JSON.stringify(told) + "\n");
+      Wire.send(h.conn, { $: "ev", ...told });
+    };
     const named = new Map<string, string>();
-    const notes = new Map<string, string>();
-    const heard = new Set<string>();
-    const box_in = Hold.inbox();
-    let rules = start.rules;
-    let conn: net.Socket | null = null;
     let sdk = start.resume;
     let tasks = 0;
 
-    const send = (s: net.Socket | null, msg: Parameters<typeof Wire.line>[0]) => {
-      if (s !== null && !s.destroyed) {
-        s.write(Wire.line(msg));
-      }
-    };
-    const emit = (ev: Ev) => {
-      const told = Wire.push(box, ev, Date.now());
-      fs.writeSync(log, JSON.stringify(told) + "\n");
-      send(conn, { $: "ev", ...told });
-    };
-    const said = (msg: Record<string, unknown>, s: net.Socket) => {
-      if (msg.$ === "hello") {
-        if (conn !== null && conn !== s) {
-          conn.destroy();
-        }
-        conn = s;
-        rules = Array.isArray(msg.rules) ? (msg.rules as Rule[]) : rules;
-        Wire.ack(box, Number(msg.ack) || 0);
-        send(s, { $: "welcome", seq: box.seq, asks: [...asks.values()].map((a) => a.ask) });
-        box.kept.forEach((t) => send(s, { $: "ev", ...t }));
-      } else if (s !== conn) {
-        return;
-      } else if (msg.$ === "ack") {
-        Wire.ack(box, Number(msg.seq) || 0);
-      } else if (msg.$ === "answer") {
-        Hold.answer(asks, notes, String(msg.id), msg.ok === true, str(msg.note) ?? "", emit);
-      } else if (msg.$ === "say" && typeof msg.id === "string" && typeof msg.text === "string" && !heard.has(msg.id) && box_in.open()) {
-        heard.add(msg.id);
-        box_in.put(msg.text);
-        emit({ k: "heard", id: msg.id });
-      }
-    };
-
-    const sock = start.sock;
-    fs.rmSync(sock, { force: true });
+    fs.rmSync(start.sock, { force: true });
     const server = net.createServer((s) => {
       s.setEncoding("utf8");
-      s.on("data", Wire.lines((msg) => said(msg, s)));
+      s.on("data", Wire.lines((msg) => Hold.got(h, msg, s)));
       s.on("error", () => {});
       s.on("close", () => {
-        if (conn === s) {
-          conn = null;
+        if (h.conn === s) {
+          h.conn = null;
         }
       });
     });
-    await new Promise<void>((ok) => server.listen(sock, ok));
+    await new Promise<void>((ok) => server.listen(start.sock, ok));
 
     const pre: HookCallback = (input) => {
       if (input.hook_event_name !== "PreToolUse") {
@@ -173,7 +189,7 @@ export namespace Hold {
       }
       const args = rec(input.tool_input) ? input.tool_input : {};
       const [tool, given] = input.tool_name === "Bash" ? ["shell", { command: args.command }] : [input.tool_name, args];
-      const rule = Rules.match(rules, tool, given, spec.cwd);
+      const rule = Rules.match(h.rules, tool, given, spec.cwd);
       if (rule === null) {
         return Promise.resolve({});
       }
@@ -181,11 +197,11 @@ export namespace Hold {
       return Promise.resolve({ hookSpecificOutput: { hookEventName: "PreToolUse" as const, permissionDecision: "ask" as const, permissionDecisionReason: rule.what } });
     };
     const post: HookCallback = (input) => {
-      const note = input.hook_event_name === "PostToolUse" ? notes.get(input.tool_use_id) : undefined;
+      const note = input.hook_event_name === "PostToolUse" ? h.notes.get(input.tool_use_id) : undefined;
       if (input.hook_event_name !== "PostToolUse" || note === undefined) {
         return Promise.resolve({});
       }
-      notes.delete(input.tool_use_id);
+      h.notes.delete(input.tool_use_id);
       return Promise.resolve({ hookSpecificOutput: { hookEventName: "PostToolUse" as const, additionalContext: "The user approved this with a note: “" + note + "”" } });
     };
     const can: CanUseTool = (tool, input, { signal, toolUseID }) => {
@@ -197,32 +213,33 @@ export namespace Hold {
       return new Promise((ok) => {
         const ask = { id: toolUseID, tool, input, what };
         const off = () => {
-          if (asks.delete(toolUseID)) {
-            emit({ k: "dropped", id: toolUseID });
+          if (h.asks.delete(toolUseID)) {
+            h.emit({ k: "dropped", id: toolUseID });
             ok({ behavior: "deny", message: "Stopped." });
           }
         };
-        asks.set(toolUseID, { ask, done: (r) => (signal.removeEventListener("abort", off), ok(r)) });
+        h.asks.set(toolUseID, { ask, done: (r) => (signal.removeEventListener("abort", off), ok(r)) });
         signal.addEventListener("abort", off, { once: true });
-        emit({ k: "ask", ...ask });
+        h.emit({ k: "ask", ...ask });
       });
     };
 
-    box_in.put(start.prompt);
+    h.inbox.put([start.prompt], []);
     let end: Ev = { k: "end", ok: false, text: "Claude Code ended before its turn did." };
     try {
       const sdk_mod = await ClaudeSub.sdk();
-      const q = sdk_mod.query({ prompt: box_in.read(), options: {
+      const env = Object.fromEntries(Object.entries(ClaudeSub.bare_env()).filter(([k]) => k !== "DISABLE_AUTO_COMPACT"));
+      const q = sdk_mod.query({ prompt: h.inbox.read(), options: {
         cwd                        : spec.cwd,
         model                      : spec.model === "" ? undefined : spec.model,
         pathToClaudeCodeExecutable : await ClaudeSub.bin_on_disk(),
-        env                        : { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(ANTHROPIC_|CLAUDE_|DISABLE_AUTO_COMPACT$)/.test(k))), ...ENV, CLAUDE_CONFIG_DIR: spec.claude },
+        env                        : { ...env, ...ENV, CLAUDE_CONFIG_DIR: spec.claude },
         systemPrompt               : { type: "preset", preset: "claude_code", append: spec.append },
         tools                      : { type: "preset", preset: "claude_code" },
         settingSources             : ["user", "project", "local"],
         permissionMode             : "default",
-        disallowedTools            : NOT,
-        settings                   : { disableClaudeAiConnectors: true },
+        disallowedTools            : NO_TOOLS,
+        settings                   : SETTINGS,
         resume                     : sdk === "" ? undefined : sdk,
         canUseTool                 : can,
         hooks                      : {
@@ -233,28 +250,28 @@ export namespace Hold {
       for await (const msg of q) {
         if (msg.type === "system" && msg.subtype === "init" && msg.session_id !== sdk) {
           sdk = msg.session_id;
-          emit({ k: "began", sdk });
+          h.emit({ k: "began", sdk });
         }
         if (msg.type === "system" && msg.subtype === "background_tasks_changed") {
           tasks = msg.tasks.filter((t) => t.ambient !== true).length;
         }
-        Hold.told_of(msg).forEach(emit);
+        Hold.told_of(msg).forEach(h.emit);
         if (msg.type === "result") {
-          end = { k: "end", ok: msg.subtype === "success" && !msg.is_error, text: msg.subtype === "success" ? msg.result : msg.errors.join("; ") };
-          if (box_in.empty() && tasks === 0 && asks.size === 0) {
-            box_in.close();
+          end = { k: "end", ...Hold.outcome(msg) };
+          if (h.inbox.empty() && tasks === 0 && h.asks.size === 0) {
+            h.inbox.close();
           }
         }
       }
     } catch (err) {
       end = { k: "end", ok: false, text: err_why(err) };
     }
-    emit(end);
-    for (const at = Date.now(); box.kept.length > 0 && Date.now() - at < LINGER; ) {
+    h.emit(end);
+    for (const at = Date.now(); h.out.kept.length > 0 && Date.now() - at < LINGER; ) {
       await Bun.sleep(200);
     }
     server.close();
-    fs.rmSync(sock, { force: true });
+    fs.rmSync(start.sock, { force: true });
     fs.closeSync(log);
     process.exit(0);
   }
@@ -274,25 +291,9 @@ export namespace Hold {
       return [{ k: "compacted" }];
     }
     if (msg.type === "result") {
-      return [{ k: "turn", ok: msg.subtype === "success" && !msg.is_error, text: msg.subtype === "success" ? msg.result : msg.errors.join("; ") }];
+      return [{ k: "turn", ...Hold.outcome(msg) }];
     }
     return [];
-  }
-
-  // the owner's answer to a parked call; one it already had, or for a
-  // call no longer parked, does nothing
-  export function answer(asks: Map<string, { ask: Ask; done: (r: PermissionResult) => void }>, notes: Map<string, string>, id: string, ok: boolean, note: string, emit: (ev: Ev) => void): void {
-    const parked = asks.get(id);
-    if (parked === undefined) {
-      return;
-    }
-    asks.delete(id);
-    emit({ k: "answered", id, ok });
-    const said = note === "" ? "" : ": “" + note + "”";
-    if (ok && note !== "") {
-      notes.set(id, note);
-    }
-    parked.done(ok ? { behavior: "allow", updatedInput: parked.ask.input } : { behavior: "deny", message: "The user denied this (" + parked.ask.what.toLowerCase() + ")" + (said || ".") + " Don't do it another way; if it's still needed, say so when you finish." });
   }
 
 }

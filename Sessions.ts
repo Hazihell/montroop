@@ -17,21 +17,23 @@ import { Gate, type Asked } from "./Gate.ts";
 import { Hold, SPEC, START, type Spec, type Start } from "./Hold.ts";
 import { get, rec, str } from "./Json.ts";
 import { Machine } from "./Machine.ts";
+import { Owner } from "./Owner.ts";
 import * as Pins from "./Pins.ts";
-import { command } from "./Service.ts";
+import { command, run } from "./Service.ts";
 import { LIVE, Session, type Parked } from "./Session.ts";
 import { Team } from "./Team.ts";
-import { Wire, type Ev, type Told, type ToHold } from "./Wire.ts";
+import { Wire, type Ev, type Told } from "./Wire.ts";
 import { Worktree } from "./Worktree.ts";
 
-// what a session's link to its holder holds: the socket (null: none now),
-// the owner's cards its parked calls wait on, how often it tried to
-// connect since it last did
+// a session's link to its holder: the socket (null: none now), the
+// owner's cards its parked calls wait on, the tries to connect since it
+// last did, the next try's timer
 type Link = { sock: net.Socket | null; waits: Map<string, AbortController>; tries: number; timer: Timer | null };
 
-// what a new session needs: its agent; a repo on this computer and the ref
-// its branch starts from; its name; the brief its system prompt adds, the
-// first message, the model ("": the account's default)
+// what a new session needs: its agent; a repo on this computer, the ref
+// its branch starts from and the branch ("": ki/<name>); its name; the
+// brief its system prompt adds; the first message; the model ("": the
+// account's default)
 type Begin = { agent: string; repo: string; base: string; branch: string; name: string; brief: string; prompt: string; model: string };
 
 const DIR = path.join(config.DIR, "sessions");
@@ -40,16 +42,21 @@ const NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
 
 const LAST = 300;
 
+const PAGE = 100;
+const PAGE_MOST = 1000;
+
 // how long, at most, between tries to reach a holder that runs
 const RETRY = 5000;
 
 // the variables a holder's Claude Code works with, from the server's
 const ENV = ["PATH", "LANG", "SHELL", "SSH_AUTH_SOCK", "XDG_CONFIG_HOME", "XDG_DATA_HOME"];
 
-const AGAIN = "Your process was stopped before you were done, so the outcome of your last calls is unknown. Check what they did before doing any again, then go on with the task.";
+const AGAIN = "Your process was stopped before you were done, so the outcome of your last calls is unknown. Check what they did before doing any again, then go on with the task. The message you were working on:\n\n";
+
+const GONE = "its holder ended before the run did";
 
 const LINKS = new Map<string, Link>();
-const GATE = { gate: null as Gate | null, asked: (_: Asked) => {} };
+const CARDS = { gate: null as Gate | null, asked: (_: Asked) => {} };
 
 export namespace Sessions {
 
@@ -61,23 +68,31 @@ export namespace Sessions {
     return path.join(s.dir, "hold-" + s.launches + ".sock");
   }
 
-  export function systemctl(args: string[]): { ok: boolean; out: string } {
-    const run = Bun.spawnSync(["systemctl", "--user", ...args], { stdin: "ignore", stdout: "pipe", stderr: "pipe" });
-    return { ok: run.exitCode === 0, out: (run.stdout.toString() + run.stderr.toString()).trim() };
+  export function systemctl(args: string[]): string {
+    const r = run(["systemctl", "--user", ...args]);
+    return (r.out + "\n" + r.err).trim();
   }
 
   export function alive(s: Session): boolean {
-    return s.launches > 0 && ["active", "activating", "deactivating"].includes(Sessions.systemctl(["is-active", Sessions.unit(s)]).out);
+    return s.launches > 0 && ["active", "activating", "deactivating"].includes(Sessions.systemctl(["is-active", Sessions.unit(s)]));
+  }
+
+  export function link_of(id: string): Link {
+    const l = LINKS.get(id) ?? { sock: null, waits: new Map(), tries: 0, timer: null };
+    LINKS.set(id, l);
+    return l;
   }
 
   // at the server's start, before it takes requests: the cards of calls
-  // still parked wait again, so an answer given at once finds them
+  // still parked wait again, so an answer given at once finds them, and
+  // those of a holder gone are taken down
   export function boot(gate: Gate, asked: (a: Asked) => void): void {
-    GATE.gate = gate;
-    GATE.asked = asked;
+    CARDS.gate = gate;
+    CARDS.asked = asked;
+    config.RELOADED.add(() => LINKS.forEach((l) => Wire.send(l.sock, { $: "rules", rules: config.ASK })));
     for (const s of Session.list(null).filter((x) => LIVE.includes(x.status))) {
+      Session.parked(s.id).forEach((p) => Sessions.arm(s, p));
       if (Sessions.alive(s)) {
-        Session.parked(s.id).forEach((p) => Sessions.arm(s, p));
         Sessions.link(s.id);
       } else {
         Sessions.gone(s.id);
@@ -107,10 +122,11 @@ export namespace Sessions {
       return top.why;
     }
     const id = crypto.randomUUID().slice(0, 8);
+    const base = b.base || "HEAD";
     const branch = b.branch || "ki/" + b.name;
     const worktree = path.join(Machine.agent_dir(b.agent), "sessions", b.name);
     fs.mkdirSync(path.dirname(worktree), { recursive: true });
-    const made = Worktree.make(top.dir, b.base || "HEAD", branch, worktree);
+    const made = Worktree.make(top.dir, base, branch, worktree);
     if (made !== null) {
       return made;
     }
@@ -118,23 +134,22 @@ export namespace Sessions {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     const spec: Spec = { cwd: worktree, claude: config.claude_dir(agent.claude), model: b.model, append: [b.brief.trim(), Pins.block(false).text.trim()].filter((t) => t !== "").join("\n\n") };
     fs.writeFileSync(path.join(dir, SPEC), JSON.stringify(spec, null, 1) + "\n", { mode: 0o600 });
-    const s = Session.add({ id, name: b.name, agent: b.agent, repo: top.dir, base: b.base || "HEAD", branch, worktree, account: agent.claude, model: b.model, dir }, b.prompt);
+    const s = Session.add({ id, name: b.name, agent: b.agent, repo: top.dir, base, branch, worktree, account: agent.claude, model: b.model, dir }, b.prompt);
     const why = Sessions.launch(s, b.prompt);
     return why === null ? Session.get(id) ?? s : why;
   }
 
-  // a run's holder started, on its first message, resuming the session's
+  // a run's holder started on its first message, resuming the session's
   // Claude Code session if it has one; null: started
   export function launch(s: Session, prompt: string): string | null {
-    const launches = s.launches + 1;
-    Session.set(s.id, { launches });
-    const now = { ...s, launches };
-    const begin: Start = { prompt, resume: s.sdk, rules: config.ASK, sock: Sessions.sock(now) };
+    const next = { ...s, launches: s.launches + 1 };
+    Session.set(s.id, { launches: next.launches });
+    const begin: Start = { prompt, resume: s.sdk, rules: config.ASK, sock: Sessions.sock(next) };
     fs.writeFileSync(path.join(s.dir, START), JSON.stringify(begin, null, 1) + "\n", { mode: 0o600 });
     const env = Object.entries({ ...Object.fromEntries(ENV.flatMap((k) => (process.env[k] ? [[k, process.env[k]]] : []))), KI_DIR: config.DIR });
-    const run = Bun.spawnSync(["systemd-run", "--user", "--collect", "--quiet", "--unit=" + Sessions.unit(now), "--description=Ki work session " + s.name, "-p", "TimeoutStopSec=10", ...env.map(([k, v]) => "--setenv=" + k + "=" + v), "--", ...command(), "hold", s.dir], { stdin: "ignore", stdout: "pipe", stderr: "pipe" });
-    if (run.exitCode !== 0) {
-      const why = "systemd-run failed: " + (run.stdout.toString() + run.stderr.toString()).trim();
+    const r = run(["systemd-run", "--user", "--collect", "--quiet", "--unit=" + Sessions.unit(next), "--description=Ki work session " + s.name, "-p", "TimeoutStopSec=10", ...env.map(([k, v]) => "--setenv=" + k + "=" + v), "--", ...command(), "hold", s.dir]);
+    if (r.code !== 0) {
+      const why = "systemd-run failed: " + (r.out + "\n" + r.err).trim();
       Session.move(s.id, "failed", why);
       return why;
     }
@@ -145,8 +160,7 @@ export namespace Sessions {
 
   export function link(id: string): void {
     const s = Session.get(id);
-    const l = LINKS.get(id) ?? { sock: null, waits: new Map(), tries: 0, timer: null };
-    LINKS.set(id, l);
+    const l = Sessions.link_of(id);
     if (s === null || l.sock !== null) {
       return;
     }
@@ -155,7 +169,7 @@ export namespace Sessions {
     sock.setEncoding("utf8");
     sock.on("connect", () => {
       l.tries = 0;
-      Sessions.send(sock, { $: "hello", ack: Session.get(id)?.ack ?? 0, rules: config.ASK });
+      Wire.send(sock, { $: "hello", ack: Session.get(id)?.ack ?? 0, rules: config.ASK });
     });
     sock.on("data", Wire.lines((msg) => {
       try {
@@ -182,12 +196,6 @@ export namespace Sessions {
     const sock = l.sock;
     l.sock = null;
     sock?.destroy();
-  }
-
-  export function send(sock: net.Socket | null | undefined, msg: ToHold): void {
-    if (sock !== null && sock !== undefined && !sock.destroyed) {
-      sock.write(Wire.line(msg));
-    }
   }
 
   // the link fell or never came: tried again while the holder runs, else
@@ -221,11 +229,12 @@ export namespace Sessions {
     if (s === null) {
       return;
     }
+    fs.rmSync(Sessions.sock(s), { force: true });
     Hold.told(s.dir).filter((t) => t.seq > s.ack).forEach((t) => Sessions.take(id, t));
     const now = Session.get(id);
     if (now !== null && LIVE.includes(now.status)) {
       Sessions.drop(now.id);
-      Session.move(now.id, "failed", "its holder ended before the run did");
+      Session.move(now.id, "failed", GONE);
     }
   }
 
@@ -236,13 +245,13 @@ export namespace Sessions {
         if (!held.has(p.id)) {
           Sessions.unpark(id, p.id);
         } else if (p.ok !== null) {
-          Sessions.send(sock, { $: "answer", id: p.id, ok: p.ok === 1, note: p.note });
+          Wire.send(sock, { $: "answer", id: p.id, ok: p.ok === 1, note: p.note });
         }
       }
-      Session.unheard(id).forEach((say) => Sessions.send(sock, { $: "say", id: say.id, text: say.text }));
+      Session.unheard(id).forEach((say) => Wire.send(sock, { $: "say", id: say.id, text: say.text }));
     } else if (msg.$ === "ev" && typeof msg.seq === "number" && rec(msg.ev)) {
       Sessions.take(id, { seq: msg.seq, at: Number(msg.at) || Date.now(), ev: msg.ev as Ev });
-      Sessions.send(sock, { $: "ack", seq: msg.seq });
+      Wire.send(sock, { $: "ack", seq: msg.seq });
     }
   }
 
@@ -269,32 +278,31 @@ export namespace Sessions {
     } else if (ev.k === "end") {
       Sessions.drop(id);
       Session.move(id, ev.ok ? "ended" : "failed", ev.ok ? "" : ev.text);
+      // after the ack goes out, so the holder ending now isn't kept waiting
+      queueMicrotask(() => Sessions.next_run(id));
     }
     Session.set(id, { ack: told.seq });
-    if (ev.k === "end") {
-      Sessions.next_run(id);
-    }
   }
 
   // messages a run's holder did not take in before it ended start the next
   export function next_run(id: string): void {
     const s = Session.get(id);
     const says = Session.unheard(id);
-    if (s === null || says.length === 0 || s.status === "stopped") {
+    if (s === null || says.length === 0 || LIVE.includes(s.status) || s.status === "stopped") {
       return;
     }
+    const text = says.map((say) => say.text).join("\n\n");
     Session.heard(says.map((say) => say.id));
-    if (Session.again(id, says.map((say) => say.text).join("\n\n")) !== null) {
-      Sessions.launch(Session.get(id) ?? s, says.map((say) => say.text).join("\n\n"));
+    if (Session.again(id, text) !== null) {
+      Sessions.launch(s, text);
     }
   }
 
   // a parked call shown as the owner's card in its agent's chat, waiting
   // for an answer, which goes to the holder
   export function arm(s: Session, p: Parked): void {
-    const l = LINKS.get(s.id) ?? { sock: null, waits: new Map(), tries: 0, timer: null };
-    LINKS.set(s.id, l);
-    if (GATE.gate === null || l.waits.has(p.id) || p.ok !== null) {
+    const l = Sessions.link_of(s.id);
+    if (CARDS.gate === null || l.waits.has(p.id) || p.ok !== null) {
       return;
     }
     const stop = new AbortController();
@@ -304,11 +312,11 @@ export namespace Sessions {
       const x: unknown = JSON.parse(p.input);
       input = rec(x) ? x : {};
     } catch {}
-    void Gate.wait(GATE.gate, s.agent, "Session " + s.name, p.tool, input, p.what, stop.signal, GATE.asked).then((said) => {
+    void Gate.wait(CARDS.gate, s.agent, "Session " + s.name, p.tool, input, p.what, stop.signal, CARDS.asked).then((said) => {
       l.waits.delete(p.id);
       if (said !== null) {
         Session.answer(p.id, said.ok, said.note);
-        Sessions.send(l.sock, { $: "answer", id: p.id, ok: said.ok, note: said.note });
+        Wire.send(l.sock, { $: "answer", id: p.id, ok: said.ok, note: said.note });
       }
     });
   }
@@ -337,14 +345,15 @@ export namespace Sessions {
     if (text.trim() === "") {
       return "Say something.";
     }
-    if (!Session.say({ id: id + "/" + request, session: id, text, at: Date.now() })) {
+    const key = id + "/" + request;
+    if (!Session.say({ id: key, session: id, text, at: Date.now() })) {
       return null;
     }
     if (LIVE.includes(s.status)) {
-      Sessions.send(LINKS.get(id)?.sock, { $: "say", id: id + "/" + request, text });
+      Wire.send(LINKS.get(id)?.sock, { $: "say", id: key, text });
       return null;
     }
-    Session.heard([id + "/" + request]);
+    Session.heard([key]);
     if (Session.again(id, text) === null) {
       return "Session " + s.name + " can't take a message now.";
     }
@@ -355,18 +364,19 @@ export namespace Sessions {
   // gone, or stopped)
   export function resume(id: string): string | null {
     const s = Session.get(id);
-    const run = Session.run(id);
-    if (s === null || run === null || s.archived !== 0) {
+    const last = Session.run(id);
+    if (s === null || last === null || s.archived !== 0) {
       return "No session " + id + ".";
     }
     if (s.status === "done" || LIVE.includes(s.status)) {
       return "Session " + s.name + " is " + s.status + ": nothing to resume.";
     }
     Session.again(id, null);
-    return Sessions.launch(s, s.sdk === "" ? run.prompt : AGAIN);
+    return Sessions.launch(s, s.sdk === "" ? last.prompt : AGAIN + last.prompt);
   }
 
-  // its holder and everything it started killed (the whole unit)
+  // its holder and everything it started killed (the whole unit); the
+  // messages it didn't take in are dropped with it
   export function stop(id: string): string | null {
     const s = Session.get(id);
     if (s === null) {
@@ -379,13 +389,13 @@ export namespace Sessions {
     Session.heard(Session.unheard(id).map((say) => say.id));
     Sessions.unlink(id);
     if (s.launches > 0) {
-      Sessions.systemctl(["stop", Sessions.unit(s)]);
+      Sessions.systemctl(["stop", "--no-block", Sessions.unit(s)]);
     }
     return null;
   }
 
   // its worktree and branch removed, the record kept; force: even with
-  // work not pushed
+  // work found nowhere else
   export function archive(id: string, force: boolean): string | null {
     const s = Session.get(id);
     if (s === null || s.archived !== 0) {
@@ -394,7 +404,7 @@ export namespace Sessions {
     if (LIVE.includes(s.status)) {
       return "Session " + s.name + " is " + s.status + ": stop it first.";
     }
-    const why = Worktree.remove(s.repo, s.worktree, s.branch, force);
+    const why = Worktree.remove(s.repo, s.base, s.worktree, s.branch, force);
     if (why !== null) {
       return why;
     }
@@ -409,9 +419,6 @@ export namespace Sessions {
     return s === null ? [] : Hold.told(s.dir).filter((t) => t.seq > after).slice(0, n);
   }
 
-  // the owner's API: GET /api/sessions[?agent=] lists, GET
-  // /api/sessions/<id>[?after=&n=] reads one, POST /api/sessions starts
-  // one, POST /api/sessions/<id>/(say|resume|stop|archive) acts on one
   export async function http(req: Request, p: string): Promise<Response> {
     const url = new URL(req.url);
     const m = /^\/api\/sessions(?:\/([0-9a-f]{8})(?:\/(say|resume|stop|archive))?)?$/.exec(p);
@@ -426,11 +433,14 @@ export namespace Sessions {
       }
       const s = Session.get(id);
       const after = Number(url.searchParams.get("after") ?? 0) || 0;
-      const n = Math.min(Number(url.searchParams.get("n") ?? 100) || 100, 1000);
+      const n = Math.min(Math.max(0, Number(url.searchParams.get("n") ?? PAGE) || 0), PAGE_MOST);
       return s === null ? Response.json({ error: "No session " + id + "." }, { status: 404 }) : Response.json({ ...s, runs: Session.runs(id), parked: Session.parked(id), log: Sessions.log(id, after, n) });
     }
     if (req.method !== "POST") {
       return new Response("a session act is a POST", { status: 405 });
+    }
+    if (!Owner.browser(req)) {
+      return Response.json({ error: "Start or change a session in the web app: a device can't." }, { status: 403 });
     }
     const body: unknown = await req.json().catch(() => null);
     const text = (k: string) => str(get(body, k)) ?? "";

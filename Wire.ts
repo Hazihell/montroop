@@ -5,6 +5,7 @@
 // it until the server acks it, telling it again after each hello; the
 // newest hello owns the session, the connection it replaces is closed.
 
+import type * as net from "node:net";
 import { rec } from "./Json.ts";
 import type { Rule } from "./Rules.ts";
 
@@ -30,9 +31,11 @@ export type Ev =
 
 export type Told = { seq: number; at: number; ev: Ev };
 
-export type ToHold =
+// rules: the ask rules changed
+type ToHold =
   | { $: "hello"; ack: number; rules: Rule[] }
   | { $: "ack"; seq: number }
+  | { $: "rules"; rules: Rule[] }
   | { $: "answer"; id: string; ok: boolean; note: string }
   | { $: "say"; id: string; text: string };
 
@@ -40,12 +43,16 @@ type FromHold =
   | { $: "welcome"; seq: number; asks: Ask[] }
   | ({ $: "ev" } & Told);
 
-type Outbox = { seq: number; kept: Told[] };
+export type Outbox = { seq: number; kept: Told[] };
 
 export namespace Wire {
 
-  export function line(msg: ToHold | FromHold): string {
-    return JSON.stringify(msg) + "\n";
+  // a message sent on a connection still open (none: dropped; the outbox
+  // or the server's record has it for the next one)
+  export function send(sock: net.Socket | null | undefined, msg: ToHold | FromHold): void {
+    if (sock !== null && sock !== undefined && !sock.destroyed) {
+      sock.write(JSON.stringify(msg) + "\n");
+    }
   }
 
   // what comes in, cut into messages (a line that is no JSON object is

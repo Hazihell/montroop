@@ -5,19 +5,19 @@
 // while it holds work found nowhere else (unless forced).
 
 import * as fs from "node:fs";
+import { run } from "./Service.ts";
 
 export namespace Worktree {
 
   export function git(dir: string, args: string[]): { ok: boolean; out: string } {
-    const run = Bun.spawnSync(["git", "-C", dir, ...args], { stdin: "ignore", stdout: "pipe", stderr: "pipe" });
-    const out = (run.stdout.toString() + run.stderr.toString()).trim();
-    return { ok: run.exitCode === 0, out };
+    const r = run(["git", "-C", dir, ...args], { GIT_TERMINAL_PROMPT: "0" });
+    return { ok: r.code === 0, out: (r.out + "\n" + r.err).trim() };
   }
 
   // the repo's top folder, or why it's none
   export function top(repo: string): { dir: string } | { why: string } {
-    const run = Worktree.git(repo, ["rev-parse", "--show-toplevel"]);
-    return run.ok ? { dir: run.out } : { why: repo + " is no git repository: " + run.out };
+    const r = Worktree.git(repo, ["rev-parse", "--show-toplevel"]);
+    return r.ok ? { dir: r.out } : { why: repo + " is no git repository: " + r.out };
   }
 
   // null: made; else why not
@@ -25,40 +25,40 @@ export namespace Worktree {
     if (fs.existsSync(dir)) {
       return dir + " exists already";
     }
-    const run = Worktree.git(repo, ["worktree", "add", "-b", branch, dir, base]);
-    return run.ok ? null : "git worktree add failed: " + run.out;
+    const r = Worktree.git(repo, ["worktree", "add", "-b", branch, dir, base]);
+    return r.ok ? null : "git worktree add failed: " + r.out;
   }
 
-  // what removing it would lose: commits on no remote branch, and changes
-  // not committed
-  export function unsaved(dir: string): string[] {
-    const commits = Worktree.git(dir, ["log", "--oneline", "HEAD", "--not", "--remotes"]);
+  // the commits of ref that are neither on a remote branch nor on base
+  export function ahead(dir: string, ref: string, base: string): number {
+    const r = Worktree.git(dir, ["rev-list", "--count", ref, "--not", "--remotes", base]);
+    return r.ok ? Number(r.out) || 0 : 0;
+  }
+
+  // what removing it would lose: its commits found nowhere else, and
+  // changes not committed
+  export function unsaved(dir: string, base: string): string[] {
     const changes = Worktree.git(dir, ["status", "--porcelain"]);
-    const n = (run: { ok: boolean; out: string }) => (run.ok && run.out !== "" ? run.out.split("\n").length : 0);
-    const [c, f] = [n(commits), n(changes)];
+    const [c, f] = [Worktree.ahead(dir, "HEAD", base), changes.ok && changes.out !== "" ? changes.out.split("\n").length : 0];
     return [...(c > 0 ? [c + " commit" + (c === 1 ? "" : "s") + " not pushed"] : []), ...(f > 0 ? [f + " file" + (f === 1 ? "" : "s") + " not committed"] : [])];
   }
 
   // the worktree and its branch removed; null: done (or gone already),
   // else why not
-  export function remove(repo: string, dir: string, branch: string, force: boolean): string | null {
+  export function remove(repo: string, base: string, dir: string, branch: string, force: boolean): string | null {
     if (fs.existsSync(dir)) {
-      const lost = Worktree.unsaved(dir);
+      const lost = Worktree.unsaved(dir, base);
       if (lost.length > 0 && !force) {
         return dir + " has " + lost.join(" and ") + ": push it first, or force";
       }
-      const run = Worktree.git(repo, ["worktree", "remove", "--force", dir]);
-      if (!run.ok) {
-        return "git worktree remove failed: " + run.out;
+      const r = Worktree.git(repo, ["worktree", "remove", "--force", dir]);
+      if (!r.ok) {
+        return "git worktree remove failed: " + r.out;
       }
     }
     Worktree.git(repo, ["worktree", "prune"]);
-    const kept = Worktree.git(repo, ["rev-parse", "--verify", "--quiet", "refs/heads/" + branch]);
-    if (kept.ok) {
-      const ahead = Worktree.git(repo, ["log", "--oneline", branch, "--not", "--remotes"]);
-      if (force || (ahead.ok && ahead.out === "")) {
-        Worktree.git(repo, ["branch", "-D", branch]);
-      }
+    if (Worktree.git(repo, ["rev-parse", "--verify", "--quiet", "refs/heads/" + branch]).ok && (force || Worktree.ahead(repo, branch, base) === 0)) {
+      Worktree.git(repo, ["branch", "-D", branch]);
     }
     return null;
   }
