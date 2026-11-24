@@ -28,7 +28,7 @@ import { Owner } from "./Owner.ts";
 import * as Pins from "./Pins.ts";
 import * as Prompts from "./Prompts.ts";
 import { command, output, run } from "./Service.ts";
-import { LIVE, Session, type Effect, type Mode, type Parked, type Wake } from "./Session.ts";
+import { LIVE, Session, type Effect, type Mode, type Parked, type Run, type Wake } from "./Session.ts";
 import { Team } from "./Team.ts";
 import { PICTURE, SESSION, VIDEO, type SessionPage, type SessionRow, type Waits } from "./View.ts";
 import { VERSION, Wire, type Ev, type Told } from "./Wire.ts";
@@ -278,7 +278,8 @@ export namespace Sessions {
   }
 
   // the holder is gone: what its log holds past the last ack is taken in;
-  // a run it left unfinished failed, to resume
+  // a run it left unfinished failed, to resume; a run the record started
+  // whose holder never launched (the server stopped first) launches
   function gone(id: string): void {
     const s = Session.get(id);
     if (s === null) {
@@ -290,7 +291,9 @@ export namespace Sessions {
     Hold.told(s.dir).filter((t) => t.seq > s.ack).forEach((t) => after(id, take(id, t)));
     const now = Session.get(id);
     const run = Session.run(id);
-    if (now !== null && run !== null && LIVE.includes(now.status)) {
+    if (now !== null && run !== null && LIVE.includes(now.status) && now.unit === "") {
+      next_run(id);
+    } else if (now !== null && run !== null && LIVE.includes(now.status) && now.unit === s.unit) {
       after(id, Session.move(id, "failed", GONE, { about: "gone " + attempt(run), text: GONE + ": send it a message to go on" }) ?? []);
     }
     HOOKS.change();
@@ -346,8 +349,14 @@ export namespace Sessions {
     const s = Session.get(id);
     const run = Session.run(id);
     if (s !== null && run !== null && s.status === "running") {
-      launch(s, run.prompt, "launch " + attempt(run));
+      launch(s, prompt_of(s, run), "launch " + attempt(run));
     }
+  }
+
+  // what a run's holder starts on: a run tried again on a Claude Code
+  // session is told it was cut off
+  function prompt_of(s: Session, run: Run): string {
+    return run.attempts > 1 && s.sdk !== "" ? AGAIN + run.prompt : run.prompt;
   }
 
   // a parked call shown as the owner's card in its agent's chat, waiting
@@ -451,8 +460,8 @@ export namespace Sessions {
     if (alive(s)) {
       return STOPPING;
     }
-    Session.again(id, null);
-    return launch(s, s.sdk === "" ? last.prompt : AGAIN + last.prompt, null);
+    const run = Session.again(id, null);
+    return run === null ? "Session " + s.name + " can't be resumed now." : launch(s, prompt_of(s, run), null);
   }
 
   // its holder and everything it started killed (the whole unit), its

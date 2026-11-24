@@ -28,7 +28,7 @@ export type Session = {
 };
 
 // report: what the session gave as the run's result
-type Run = { session: string; n: number; prompt: string; status: Status; attempts: number; why: string; report: string; started: number; ended: number | null };
+export type Run = { session: string; n: number; prompt: string; status: Status; attempts: number; why: string; report: string; started: number; ended: number | null };
 
 // ok: the owner's answer, null till then; it stays till the holder says it
 // took it
@@ -113,6 +113,7 @@ export namespace Session {
     if (!MADE) {
       const had = (db.query("select name from pragma_table_info('work_sessions')").all() as { name: string }[]).map((c) => c.name);
       const unseen = had.length > 0 && !had.includes("seen");
+      const unitless = had.length > 0 && !had.includes("unit");
       db.transaction(() => Object.entries(TABLES).forEach(([name, columns]) => fit(db, name, columns)))();
       // sessions made before a session's last look was kept count as seen
       if (unseen) {
@@ -120,7 +121,9 @@ export namespace Session {
       }
       // a holder launched by a version that kept no unit or socket in the
       // record was named so
-      db.run("update work_sessions set unit = 'ki-hold-' || id || '-' || launches, sock = dir || '/hold-' || launches || '.sock' where launches > 0 and unit = ''");
+      if (unitless) {
+        db.run("update work_sessions set unit = 'ki-hold-' || id || '-' || launches, sock = dir || '/hold-' || launches || '.sock' where launches > 0");
+      }
       MADE = true;
     }
     return db;
@@ -153,7 +156,7 @@ export namespace Session {
   export function set(id: string, fields: Partial<Pick<Session, "launches" | "unit" | "sock" | "archived" | "seen">>): void {
     const keys = Object.keys(fields) as Array<keyof typeof fields>;
     if (keys.length > 0) {
-      opened().query("update work_sessions set " + keys.map((k) => k + " = ?").join(", ") + ", at = ? where id = ?").run(...keys.map((k) => fields[k] ?? null), Date.now(), id);
+      opened().query("update work_sessions set " + keys.map((k) => k + " = ?").join(", ") + ", at = max(at + 1, ?) where id = ?").run(...keys.map((k) => fields[k] ?? null), Date.now(), id);
     }
   }
 
@@ -234,7 +237,7 @@ export namespace Session {
     }
     const now = Date.now();
     const end = LIVE.includes(to) ? null : now;
-    db.query("update work_sessions set status = ?, at = ? where id = ?").run(to, now, id);
+    db.query("update work_sessions set status = ?, at = max(at + 1, ?) where id = ?").run(to, now, id);
     db.query("update work_runs set status = ?, why = case when ? = '' then why else ? end, ended = ? where session = ? and n = (select max(n) from work_runs where session = ?)").run(to, why, why, end, id, id);
     if (!LIVE.includes(to)) {
       db.query("delete from work_asks where session = ?").run(id);
@@ -291,7 +294,8 @@ export namespace Session {
       return null;
     }
     const now = Date.now();
-    db.query("update work_sessions set status = 'running', at = ? where id = ?").run(now, id);
+    // its holder not launched yet: its unit and socket are named at launch
+    db.query("update work_sessions set status = 'running', unit = '', sock = '', at = max(at + 1, ?) where id = ?").run(now, id);
     if (prompt === null) {
       db.query("update work_runs set status = 'running', attempts = attempts + 1, why = '', ended = null where session = ? and n = ?").run(id, run.n);
     } else {
