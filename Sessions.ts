@@ -119,10 +119,15 @@ export namespace Sessions {
   // a session with no unit in the record whose holder of its last launch
   // runs: an older version (run on this record since) launched it and kept
   // none, so it is named in the record, not taken for a run whose holder
-  // never launched
+  // never launched; unless that holder's run ended and the end is taken
+  // (the server stopped before the next run's launch): it only lingers
   function adopted(s: Session): Session {
     const named = holder(s, s.launches);
     if (s.unit !== "" || s.launches === 0 || !alive({ ...s, ...named })) {
+      return s;
+    }
+    const last = Hold.told(s.dir).at(-1);
+    if (last !== undefined && last.ev.k === "end" && last.seq <= s.ack) {
       return s;
     }
     Session.set(s.id, named);
@@ -152,8 +157,8 @@ export namespace Sessions {
     HOOKS.change = change;
     config.RELOADED.add(() => LINKS.forEach((l) => Wire.send(l.sock, { $: "rules", rules: config.ASK })));
     Session.unsent().forEach(deliver);
-    for (const x of Session.list(null)) {
-      const s = adopted(x);
+    for (const found of Session.list(null)) {
+      const s = adopted(found);
       if (LIVE.includes(s.status)) {
         Session.parked(s.id).forEach((p) => arm(s, p));
         if (alive(s)) {
