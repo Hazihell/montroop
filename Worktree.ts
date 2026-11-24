@@ -33,8 +33,25 @@ export namespace Worktree {
     return commit.ok ? commit.out : ref;
   }
 
+  // why branch can't be a session's new branch: no valid name, or one
+  // the repo has already, locally or on a remote; null: it can
+  function taken(repo: string, branch: string): string | null {
+    const name = git(repo, ["check-ref-format", "--branch", branch]);
+    if (!name.ok || name.out !== branch) {
+      return branch + " is no valid branch name (see git check-ref-format): pick another, or leave branch out for the default";
+    }
+    const remotes = git(repo, ["remote"]).out.split("\n").filter((r) => r !== "");
+    const refs = ["refs/heads/" + branch, ...remotes.map((r) => "refs/remotes/" + r + "/" + branch)];
+    const had = refs.find((ref) => git(repo, ["rev-parse", "--verify", "--quiet", ref]).ok);
+    return had === undefined ? null : "The repo has a branch " + had.replace(/^refs\/(heads|remotes)\//, "") + " already: a session works on a new branch, so pick another name";
+  }
+
   // null: made; else why not
   export function make(repo: string, base: string, branch: string, dir: string): string | null {
+    const why = taken(repo, branch);
+    if (why !== null) {
+      return why;
+    }
     if (fs.existsSync(dir)) {
       return dir + " exists already";
     }

@@ -600,7 +600,7 @@ export namespace Sessions {
         return no("You have a session " + had.name + " already (" + state(had) + "): read it, or pick another name.");
       }
       const brief = arg("brief");
-      const s = start({ agent, repo: Machine.home(arg("repo")), base: arg("base"), branch: "", name: arg("name"), brief, prompt: brief, model: arg("model") });
+      const s = start({ agent, repo: Machine.home(arg("repo")), base: arg("base"), branch: arg("branch"), name: arg("name"), brief, prompt: brief, model: arg("model") });
       const bare = typeof s === "string" || fs.existsSync(Browser.script(s.dir)) ? "" : " It has no browser: agent-browser is neither on this computer's PATH nor set as agent_browser in Ki's config.";
       return typeof s === "string" ? no(s) : ok("Started session " + s.name + " on branch " + s.branch + " (from " + s.base + "), in " + s.worktree + "." + bare + " It works on its own: you get one message \"[Session " + s.name + "] …\" when it's done, fails, waits on the user's approval or asks you something. Don't wait for it or read it to check: go on with other work, or end your turn.");
     }
