@@ -30,6 +30,7 @@ import * as Service from "./Service.ts";
 import * as Timer from "./Timer.ts";
 import * as Pins from "./Pins.ts";
 import { Gate, type Asked } from "./Gate.ts";
+import { Session } from "./Session.ts";
 import { Sessions } from "./Sessions.ts";
 import { SEARCHES, Tools, type Seat, type Subs } from "./Tools.ts";
 import { JOB } from "./Machine.ts";
@@ -2079,7 +2080,7 @@ export namespace Main {
   export function mates(): Mate[] {
     return Team.all().map((a) => {
       const chat = Main.chats.get(a.id);
-      return { id: a.id, name: a.name, about: a.about, picture: a.picture, unread: a.unread, last: chat === undefined ? "" : Chat.last(chat), busy: chat?.main.busy === true, asks: chat === undefined ? 0 : Gate.shown(chat.tools.gate, chat.id).length, archived: a.archived, subs: chat === undefined ? [] : [...chat.subs.values()].map((sub) => Chat.sub_row(chat, sub)) };
+      return { id: a.id, name: a.name, about: a.about, picture: a.picture, unread: a.unread, last: chat === undefined ? "" : Chat.last(chat), busy: chat?.main.busy === true, asks: chat === undefined ? 0 : Gate.shown(chat.tools.gate, chat.id).length, archived: a.archived, subs: chat === undefined ? [] : [...chat.subs.values()].map((sub) => Chat.sub_row(chat, sub)), works: Session.list(a.id).map(Sessions.row) };
     });
   }
 
@@ -2602,7 +2603,7 @@ export namespace Main {
       if (chat !== undefined) {
         void Chat.job_done(chat, w.id, w.agent, w.text);
       }
-    });
+    }, () => Main.team_soon());
     Chat.copies();
     Main.watch();
     setInterval(() => void Main.scratch_sweep(null), SCRATCH_SWEEP).unref();

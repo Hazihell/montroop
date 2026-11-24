@@ -32,7 +32,7 @@ const quote = (s: string) => "'" + s.replaceAll("'", "'\\''") + "'";
 
 export namespace Browser {
 
-  export function bin(): string | null {
+  function bin(): string | null {
     return config.AGENT_BROWSER || Bun.which("agent-browser");
   }
 
@@ -42,7 +42,7 @@ export namespace Browser {
 
   // the session's browser command made; false: agent-browser isn't here
   export function make(dir: string, id: string): boolean {
-    const exe = Browser.bin();
+    const exe = bin();
     if (exe === null || !fs.existsSync(exe)) {
       return false;
     }

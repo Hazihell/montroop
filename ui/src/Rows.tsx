@@ -2,6 +2,7 @@ import {
   AlarmIcon, BookOpenTextIcon, CalendarBlankIcon, CaretDownIcon, CaretRightIcon, ChatCircleTextIcon, FilePlusIcon, HandPalmIcon, type Icon, MagnifyingGlassIcon,
   MagnifyingGlassPlusIcon, PencilSimpleLineIcon, TerminalWindowIcon, UsersThreeIcon, WrenchIcon, XCircleIcon,
 } from "@phosphor-icons/react";
+import { Link } from "@tanstack/react-router";
 import { memo, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { create } from "zustand";
 import * as Call from "../../Call.ts";
@@ -86,7 +87,7 @@ const TOOLS: Record<string, Icon> = {
   stop       : HandPalmIcon,
 };
 
-function ToolIcon({ name }: { name: string }): ReactNode {
+export function ToolIcon({ name }: { name: string }): ReactNode {
   const Shown = TOOLS[name] ?? WrenchIcon;
   return <Shown size={17} />;
 }
@@ -129,7 +130,7 @@ function Pics({ names }: { names: string[] }): ReactNode {
   );
 }
 
-function CallBody({ call }: { call: Call.Call }): ReactNode {
+export function CallBody({ call }: { call: Call.Call }): ReactNode {
   return (
     <>
       <p className="call">{call.head}</p>
@@ -249,7 +250,13 @@ function Cap({ row }: { row: Of<"Cap"> }): ReactNode {
   return <p className={"cap" + (row.think === true ? " think" : "")}>{row.text}</p>;
 }
 
-function Ask({ row }: { row: Of<"Ask"> }): ReactNode {
+// who asked: a work session's name opens its page
+function AskedBy({ ask }: { ask: Of<"Ask">["ask"] }): ReactNode {
+  const work = useKi((s) => s.team.find((m) => m.id === ask.agent)?.works?.find((w) => View.SESSION + w.name === ask.who));
+  return work === undefined ? ask.who : <Link to="/a/$agent/w/$id" params={{ agent: ask.agent, id: work.id }} className="underline underline-offset-2">{ask.who}</Link>;
+}
+
+export function Ask({ row }: { row: Of<"Ask"> }): ReactNode {
   const [note, setNote] = useState("");
   const [sent, setSent] = useState(false);
   const say = (ok: boolean) => {
@@ -259,7 +266,7 @@ function Ask({ row }: { row: Of<"Ask"> }): ReactNode {
   return (
     <div className="ask card" role="group" aria-label={View.ASKS + ": " + row.ask.what}>
       <h3>{row.ask.what}</h3>
-      {row.ask.who === "" ? null : <p className="cap">asked by {row.ask.who}</p>}
+      {row.ask.who === "" ? null : <p className="cap">asked by <AskedBy ask={row.ask} /></p>}
       <div className="prose my-2.5 text-[0.9375rem]"><CallBody call={row.call} /></div>
       <input className="field" maxLength={2000} placeholder="Note for the agent (optional)" aria-label="Note for the agent" autoComplete="off" value={note} onChange={(ev) => setNote(ev.target.value)} />
       <div className="mt-3 flex gap-2">

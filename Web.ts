@@ -26,9 +26,9 @@ for (const place of ["/settings", "/tree", "/new", "/running", "/memory", "/team
   WEB[place] = PAGE;
 }
 
-// an agent's pages: /a/<id>, /a/<id>/edit, /a/<id>/look, /a/<id>/s/<Name>
-// (a subagent's chat)
-const AGENT_PAGE = /^\/a\/[a-z0-9]{1,16}(\/edit|\/look|\/s\/[A-Za-z]{2,40})?$/;
+// an agent's pages: /a/<id>, its /edit, /look, /running, /memory, /tree,
+// /s/<Name> (a subagent's chat) and /w/<session id>
+const AGENT_PAGE = /^\/a\/[a-z0-9]{1,16}(\/edit|\/look|\/running|\/memory|\/tree|\/s\/[A-Za-z]{2,40}|\/w\/[0-9a-f]{8})?$/;
 
 // vite names these by what is in them, so one never changes
 const NAMED_BY_HASH = "/assets/";

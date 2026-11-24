@@ -56,7 +56,10 @@ type Held = {
 
 export const SPEC = "spec.json";
 export const START = "start.json";
-export const LOG = "log.jsonl";
+const LOG = "log.jsonl";
+
+// each log as read so far: the bytes taken in, and what they told
+const READ = new Map<string, { at: number; told: Told[] }>();
 
 const CLIP = 2000;
 
@@ -83,12 +86,38 @@ const SETTINGS = {
 export namespace Hold {
 
   // what the log holds, oldest first (a line cut short by a crash is
-  // skipped)
+  // skipped); the log only grows, so each read takes in only what came
+  // since the last
   export function told(dir: string): Told[] {
-    let text = "";
+    const file = path.join(dir, LOG);
+    let kept = READ.get(file) ?? { at: 0, told: [] };
+    let fd: number | null = null;
     try {
-      text = fs.readFileSync(path.join(dir, LOG), "utf8");
-    } catch {}
+      fd = fs.openSync(file, "r");
+      const size = fs.fstatSync(fd).size;
+      kept = size < kept.at ? { at: 0, told: [] } : kept;
+      const buf = Buffer.alloc(size - kept.at);
+      fs.readSync(fd, buf, 0, buf.length, kept.at);
+      const whole = buf.lastIndexOf(10) + 1;
+      if (whole > 0 || kept.at === 0) {
+        kept = { at: kept.at + whole, told: [...kept.told, ...lines(buf.subarray(0, whole).toString("utf8"))] };
+        READ.set(file, kept);
+      }
+    } catch {
+    } finally {
+      if (fd !== null) {
+        fs.closeSync(fd);
+      }
+    }
+    return kept.told;
+  }
+
+  // a log no longer read
+  export function forget(dir: string): void {
+    READ.delete(path.join(dir, LOG));
+  }
+
+  function lines(text: string): Told[] {
     return text.split("\n").flatMap((line) => {
       try {
         const t: unknown = JSON.parse(line);
@@ -104,7 +133,7 @@ export namespace Hold {
   }
 
   // a tool's input or result as text
-  export function shown(x: unknown): string {
+  function shown(x: unknown): string {
     if (typeof x === "string") {
       return x;
     }
@@ -115,7 +144,7 @@ export namespace Hold {
   // a message from a connection: a hello takes the holder over (closing
   // the one it had) and gets a welcome, then what isn't acked yet; the
   // rest counts only from the connection that owns it
-  export function got(h: Held, msg: Record<string, unknown>, s: net.Socket): void {
+  function got(h: Held, msg: Record<string, unknown>, s: net.Socket): void {
     if (msg.$ === "hello") {
       if (h.conn !== null && h.conn !== s) {
         h.conn.destroy();
@@ -132,7 +161,7 @@ export namespace Hold {
     } else if (msg.$ === "rules" && Array.isArray(msg.rules)) {
       h.rules = msg.rules as Rule[];
     } else if (msg.$ === "answer") {
-      Hold.answer(h, String(msg.id), msg.ok === true, str(msg.note) ?? "");
+      answer(h, String(msg.id), msg.ok === true, str(msg.note) ?? "");
     } else if (msg.$ === "say" && typeof msg.id === "string" && typeof msg.text === "string" && !h.says.has(msg.id) && h.inbox.open()) {
       h.says.add(msg.id);
       const [first] = h.waits.values();
@@ -147,7 +176,7 @@ export namespace Hold {
     }
   }
 
-  export function tools(h: Held, sdk: Awaited<ReturnType<typeof ClaudeSub.sdk>>): McpSdkServerConfigWithInstance {
+  function tools(h: Held, sdk: Awaited<ReturnType<typeof ClaudeSub.sdk>>): McpSdkServerConfigWithInstance {
     const said = (text: string) => ({ content: [{ type: "text" as const, text }] });
     return sdk.createSdkMcpServer({ name: "ki", alwaysLoad: true, tools: [
       sdk.tool("ask_owner", "Ask the agent that started this session a question, when you can't go on without its answer (a decision, missing information). The call waits for the answer, which can take a while; it comes back as this call's result.", { question: z.string() }, async ({ question }) => {
@@ -167,7 +196,7 @@ export namespace Hold {
 
   // the owner's answer to a parked call; one it already had, or for a
   // call no longer parked, does nothing
-  export function answer(h: Held, id: string, ok: boolean, note: string): void {
+  function answer(h: Held, id: string, ok: boolean, note: string): void {
     const parked = h.asks.get(id);
     if (parked === undefined) {
       return;
@@ -181,7 +210,7 @@ export namespace Hold {
     parked.done(ok ? { behavior: "allow", updatedInput: parked.ask.input } : { behavior: "deny", message: "The user denied this (" + parked.ask.what.toLowerCase() + ")" + said + " Don't do it another way; if it's still needed, say so when you finish." });
   }
 
-  export function outcome(msg: SDKResultMessage): { ok: boolean; text: string } {
+  function outcome(msg: SDKResultMessage): { ok: boolean; text: string } {
     return { ok: msg.subtype === "success" && !msg.is_error, text: msg.subtype === "success" ? msg.result : msg.errors.join("; ") };
   }
 
@@ -208,7 +237,7 @@ export namespace Hold {
     fs.rmSync(start.sock, { force: true });
     const server = net.createServer((s) => {
       s.setEncoding("utf8");
-      s.on("data", Wire.lines((msg) => Hold.got(h, msg, s)));
+      s.on("data", Wire.lines((msg) => got(h, msg, s)));
       s.on("error", () => {});
       s.on("close", () => {
         if (h.conn === s) {
@@ -275,7 +304,7 @@ export namespace Hold {
         permissionMode             : "default",
         disallowedTools            : DISALLOWED,
         settings                   : SETTINGS,
-        mcpServers                 : { ki: Hold.tools(h, sdk_mod) },
+        mcpServers                 : { ki: tools(h, sdk_mod) },
         resume                     : sdk === "" ? undefined : sdk,
         canUseTool                 : can,
         hooks                      : {
@@ -291,9 +320,9 @@ export namespace Hold {
         if (msg.type === "system" && msg.subtype === "background_tasks_changed") {
           tasks = msg.tasks.filter((t) => t.ambient !== true).length;
         }
-        Hold.told_of(msg).forEach(h.emit);
+        told_of(msg).forEach(h.emit);
         if (msg.type === "result") {
-          end = { k: "end", ...Hold.outcome(msg) };
+          end = { k: "end", ...outcome(msg) };
           if (h.inbox.empty() && tasks === 0 && h.asks.size === 0) {
             h.inbox.close();
           }
@@ -314,20 +343,20 @@ export namespace Hold {
 
   // what a message of Claude Code's tells the server (only the session's
   // own, not its subagents')
-  export function told_of(msg: SDKMessage): Ev[] {
+  function told_of(msg: SDKMessage): Ev[] {
     if (msg.type === "assistant" && msg.parent_tool_use_id === null) {
       return msg.message.content.flatMap((b): Ev[] =>
         b.type === "text" && b.text.trim() !== "" ? [{ k: "text", text: b.text }] :
-        b.type === "tool_use" ? [{ k: "tool", id: b.id, name: b.name, input: Hold.clip(Hold.shown(b.input)) }] : []);
+        b.type === "tool_use" ? [{ k: "tool", id: b.id, name: b.name, input: Hold.clip(shown(b.input)) }] : []);
     }
     if (msg.type === "user" && msg.parent_tool_use_id === null && Array.isArray(msg.message.content)) {
-      return msg.message.content.flatMap((b): Ev[] => (b.type === "tool_result" ? [{ k: "result", id: b.tool_use_id, text: Hold.clip(Hold.shown(b.content ?? "")), error: b.is_error === true }] : []));
+      return msg.message.content.flatMap((b): Ev[] => (b.type === "tool_result" ? [{ k: "result", id: b.tool_use_id, text: Hold.clip(shown(b.content ?? "")), error: b.is_error === true }] : []));
     }
     if (msg.type === "system" && msg.subtype === "compact_boundary") {
       return [{ k: "compacted" }];
     }
     if (msg.type === "result") {
-      return [{ k: "turn", ...Hold.outcome(msg) }];
+      return [{ k: "turn", ...outcome(msg) }];
     }
     return [];
   }

@@ -5,6 +5,7 @@ import type { Timer } from "../../Timer.ts";
 import { timer_when } from "../../Timer.ts";
 import * as View from "../../View.ts";
 import { act, MOODS, mood_of, useKi } from "./Ki.ts";
+import { useWorks, work_live, WorkRows } from "./Works.tsx";
 
 // everything about one agent past its chat: what goes on for it, its memory,
 // its settings; a menu dropped from its face on a phone, a column beside the
@@ -20,29 +21,34 @@ function useHeld(agent: string): boolean {
   return useKi((s) => s.agent === agent && s.loaded);
 }
 
-// how many things work for the agent now: its subagents and its background
-// jobs; timers wait, so they don't count
+// how many things work for the agent now: its subagents, its work
+// sessions at work and its background jobs; timers wait, so they don't count
 export function useGoing(agent: string): number {
-  return useKi((s) => (s.team.find((m) => m.id === agent)?.subs?.length ?? 0) + (s.agent === agent ? s.jobs.length : 0));
+  return useKi((s) => {
+    const mate = s.team.find((m) => m.id === agent);
+    return (mate?.subs?.length ?? 0) + (mate?.works?.filter(work_live).length ?? 0) + (s.agent === agent ? s.jobs.length : 0);
+  });
 }
 
 function useContext(agent: string): number | null {
   return useKi((s) => (s.agent === agent && s.talk !== null ? View.talk_percent(s.talk) : null));
 }
 
-// the agent's subagents, background jobs and timers
+// the agent's work sessions, subagents, background jobs and timers
 export function RunList({ agent }: { agent: string }): ReactNode {
   const held = useHeld(agent);
+  const works = useWorks(agent);
   const subs = useKi((s) => s.team.find((m) => m.id === agent)?.subs ?? NO_SUBS);
   const allJobs = useKi((s) => s.jobs);
   const allTimers = useKi((s) => s.timers);
   const jobs = held ? allJobs : NO_JOBS;
   const timers = held ? allTimers : NO_TIMERS;
-  if (subs.length + jobs.length + timers.length === 0) {
-    return <p className="lede py-2">{held ? "Nothing runs right now. Its subagents, background jobs and timers show here." : "…"}</p>;
+  if (works.length + subs.length + jobs.length + timers.length === 0) {
+    return <p className="lede py-2">{held ? "Nothing runs right now. Its work sessions, subagents, background jobs and timers show here." : "…"}</p>;
   }
   return (
     <div className="pb-2">
+      <WorkRows agent={agent} />
       {subs.map((sub) => (
         <Link key={sub.name} to="/a/$agent/s/$name" params={{ agent, name: sub.name }} className="item go">
           <GitBranchIcon size={18} />
