@@ -30,13 +30,6 @@ const READS = new Map<string, (x: Input) => Shown>([
   ["schedule", (x) => ({ head: (x.cron === undefined ? text_of(x.at) : "cron " + text_of(x.cron, "null")) + " " + text_of(x.zone), blocks: text_block(x.message) })],
 ]);
 
-type Report = { name: string; text: string };
-
-export function report_read(text: string): Report | null {
-  const m = /^\[([^\]\n]+)\]\s*([\s\S]*?)\s*$/.exec(text);
-  return m === null ? null : { name: m[1], text: m[2] };
-}
-
 // a call streaming in names its tool before its input comes
 export function call_parse(text: string): Call {
   const m     = CALL.exec(text);

@@ -75,7 +75,7 @@ const LEGACY: Record<string, string[]> = {
   "Server.ts": [
     "Msg", "Chat", "Chat.open", "Chat.pick_name", "Chat.name", "Chat.you", "Chat.system", "Chat.share",
     "Chat.account", "Chat.say", "Chat.read", "Chat.posted", "Chat.queued", "Chat.pictured", "Chat.writing",
-    "Chat.hold", "Chat.pieces", "Chat.voice", "Chat.begin", "Chat.leader", "Chat.leader_block", "Chat.ending",
+    "Chat.hold", "Chat.pieces", "Chat.voice", "Chat.begin", "Chat.leader", "Chat.ending",
     "Chat.finish", "Chat.from", "Chat.call", "Chat.ended", "Chat.check", "Chat.checked", "Chat.said",
     "Chat.message", "Chat.failed", "Chat.limits", "Chat.park", "Chat.go_on", "Chat.unpark", "Chat.note",
     "Chat.noted", "Chat.behind", "Chat.push", "Chat.log", "Chat.line_of", "Chat.later", "Chat.put",
@@ -85,7 +85,7 @@ const LEGACY: Record<string, string[]> = {
     "Chat.sub_view", "Chat.spawn", "Chat.sub_start", "Chat.sub_restart", "Chat.sub_kind", "Chat.sub_pick",
     "Chat.sub_shown", "Chat.sub_how", "Chat.sub_picked", "Chat.sub_meter", "Chat.sub_row", "Chat.sub_bytes",
     "Chat.sub_ask", "Chat.sub_put", "Chat.sub_on", "Chat.sub_done", "Chat.tell", "Chat.sub_gone",
-    "Chat.sub_stop", "Chat.sub_sweep", "Chat.archived", "Chat.held", "Chat.report", "Chat.job_done",
+    "Chat.sub_stop", "Chat.sub_sweep", "Chat.archived", "Chat.held", "Chat.report", "Chat.wake",
     "Chat.seen", "Chat.opened", "Chat.phone", "Chat.ring", "Chat.after", "Chat.ingest", "Chat.batch",
     "Chat.built", "Chat.time", "Chat.keep", "Chat.resumed", "Chat.reads", "Chat.fresh", "Chat.done",
     "Chat.imported", "Chat.made", "Chat.copies", "Chat.progress", "Chat.digest", "Chat.go", "Chat.resume",

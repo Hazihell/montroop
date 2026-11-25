@@ -40,8 +40,6 @@ const SHELLS = new Map<Bun.Subprocess, string>();
 
 export type Bg = { id: string; agent: string; command: string; since: number };
 
-export const JOB = "[Job ";
-
 // the shells that outlasted their call, and what the device does when one
 // changes or ends (Device.ts)
 export const JOBS = { running: new Map<Bun.Subprocess, Bg>(), n: 0, changed: () => {}, ended: (_job: Bg, _text: string) => {} };

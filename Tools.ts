@@ -4,7 +4,7 @@ import * as config from "./Config.ts";
 import { Gate, type Asked } from "./Gate.ts";
 import { Rules } from "./Rules.ts";
 import { Limit } from "./Limit.ts";
-import { INT, JOB, STR, TOOLS, spec, type Bg, type Job, type Skill, type Spec } from "./Machine.ts";
+import { INT, STR, TOOLS, spec, type Bg, type Job, type Skill, type Spec } from "./Machine.ts";
 import { clip_page } from "./Clip.ts";
 import { Mcp, NAME_MOST, type Held, type Servers } from "./Mcp.ts";
 import { Memory } from "./Memory.ts";
@@ -18,6 +18,7 @@ import { PING, type BgJob } from "./View.ts";
 import { Sub, type Spawn } from "./Sub.ts";
 import { err_why } from "./Err.ts";
 import { get, list as items, rec, text_of } from "./Json.ts";
+import { wake_relayed, wake_text } from "./Wake.ts";
 
 type Device = {
   who    : string;
@@ -375,7 +376,7 @@ export namespace Tools {
     const seat = (who === "" ? undefined : tools.seats.get(who)) ?? boss;
     seat?.note(text);
     if (!said.waited && from !== "session") {
-      const msg = "[Approval " + id + "] " + text + (ok ? " No call was waiting for it (the server restarted): call " + tool + " again with the same arguments to do it." : " Don't do it another way.");
+      const msg = wake_text("approval", id, text + (ok ? " No call was waiting for it (the server restarted): call " + tool + " again with the same arguments to do it." : " Don't do it another way."));
       const subs = boss?.subs ?? null;
       const told = who === "" || subs === null ? null : await subs.tell(who, msg);
       if (told === null || told.fail) {
@@ -620,7 +621,7 @@ export namespace Tools {
   export function jobs_gone(tools: Tools, device: string, d: Device, how: string): void {
     const said = how === "stopped" ? "killed, the device stopped" : "no word on it: the device " + how + " while it ran" + (how === "went away" ? "; its report follows if the device comes back" : "");
     for (const job of d.bg.jobs) {
-      Tools.report(tools, job.agent, JOB + job.id + "] " + device + ": " + said);
+      Tools.report(tools, job.agent, wake_text("job", job.id, device + ": " + said));
     }
     d.bg = { term: "", jobs: [] };
   }
@@ -820,7 +821,7 @@ export namespace Tools {
   export function report(tools: Tools, who: string, text: string): void {
     const seat = tools.seats.get(who);
     const owner = seat === undefined ? tools.owner(who) : undefined;
-    (seat ?? owner ?? tools.seats.get(Team.first().id))?.report(owner === undefined ? text : text.replace("] ", "] " + who + "'s job, "));
+    (seat ?? owner ?? tools.seats.get(Team.first().id))?.report(owner === undefined ? text : wake_relayed(text, who));
   }
 
 }

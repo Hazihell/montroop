@@ -5,6 +5,7 @@ import * as Names from "./Names.ts";
 import { Pick } from "./Pick.ts";
 import type { Run } from "./Run.ts";
 import type { Talk } from "./View.ts";
+import { wake_text } from "./Wake.ts";
 
 // subagents (#116): one-off agents an agent spawns for a task, each with
 // its own run, its log in its spawner's folder; done once it has reported,
@@ -128,7 +129,7 @@ export namespace Sub {
   }
 
   export function report<M>(sub: Sub<M>): string {
-    return "[" + sub.name + "]\n" + (sub.replies.join("\n\n").trim() || "(no reply)");
+    return wake_text("sub", sub.name, sub.replies.join("\n\n").trim() || "(no reply)");
   }
 
   export function how(role: Role, pick: Pick | null): How {
