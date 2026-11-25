@@ -35,8 +35,11 @@ const ENV = {
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC : "1",
 };
 
-// it asks no one in it: the owner's answers come through the gate
-const DISALLOWED = ["AskUserQuestion"];
+// it asks no one in it: the owner's answers come through the gate. Nor
+// does it act past the holder's control or its own run: no workflows,
+// teammates or messages to other sessions, no schedules, wakeups, remote
+// triggers or monitors that fire after its turn, no switching worktrees
+const DISALLOWED = ["AskUserQuestion", "Workflow", "ListAgents", "SendMessage", "ScheduleWakeup", "CronCreate", "CronDelete", "CronList", "RemoteTrigger", "Monitor", "PushNotification", "EnterWorktree", "ExitWorktree"];
 
 // what a job that may not write is denied
 const EDITS = ["Edit", "Write", "NotebookEdit"];

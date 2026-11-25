@@ -249,6 +249,19 @@ test.concurrent("claude-code, native: a job that may not write has its edit tool
   expect(fs.existsSync(file)).toBe(false);
 });
 
+test.concurrent("claude-code, native: Claude Code's tools that act past its holder or its run are neither offered nor run", async () => {
+  const t = tag();
+  const home = signed(fs.mkdtempSync(path.join(os.tmpdir(), "home-")));
+  const job = DRIVERS["claude-code, native"](home, "");
+  await fake.next(t + ": work", { what: "tool", calls: [["ScheduleWakeup", { delaySeconds: 60, prompt: t + ": again", reason: "to look again" }]] });
+
+  const told = evs(await hold(home, job, t + ": work"));
+  const offered = (await fake.seen(t + ": work"))[0].tools;
+  expect(["Agent", "Bash", "Read", "Edit", "Write", "Skill"].filter((n) => !offered.includes(n))).toEqual([]);
+  expect(offered.filter((n) => ["Workflow", "ListAgents", "SendMessage", "ScheduleWakeup", "CronCreate", "CronDelete", "CronList", "RemoteTrigger", "Monitor", "PushNotification", "EnterWorktree", "ExitWorktree"].includes(n))).toEqual([]);
+  expect(told.find((e) => e.k === "result")).toMatchObject({ error: true });
+});
+
 // a job no driver can run is refused before any call
 test.concurrent.each([
   ["a model without the effort", { ...DRIVERS["openai api"](DIR, ""), effort: "turbo" }, "gpt-6-luna has no effort turbo; one of none, low, medium, high, xhigh, max."],
