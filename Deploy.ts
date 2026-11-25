@@ -25,7 +25,6 @@ const LOGS = UPDATES + "/logs";
 const KEPT = 5;
 const PENDING = UPDATES + "/pending.json";
 
-const REMOTE = "upstream";
 const SDK = "@anthropic-ai/claude-agent-sdk";
 const REGISTRY = "https://registry.npmjs.org/" + SDK;
 const CHANGELOGS = {
@@ -37,10 +36,10 @@ const RIG = "kny-update-rig";
 const SHOWN = 25;
 const WAIT = 90e3;
 
-const HELP = `kny update check [--all]            what upstream and the Agent SDK have new, and where it touches our changes
-kny update apply [upstream] [sdk[=VERSION]] [--dry-run]
-                                     merge and/or bump in a worktree, test, then install and restart
-kny update apply current            the same for the clone's main as it is, nothing merged
+const HELP = `kny update check [--all]            what the Agent SDK has new, and where it touches what we rely on
+kny update apply [sdk[=VERSION]] [--dry-run]
+                                     bump the SDK in a worktree, test, then install and restart
+kny update apply current            the same for the clone's main as it is, nothing bumped
 kny update apply --resume           go on after you fixed what it stopped on
 kny update rollback                 put the previous binary back and restart
 kny update gate [dir]               the cache test alone, on a checkout (default: this clone)
@@ -53,10 +52,6 @@ function sh(cmd: string[], cwd?: string, env: Record<string, string> = {}): Out 
 
 function git(dir: string, ...args: string[]): Out {
   return sh(["git", "-C", dir, ...args]);
-}
-
-function lines(text: string): string[] {
-  return text.split("\n").filter((l) => l !== "");
 }
 
 function cut(text: string, n: number): string {
@@ -76,8 +71,8 @@ function source(flag: string | undefined): string {
   const saved = fs.existsSync(UPDATES + "/src") ? fs.readFileSync(UPDATES + "/src", "utf8").trim() : "";
   const dir = path.resolve(flag ?? process.env.KNY_SRC ?? (saved || process.cwd()));
   const top = git(dir, "rev-parse", "--show-toplevel");
-  if (!top.ok || !fs.existsSync(top.out + "/Cli.ts") || !git(top.out, "remote", "get-url", REMOTE).ok) {
-    throw new Stop("no Kunumy clone with an `" + REMOTE + "` remote at " + dir + ": give it with --src DIR (it is remembered)");
+  if (!top.ok || !fs.existsSync(top.out + "/Cli.ts")) {
+    throw new Stop("no Kunumy clone at " + dir + ": give it with --src DIR (it is remembered)");
   }
   fs.mkdirSync(UPDATES, { recursive: true, mode: 0o700 });
   fs.writeFileSync(UPDATES + "/src", top.out + "\n");
@@ -100,41 +95,7 @@ async function text(url: string): Promise<string> {
   return (await fetched(url)).text();
 }
 
-function version_in(src: string, ref: string): string {
-  return /VERSION\s*=\s*"([^"]+)"/.exec(git(src, "show", ref + ":Update.ts").out)?.[1] ?? "?";
-}
-
 type Part = { lines: string[]; available: boolean; reasons: string[] };
-
-function upstream_lines(src: string, base: string, track: string): Part {
-  const ahead = lines(git(src, "log", "--format=%h %s", base + ".." + track).out);
-  if (ahead.length === 0) {
-    return { lines: ["  nothing new: " + track + " is in " + base + " (Version " + version_in(src, track) + ")"], available: false, reasons: [] };
-  }
-  const mb = git(src, "merge-base", base, track).out;
-  const names = (to: string) => lines(git(src, "diff", "--name-only", mb, to).out);
-  const ours = names(base);
-  const both = names(track).filter((f) => ours.includes(f));
-  const merge = git(src, "merge-tree", "--write-tree", "--name-only", base, track);
-  const clash = merge.ok ? [] : lines(merge.out.split("\n\n")[0]).slice(1);
-  const subjects = (range: string, file: string) => lines(git(src, "log", "--format=%s", range, "--", file).out).slice(0, 2).map((s) => cut(s, 70));
-  const out = [
-    "  " + ahead.length + " new commits, Version " + version_in(src, base) + " -> " + version_in(src, track) + ": " + ahead.slice(0, 4).map((l) => cut(l, 90)).join(" | ") + (ahead.length > 4 ? " | …" : ""),
-    merge.ok || clash.length > 0 ? (merge.ok ? "  merge: clean" : "  merge: CONFLICTS in " + clash.join(", ")) : "  merge: could not be tried: " + cut(merge.err, 120),
-  ];
-  if (both.length > 0) {
-    out.push("  both sides changed " + both.length + " file" + (both.length === 1 ? "" : "s") + " (ours -> theirs):");
-    for (const f of both) {
-      out.push("    " + f + (clash.includes(f) ? "  [conflict]" : "") + ": " + subjects(mb + ".." + base, f).join(" / ") + "  ->  " + subjects(mb + ".." + track, f).join(" / "));
-    }
-  }
-  const reasons = [
-    ...(clash.length > 0 ? ["upstream's merge conflicts in " + clash.join(", ")] : []),
-    ...(!merge.ok && clash.length === 0 ? ["upstream's merge could not be tried"] : []),
-    ...(both.length > clash.length ? ["upstream changed " + (both.length - clash.length) + " more file(s) we changed too"] : []),
-  ];
-  return { lines: out, available: true, reasons };
-}
 
 async function surface(version: string): Promise<Surface> {
   const dir = UPDATES + "/sdk/" + version;
@@ -226,21 +187,11 @@ async function sdk_lines(src: string, base: string, target: string | undefined, 
 }
 
 async function check(args: string[]): Promise<number> {
-  const { values } = parseArgs({ args, options: { src: { type: "string" }, base: { type: "string" }, upstream: { type: "string" }, sdk: { type: "string" }, all: { type: "boolean" } } });
+  const { values } = parseArgs({ args, options: { src: { type: "string" }, base: { type: "string" }, sdk: { type: "string" }, all: { type: "boolean" } } });
   const src = source(values.src);
-  const base = values.base ?? "main";
-  const track = values.upstream ?? REMOTE + "/main";
-  const fetched = git(src, "fetch", "--quiet", REMOTE);
-  const up = fetched.ok ? upstream_lines(src, base, track) : { lines: ["  could not fetch " + REMOTE + ": " + cut(fetched.err, 150)], available: false, reasons: ["upstream could not be fetched"] };
-  const pre = REMOTE + "/rc";
-  const pre_ahead = fetched.ok && git(src, "rev-parse", "--verify", "--quiet", pre).ok ? Number(git(src, "rev-list", "--count", track + ".." + pre).out) : 0;
-  if (pre_ahead > 0) {
-    up.lines.push("  pre-release: " + pre + " is " + pre_ahead + " commits ahead (Version " + version_in(src, pre) + "); it is not what apply takes, but `kny update check --upstream " + pre + "` shows how it would land");
-  }
-  const sdk = await sdk_lines(src, base, values.sdk, values.all === true).catch((err: unknown) => ({ lines: ["  could not check the SDK: " + err_why(err)], available: false, reasons: ["the SDK could not be checked"] }));
-  const reasons = [...up.reasons, ...sdk.reasons];
-  const verdict = reasons.length > 0 ? "NEEDS A LOOK on our side: " + reasons.join("; ") : up.available || sdk.available ? "update available, and nothing in it needs work on our side that these checks can see: `kny update apply --dry-run` tests it, `kny update apply` deploys it" : "up to date";
-  console.log("kny update check: " + verdict + "\n\nUpstream (" + track + ")\n" + up.lines.join("\n") + "\n\nAgent SDK\n" + sdk.lines.join("\n"));
+  const sdk = await sdk_lines(src, values.base ?? "main", values.sdk, values.all === true).catch((err: unknown) => ({ lines: ["  could not check the SDK: " + err_why(err)], available: false, reasons: ["the SDK could not be checked"] }));
+  const verdict = sdk.reasons.length > 0 ? "NEEDS A LOOK on our side: " + sdk.reasons.join("; ") : sdk.available ? "update available, and nothing in it needs work on our side that these checks can see: `kny update apply --dry-run` tests it, `kny update apply` deploys it" : "up to date";
+  console.log("kny update check: " + verdict + "\n\nAgent SDK\n" + sdk.lines.join("\n"));
   return 0;
 }
 
@@ -451,7 +402,7 @@ async function bump_sdk(log: string, word: string): Promise<string> {
 }
 
 function unfinished(): boolean {
-  return fs.existsSync(WORK) && (git(WORK, "status", "--porcelain", "--untracked-files=no").out !== "" || git(WORK, "rev-parse", "-q", "--verify", "MERGE_HEAD").ok);
+  return fs.existsSync(WORK) && (git(WORK, "status", "--porcelain", "--untracked-files=no").out !== "");
 }
 
 async function apply(args: string[]): Promise<number> {
@@ -460,10 +411,10 @@ async function apply(args: string[]): Promise<number> {
   const base = values.base ?? "main";
   const bin = bin_path(values.bin);
   const resumed = values.resume === true;
-  const asked: { wants: string[] } = resumed && fs.existsSync(PENDING) ? (JSON.parse(fs.readFileSync(PENDING, "utf8")) as { wants: string[] }) : { wants: positionals.length === 0 ? ["upstream", "sdk"] : positionals };
+  const asked: { wants: string[] } = resumed && fs.existsSync(PENDING) ? (JSON.parse(fs.readFileSync(PENDING, "utf8")) as { wants: string[] }) : { wants: positionals.length === 0 ? ["sdk"] : positionals };
   const sdk_word = asked.wants.find((w) => w === "sdk" || w.startsWith("sdk="));
-  if (asked.wants.some((w) => w !== "upstream" && w !== "current" && w !== sdk_word)) {
-    throw new Stop("apply takes upstream, sdk[=VERSION] or current, not " + asked.wants.join(" "));
+  if (asked.wants.some((w) => w !== "current" && w !== sdk_word)) {
+    throw new Stop("apply takes sdk[=VERSION] or current, not " + asked.wants.join(" "));
   }
   if (!resumed && unfinished() && values.discard !== true) {
     throw new Stop("an earlier attempt waits in " + WORK + " with unfinished work: `kny update apply --resume` goes on with it, --discard drops it");
@@ -483,30 +434,15 @@ async function apply(args: string[]): Promise<number> {
   const snap = snapshot();
   console.log("    " + snap);
 
-  const track = REMOTE + "/main";
   let note = "";
   if (resumed) {
     if (!fs.existsSync(WORK)) {
       throw new Stop("nothing to resume: no " + WORK);
     }
-    if (git(WORK, "rev-parse", "-q", "--verify", "MERGE_HEAD").ok) {
-      if (git(WORK, "diff", "--name-only", "--diff-filter=U").out !== "") {
-        throw new Stop("conflicts are still open in " + WORK + ": " + lines(git(WORK, "diff", "--name-only", "--diff-filter=U").out).join(", "));
-      }
-      const done = git(WORK, "commit", "--no-edit");
-      if (!done.ok) {
-        throw new Stop("could not commit the merge in " + WORK + ": " + done.err);
-      }
-      note += "merged " + track + "; ";
-    }
     if (git(WORK, "status", "--porcelain", "--untracked-files=no").out !== "") {
       throw new Stop(WORK + " has uncommitted changes: commit them, or discard them, then --resume");
     }
   } else {
-    const fetched = git(src, "fetch", "--quiet", REMOTE);
-    if (!fetched.ok) {
-      throw new Stop("could not fetch " + REMOTE + ": " + fetched.err);
-    }
     if (fs.existsSync(WORK)) {
       const earlier = git(WORK, "rev-parse", "--abbrev-ref", "HEAD").out;
       console.log("    removing the earlier attempt in " + WORK + (earlier.startsWith("update/") ? " (its branch " + earlier + " stays unless it is in " + base + ")" : ""));
@@ -519,15 +455,6 @@ async function apply(args: string[]): Promise<number> {
     const made = git(src, "worktree", "add", "-b", "update/" + stamp(), WORK, base);
     if (!made.ok) {
       throw new Stop("git worktree add: " + made.err);
-    }
-    if (asked.wants.includes("upstream") && Number(git(WORK, "rev-list", "--count", "HEAD.." + track).out) > 0) {
-      console.log("==> merge " + track);
-      const merged = git(WORK, "merge", "--no-edit", track);
-      if (!merged.ok) {
-        const files = lines(git(WORK, "diff", "--name-only", "--diff-filter=U").out);
-        throw new Stop("merging " + track + " conflicts in " + (files.join(", ") || "?") + ".\nNothing was deployed. Resolve them in " + WORK + " (git add, no commit needed), then `kny update apply --resume`" + (sdk_word === undefined ? "" : ": the SDK bump follows") + ".\n" + (files.length === 0 ? merged.err : ""));
-      }
-      note += "merged " + track + "; ";
     }
   }
   if (sdk_word !== undefined) {
