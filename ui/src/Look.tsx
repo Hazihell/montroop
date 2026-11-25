@@ -2,11 +2,11 @@ import { CheckIcon } from "@phosphor-icons/react";
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { text_of } from "../../Json.ts";
 import * as View from "../../View.ts";
-import { Avatar, BODIES, DETAILS, look_of, look_text, Outline, PICKS, type Look as Drawn, type Mood } from "./Avatar.tsx";
+import { BODIES, DETAILS, LOOKS, type Part } from "../../Looks.ts";
+import { Avatar, look_of, look_text, Outline, type Look as Drawn, type Mood } from "./Avatar.tsx";
 import { Back, useBack } from "./Back.tsx";
 import { MOODS, useMontroop } from "./Montroop.ts";
 
-type Part = keyof typeof PICKS;
 type Swatch = CSSProperties & { "--s": string };
 
 const PARTS: Array<[Part, string]> = [["shape", "Shape"], ["eyes", "Eyes"], ["glasses", "Glasses"], ["extra", "Extras"]];
@@ -70,7 +70,7 @@ function Editor({ agent, mate }: { agent: string; mate: View.Mate }): ReactNode 
             {PARTS.map(([key, text]) => <button key={key} type="button" aria-pressed={key === part} onClick={() => setPart(key)}>{text}</button>)}
           </div>
           <div className="picks mx-3.5 mt-3">
-            {PICKS[part].map((pick) => (
+            {LOOKS[part].map((pick) => (
               <button key={pick} type="button" aria-label={pick} aria-pressed={look[part] === pick} onClick={() => setLook({ ...look, [part]: pick })}>
                 {part === "shape" ? <Outline shape={pick} size={48} /> : <Avatar look={{ ...look, [part]: pick }} size={50} />}
               </button>

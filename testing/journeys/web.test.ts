@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import * as path from "node:path";
 import { chromium, type Browser, type Page } from "playwright-core";
-import { fake, Troop, repo, until } from "../rig.ts";
+import { fake, tag, Troop, repo, until } from "../rig.ts";
 
 let browser: Browser;
 
@@ -79,5 +79,21 @@ test.concurrent("the owner sees in what runs a subagent's task and model, and th
   await page.getByText(/^Hit a usage limit: it goes on by itself at .*\d\d:\d\d\.$/).waitFor();
   expect(await page.getByText(/^Its turn failed/).count()).toBe(0);
   await k.api("POST", "/api/sessions/" + s.id + "/stop", {});
+  await k.kill();
+});
+
+test.concurrent("the owner's settings page open on a mon shows what the mon changes of its own settings, keeping what the owner is typing", async () => {
+  const k = await Troop.up();
+  const t = tag();
+  const page = await phone(k, true);
+  await page.goto(k.url + "/a/" + k.agent + "/edit");
+  await page.getByText("Prompt history").waitFor();
+  await page.getByRole("textbox", { name: "Description" }).fill("Typed by the owner.");
+  await fake.next(t + ": rename", { what: "tool", calls: [["settings", { action: "set", name: "Nova", about: "Watches the herons.", prompt: "You are Nova. Answer in haiku." }]] });
+  await k.tell(t + ": rename");
+
+  await until("the name shown", async () => await page.getByRole("textbox", { name: "Name" }).inputValue() === "Nova");
+  expect(await page.getByRole("textbox", { name: "System prompt" }).inputValue()).toBe("You are Nova. Answer in haiku.");
+  expect(await page.getByRole("textbox", { name: "Description" }).inputValue()).toBe("Typed by the owner.");
   await k.kill();
 });

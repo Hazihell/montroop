@@ -98,7 +98,7 @@ const LEGACY: Record<string, string[]> = {
     "Main.pins", "Main.first", "Main.by_who", "Main.stored", "Main.own_picture", "Main.chat_of",
     "Main.keep_picks", "Main.offer", "Main.mates", "Main.team_soon", "Main.attach", "Main.leave",
     "Main.heard", "Main.made", "Main.knobs", "Main.lead_set", "Main.team", "Main.agent", "Main.manages",
-    "Main.agents_tool", "Main.settings_of", "Main.shown", "Main.edited", "Main.revert", "Main.template",
+    "Main.agents_tool", "Main.settings_of", "Main.shown", "Main.revert", "Main.template",
     "Main.shelve", "Main.left", "Main.forget",
     "Main.page", "Main.http", "Main.post_only", "Main.event", "Main.start",
     "Main.settings", "Main.scratch_sweep", "Main.watch", "Main.follow", "Main.unowned", "Main.chats",

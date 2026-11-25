@@ -1,6 +1,7 @@
 import * as config from "./Config.ts";
 import { Owner } from "./Owner.ts";
 import { get as field, rec } from "./Json.ts";
+import { DRAWN, look_wrong } from "./Looks.ts";
 import * as Prompts from "./Prompts.ts";
 
 // prompt null: the default, which follows renames until it's edited;
@@ -28,6 +29,17 @@ const HEADS = 24;
 const LOGO = "logo";
 
 const FIRST_ABOUT = "The user's assistant and first point of contact.";
+
+const TEXTS = ["name", "about", "picture", "prompt", "claude"];
+
+// what an agent sets of its own settings (the settings tool), and what only
+// the owner changes, in the app, with why
+const MINE = ["name", "about", "picture", "prompt", "model", "effort", "leader", "lines", "subagents"];
+const OWNERS: Record<string, string> = {
+  manage : "Manage mons, which gives power over the other mons, is the user's to turn on or off, in your settings in the app.",
+  claude : "Your Claude account is the user's to pick, in your settings in the app.",
+  mcp    : "The MCP servers are switched for every mon at once, by the user in the app.",
+};
 
 export namespace Team {
 
@@ -104,6 +116,11 @@ export namespace Team {
     if (!picture_ok(picture)) {
       return "No picture " + picture + ".";
     }
+    // a look saved before is kept, though the app no longer draws one of its parts
+    const wrong = id !== null && Team.get(id)?.picture === picture ? null : look_wrong(picture);
+    if (wrong !== null) {
+      return wrong;
+    }
     if (own === "") {
       return "A system prompt is needed.";
     }
@@ -122,13 +139,32 @@ export namespace Team {
     if (!rec(x)) {
       return "An edit is a JSON object.";
     }
+    const odd = TEXTS.find((k) => x[k] !== undefined && typeof x[k] !== "string");
+    if (odd !== undefined) {
+      return odd + " is text.";
+    }
     const name = field(x, "name");
     const prompt = a.prompt ?? Team.default_prompt(typeof name === "string" ? name.trim() : a.name);
     return Team.fields({ name: a.name, about: a.about, picture: a.picture, prompt, ...x }, a.id);
   }
 
-  // a drawn avatar: its shape, eyes, glasses and extra, then its two colors
-  const DRAWN = /^av:[a-z]{1,12}(?:\.[a-z]{1,12}){3}(?:\.[0-9a-f]{6}){2}$/;
+  // why an agent can't make this change of its own settings (leader: its
+  // Leader mode now), or null
+  export function mine_refused(change: Record<string, unknown>, leader: boolean): string | null {
+    const given = Object.keys(change);
+    const owners = given.find((k) => Object.hasOwn(OWNERS, k));
+    if (owners !== undefined) {
+      return OWNERS[owners] + " Nothing was changed.";
+    }
+    const odd = given.find((k) => !MINE.includes(k));
+    if (odd !== undefined) {
+      return "No setting " + odd + ": set takes " + MINE.join(", ") + ".";
+    }
+    if (given.includes("lines") && !(given.includes("leader") ? change.leader === true : leader)) {
+      return "lines is Leader mode's: set it with leader true, or once Leader mode is on.";
+    }
+    return null;
+  }
 
   function picture_ok(picture: string): boolean {
     const head = /^head-(\d\d)$/.exec(picture);

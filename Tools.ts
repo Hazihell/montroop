@@ -58,6 +58,8 @@ export type Seat = {
   subs   : Subs | null;
   // the agents tool, for an agent whose Manage agents setting is on
   agents?: { on: () => boolean; run: (args: Record<string, unknown>) => Out };
+  // the settings tool, an agent's own
+  settings?: (args: Record<string, unknown>) => Out;
   mcp?   : boolean;
   // whether its subagents run on the engine (its Lasting subagents
   // setting): the subagent tool in place of spawn, tell, stop and session
@@ -211,6 +213,18 @@ const AGENTS = spec("agents", "Manage the team's agents: list them (archived one
   model  : { type: "string", description: "Edit: the model its chat runs on, one show lists as offered." },
   effort : { type: "string", description: "Edit: how hard its model thinks, one of the levels show lists." },
   mcp    : { type: "object", additionalProperties: { type: "boolean" }, description: "Edit: MCP servers by name, each true (on) or false (off); this switches them for every agent." },
+}, ["action"]);
+const SETTINGS = spec("settings", "Your own settings, the ones the user sees in your settings in the app. show: each of them, your system prompt and your worktree setups. set: only the fields given change, each checked first, and the answer says what changed, before → after; a changed system prompt keeps the old one in your prompt history, for the user to revert to in the app. Changes apply from your next turn. Change a setting only when the user asked for that change, or agreed to what you proposed. Manage mons, your Claude account and the MCP servers are the user's to change, in the app.", {
+  action   : { type: "string", enum: ["show", "set"] },
+  name     : { type: "string", description: "Set: your new name." },
+  about    : { type: "string", description: "Set: your one line for the chat list and the other mons." },
+  picture  : { type: "string", description: "Set: a drawn look, av:shape.eyes.glasses.extra.body.detail, of the parts show lists." },
+  prompt   : { type: "string", description: "Set: your whole system prompt, lasting rules only." },
+  model    : { type: "string", description: "Set: the model your chat runs on, one show lists as offered; vendor:model for another vendor's." },
+  effort   : { type: "string", description: "Set: how hard your model thinks, one of the levels show lists." },
+  leader   : { type: "boolean", description: "Set: Leader mode, the newest lines of every other mon's memory in each turn." },
+  lines    : { type: "integer", description: "Set: Leader mode's lines per mon." },
+  subagents: { type: "boolean", description: "Set: Lasting submons, subagents of your own through the subagent tool, in place of spawn, tell, stop and session." },
 }, ["action"]);
 const DEVICE = { device: { type: "string", description: "The name of the device to run on, one listed under Devices." } };
 const KIT: Spec[] = TOOLS.map((t) => {
@@ -473,7 +487,7 @@ export namespace Tools {
   // subagents run on the engine
   export function list(sub = false, manage = false, subagents = false): Spec[] {
     const own = boss().filter((t) => (subagents ? !REPLACED.has(t.name) : t.name !== "subagent"));
-    return sub ? [...OWN, ...KIT, SKILL] : [...OWN, ...own, ...(manage ? [AGENTS] : []), ...KIT, SKILL];
+    return sub ? [...OWN, ...KIT, SKILL] : [...OWN, ...own, SETTINGS, ...(manage ? [AGENTS] : []), ...KIT, SKILL];
   }
 
   export function listed(tools: Tools, who: string): Spec[] {
@@ -552,6 +566,9 @@ export namespace Tools {
       }
       case "agents": {
         return seat.agents?.on() === true ? seat.agents.run(args) : { text: "Your Manage agents setting is off.", fail: true };
+      }
+      case "settings": {
+        return seat.settings === undefined ? { text: "A subagent has no settings of its own.", fail: true } : seat.settings(args);
       }
       case "schedules": {
         const lines = mem.timers.map(Timer.timer_line);
