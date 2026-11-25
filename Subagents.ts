@@ -7,7 +7,8 @@
 // view and the memory tools on its agent's chat; repo, a worktree of its
 // own on a new branch, or (write false) on none, its edit tools denied;
 // without one, a folder of its own. Every task is checked before any
-// starts; the rest of what the tool does is Sessions'.
+// starts, and none starts past the computer's room for them (Room); the
+// rest of what the tool does is Sessions'.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -22,6 +23,7 @@ import { Machine } from "./Machine.ts";
 import * as Names from "./Names.ts";
 import { Pick } from "./Pick.ts";
 import * as Prompts from "./Prompts.ts";
+import { Room, TASKS } from "./Room.ts";
 import { transients } from "./Service.ts";
 import { Session } from "./Session.ts";
 import { Setup } from "./Setup.ts";
@@ -46,8 +48,6 @@ const ACCOUNTS: Record<Vendor, (claude: string) => Job["account"]> = {
 // a repo's work needs a provider with tools of its own in a folder
 const OWN_TOOLS: Vendor[] = ["claude-sub"];
 
-const TASKS = 10;
-
 // the server's: its tools; an agent's view now, or why there's none; its
 // pick, null for no such agent
 const HOOKS = {
@@ -69,6 +69,11 @@ export namespace Subagents {
     const tasks = checked(agent, args.tasks);
     if (typeof tasks === "string") {
       return { text: tasks, fail: true };
+    }
+    const room = Room.now();
+    const fits = Room.fit(room, config.SUBMONS);
+    if (tasks.length > fits) {
+      return { text: (fits === 0 ? "No room for another submon on this computer now" : "Only " + fits + " more submon" + (fits === 1 ? " fits" : "s fit") + " on this computer now") + " (" + Room.said(room) + "): " + (fits === 0 ? "wait for some to finish, or do the work yourself" : "start at most " + fits + ", the rest as these finish") + ". Nothing started.", fail: true };
     }
     const view = tasks.some((t) => t.memory) ? await HOOKS.view(agent) : [];
     if (typeof view === "string") {

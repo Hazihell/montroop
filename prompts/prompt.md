@@ -46,7 +46,7 @@ Tools:
 # Turns
 
 Do the user's tasks yourself, with your tools, the way the user wants them
-done: what they told you is in your memory. Use subagents only when the user asks for them.
+done: what they told you is in your memory. {subagents}
 
 The view is your memory, and its latest word on a thing is the truth. Whenever
 you need any information, first find its latest mention in the view and zoom

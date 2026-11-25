@@ -218,3 +218,35 @@ for (const via of VIAS) {
     expect(done.log.filter((x) => x.ev.k === "ask").map((x) => (x.ev as { input?: Record<string, unknown> }).input?.command)).toEqual(["rm -f " + canary]);
   });
 }
+
+test.concurrent("the subagent tool starts none past the computer's room for submons, saying how many fit, and its list tells the same room", async () => {
+  const k = await Troop.up({ submons: 2 });
+  await k.api("POST", "/api/agents/" + k.agent, { subagents: true });
+  const t = tag();
+  await fake.next(t + ": start", { what: "tool", calls: [["subagent", { action: "start", tasks: ["one", "two", "three"].map((n) => ({ task: t + ": " + n, name: n, memory: false })) }]] });
+  await fake.next("Nothing started.", { what: "tool", calls: [["subagent", { action: "list" }]] });
+  await k.tell(t + ": start");
+
+  const refused = await until("the start refused", async () => (await fake.seen("Only 2 more submons fit on this computer now")).length > 0);
+  expect(refused).toBe(true);
+  const listed = await until("the list", async () => (await fake.last("You have no subagents.")).at(-1)?.text);
+  expect(listed).toContain("submons running across all mons: room for 2 more now (Montroop's config lets 2 run at once)");
+  expect((await k.api("GET", "/api/sessions?agent=" + k.agent)).json as unknown).toEqual([]);
+});
+
+test.concurrent("a mon whose subagents run on the engine is told to split work into as many submons as there is room for, and each turn the room; one whose don't, to use them only when asked", async () => {
+  const k = await Troop.up({ submons: 3 });
+  const [off, on] = [tag(), tag()];
+  await k.tell(off + ": hello");
+  await until("its turn", async () => (await fake.seen(off + ": hello")).length > 0);
+  await k.api("POST", "/api/agents/" + k.agent, { subagents: true });
+  await k.tell(on + ": hello");
+  await until("its turn", async () => (await fake.seen(on + ": hello")).length > 0);
+
+  const asked = async (t: string) => JSON.stringify(await fake.body(t + ": hello"));
+  expect(await asked(off)).toContain("Use subagents only when the user asks for them.");
+  expect(await asked(off)).not.toContain("This computer as this turn started");
+  expect(await asked(on)).not.toContain("Use subagents only when the user asks for them.");
+  expect(await asked(on)).toContain("Split large or parallel work into submons");
+  expect(await asked(on)).toContain("submons running across all mons: room for 3 more now (Montroop's config lets 3 run at once), at most 10 per start.");
+});

@@ -23,7 +23,7 @@ test("another agent can't read, send to, stop or archive a session", () => {
 
 test("the session tool sees an agent's sessions, and the subagent tool its subagents, another agent's none", () => {
   Session.add({ id: "4567cdef", name: "helper", agent: "owner1", repo: "", base: "", branch: "", worktree: "/scratch/owner1/sessions/helper", provider: "claude", account: "", model: "claude-haiku-5-5", effort: "low", memory: 1, write: 1, device: "", dir: path.join(DIR, "sessions", "4567cdef") }, "the task");
-  expect(Sessions.act("owner1", "subagent", { action: "list" })).toEqual({ text: "helper: running", fail: false });
+  expect(Sessions.act("owner1", "subagent", { action: "list" }).text.split("\n")[0]).toBe("helper: running");
   expect(Sessions.tool("owner1", { action: "list" })).toEqual({ text: "mine: running, branch troop/mine", fail: false });
   expect(Sessions.tool("owner1", { action: "read", name: "helper" })).toEqual({ text: "You have no session \"helper\". Yours: mine.", fail: true });
   for (const action of ["read", "send", "stop", "archive"]) {

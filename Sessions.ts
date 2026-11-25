@@ -30,6 +30,7 @@ import { err_why } from "./Err.ts";
 import { get, rec, str, text_of } from "./Json.ts";
 import { Machine } from "./Machine.ts";
 import { Owner } from "./Owner.ts";
+import { Room } from "./Room.ts";
 import { Setup } from "./Setup.ts";
 import { LABELS, Pick } from "./Pick.ts";
 import { Brief } from "./Brief.ts";
@@ -735,7 +736,7 @@ export namespace Sessions {
     }
     if (action === "list") {
       const rows = mine.length === 0 ? ["You have no " + kind + "s."] : mine.map((x) => x.name + ": " + state(x) + (x.branch === "" ? "" : ", branch " + x.branch) + (x.last === "" ? "" : ", last: " + line(x.last, 80)));
-      return ok([...rows, ...Setup.listed(agent)].join("\n"));
+      return ok([...rows, ...Setup.listed(agent), ...(kind === "subagent" ? [Room.said(Room.now())] : [])].join("\n"));
     }
     const s = mine.find((x) => x.name === arg("name"));
     if (s === undefined) {

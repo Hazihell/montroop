@@ -127,7 +127,9 @@ export class Troop {
     // a sign-in and key of its own, as the fake keeps a usage limit per credential
     const own = tag();
     claude_signed(path.join(k.dir, "claude-sub"), own);
-    fs.writeFileSync(path.join(k.dir, "config.json"), JSON.stringify({ owner: "tester@example.com", vendors: "claude-sub,openai-api", pick: CHAT, compactor: CHAT, ...more }));
+    // a fixed room for submons: the suite's own load would leave the
+    // computer's room for them to chance
+    fs.writeFileSync(path.join(k.dir, "config.json"), JSON.stringify({ owner: "tester@example.com", vendors: "claude-sub,openai-api", pick: CHAT, compactor: CHAT, submons: 100, ...more }));
     fs.writeFileSync(path.join(k.dir, "keys.json"), JSON.stringify({ openai: "sk-proj-test-" + own, ...keys }));
     await k.start();
     await k.login();

@@ -13,6 +13,7 @@ import { Holders } from "./Holders.ts";
 import { Sessions } from "./Sessions.ts";
 import { Subagents } from "./Subagents.ts";
 import * as Prompts from "./Prompts.ts";
+import { Room } from "./Room.ts";
 import { Team } from "./Team.ts";
 import * as Timer from "./Timer.ts";
 import * as Pins from "./Pins.ts";
@@ -170,7 +171,7 @@ const boss = (): Spec[] => [
   spec("resume", "Wake every call on this server waiting for an AI service's usage limit (other turns, summaries), when the user says a limit was reset early. Each asks again once; one still limited waits again.", {}, []),
 ];
 // the subagent tool, for an agent whose subagents run on the engine
-const SUBAGENT = (): Spec => spec("subagent", "Subagents: workers of your own, each on one task, that run on their own for as long as it takes, through server restarts, each in its own folder on this server's computer (with a repo, its own worktree), with that computer's tools of its provider (files, shell, web) and Montroop's device tools. start: tasks, started at once, their names returned at once. It never waits on you while it runs: you get one message \"[Subagent name] done|failed|stopped|waiting|question: …\" when its run ends (done: with its last reply, its result), it waits on the user's approval of a call (only the user can give it, in the app) or on a usage limit, or it asks you something; that message starts your turn, so don't wait for it, read it to check, or schedule a check. send: a message (text) to it, by name: mode steer (default: into its work now; to one that asked you something, the answer) or queue (for its next run, once this one ends); to one done or stopped it starts a new run where it left off; request: an id of yours for this message, the same on a retry, so it's sent once. read: its state, what it waits on, its result and its latest lines; after (a line's number) and n for its log from there. stop: stop it at once (why: for its record; its folder stays). list: your subagents. archive: remove its folder, worktree and branch once its work is merged or not wanted (force: even with commits or changes found nowhere else). " + SETUP, {
+const SUBAGENT = (): Spec => spec("subagent", "Subagents: workers of your own, each on one task, that run on their own for as long as it takes, through server restarts, each in its own folder on this server's computer (with a repo, its own worktree), with that computer's tools of its provider (files, shell, web) and Montroop's device tools. start: tasks, started at once, their names returned at once, no more than this computer's room for submons, which each turn and list tell. It never waits on you while it runs: you get one message \"[Subagent name] done|failed|stopped|waiting|question: …\" when its run ends (done: with its last reply, its result), it waits on the user's approval of a call (only the user can give it, in the app) or on a usage limit, or it asks you something; that message starts your turn, so don't wait for it, read it to check, or schedule a check. send: a message (text) to it, by name: mode steer (default: into its work now; to one that asked you something, the answer) or queue (for its next run, once this one ends); to one done or stopped it starts a new run where it left off; request: an id of yours for this message, the same on a retry, so it's sent once. read: its state, what it waits on, its result and its latest lines; after (a line's number) and n for its log from there. stop: stop it at once (why: for its record; its folder stays). list: your subagents, and this computer's room for more. archive: remove its folder, worktree and branch once its work is merged or not wanted (force: even with commits or changes found nowhere else). " + SETUP, {
   action  : { type: "string", enum: ["start", "send", "read", "stop", "list", "archive", "setup"] },
   tasks   : { type: "array", items: { type: "object", properties: {
     task   : { type: "string", description: "Its whole brief: it knows only this, what the other options give it, and the pins." },
@@ -284,7 +285,8 @@ export namespace Tools {
     const subs = tools.seats.get(who)?.subs?.working() ?? [];
     const mine = (agent: string) => agent === who || subs.some((s) => s.startsWith(agent + " "));
     const jobs = [...tools.devices].flatMap(([device, d]) => d.bg.jobs.filter((j) => mine(j.agent)).map((j) => j.id + " (" + [device, ...(j.agent === who ? [] : [j.agent]), j.command.replace(/\s+/g, " ").trim().slice(0, 60), Math.round((Date.now() - j.since) / 60e3) + " min"].join(", ") + ")"));
-    const text = (subs.length === 0 ? "" : Prompts.prompt("subs", { subs: subs.join(", ") }) + "\n") + (jobs.length === 0 ? "" : Prompts.prompt("jobs", { jobs: jobs.join(", ") }) + "\n");
+    const room = tools.seats.get(who)?.subagents?.() === true ? Prompts.prompt("room", { room: Room.said(Room.now()) }) + "\n" : "";
+    const text = (subs.length === 0 ? "" : Prompts.prompt("subs", { subs: subs.join(", ") }) + "\n") + (jobs.length === 0 ? "" : Prompts.prompt("jobs", { jobs: jobs.join(", ") }) + "\n") + room;
     return { text: text === "" ? "" : text + "\n", mark: false };
   }
 

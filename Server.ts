@@ -238,7 +238,7 @@ export namespace Chat {
     const name = agent?.name ?? "";
     const team = Prompts.prompt("team", { Name: name }).split("\n").flatMap((line) => (line.includes("{name}") ? Team.active().map((a) => Prompts.fill(line, { name: a.name, about: a.about })) : [line]));
     const shared = [
-      Prompts.prompt("prompt", { Name: name }),
+      Prompts.prompt("prompt", { Name: name, subagents: Prompts.prompt(chat.mem.subagents ? "subagents-on" : "subagents-off") }),
       team.join("\n"),
     ];
     const own = [
