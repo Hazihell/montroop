@@ -68,6 +68,8 @@ test.concurrent("the settings tool is offered to a mon, not to its subagents", a
   const k = await Troop.up();
   const t = tag();
   await k.tell(t + ": hello");
+  // its own turn, before turning subagents on sends messages that would join it
+  await until("its turn", async () => (await fake.seen(t + ": hello")).length > 0);
   const [s] = await k.subagents({ task: t + ": sub", name: "sb", memory: false });
   await s.status("done");
 
