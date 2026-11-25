@@ -2528,11 +2528,6 @@ export namespace Main {
   }
 
   export async function http(req: Request, server: Bun.Server<Sock["data"]>): Promise<Response | undefined> {
-    const res = await answer(req, server);
-    return res === undefined ? res : Owner.carried(req, res);
-  }
-
-  async function answer(req: Request, server: Bun.Server<Sock["data"]>): Promise<Response | undefined> {
     const p = new URL(req.url).pathname;
     const away = /^(cross|same)-site$/.test(req.headers.get("sec-fetch-site") ?? "");
     if (away && (req.method !== "GET" || p.startsWith("/api/") || p === "/ws")) {

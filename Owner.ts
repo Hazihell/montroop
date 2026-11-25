@@ -14,9 +14,6 @@ type Ticket = { session: string | null; what: string; tries?: number };
 export const FILE = config.DIR + "/kunumy.db";
 
 const COOKIE = "kunumy";
-// the cookie a browser signed in under before the rename: still taken,
-// and moved to COOKIE by the next answer it gets
-const COOKIE_WAS = "ki";
 
 const KEEP = "; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000";
 
@@ -59,29 +56,11 @@ export namespace Owner {
     return new Bun.CryptoHasher("sha256").update(token).digest("hex");
   }
 
-  function cleared(name: string): string {
-    return name + "=; Path=/; Max-Age=0";
-  }
-
-  function cookie_of(req: Request, name: string): string {
-    const cookie = (req.headers.get("cookie") ?? "").split(/;\s*/).find((c) => c.startsWith(name + "=")) ?? "";
-    return decodeURIComponent(cookie.slice(name.length + 1));
-  }
-
   export function token(req: Request): string {
     const auth = (req.headers.get("authorization") ?? "").replace(/^Bearer /, "");
-    return auth || cookie_of(req, COOKIE) || cookie_of(req, COOKIE_WAS);
-  }
-
-  export function carried(req: Request, res: Response): Response {
-    const was = cookie_of(req, COOKIE_WAS);
-    if (was === "" || cookie_of(req, COOKIE) !== "" || res.headers.has("set-cookie") || !Owner.is(req)) {
-      return res;
-    }
-    const out = new Response(res.body, res);
-    out.headers.append("set-cookie", COOKIE + "=" + encodeURIComponent(was) + Owner.cookie(req));
-    out.headers.append("set-cookie", cleared(COOKIE_WAS));
-    return out;
+    const cookies = (req.headers.get("cookie") ?? "").split(/;\s*/);
+    const cookie = cookies.find((c) => c.startsWith(COOKIE + "=")) ?? "";
+    return auth || decodeURIComponent(cookie.slice(cookie.indexOf("=") + 1));
   }
 
   export function is(req: Request): boolean {
@@ -276,7 +255,7 @@ export namespace Owner {
   }
 
   export function out(): Response {
-    return new Response(null, { status: 204, headers: { "set-cookie": cleared(COOKIE) } });
+    return new Response(null, { status: 204, headers: { "set-cookie": COOKIE + "=; Path=/; Max-Age=0" } });
   }
 
   export async function confirm(req: Request): Promise<Response> {

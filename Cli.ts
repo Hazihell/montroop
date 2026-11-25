@@ -174,9 +174,6 @@ while (words.length > 0) {
   words.shift();
 }
 const part = trail[1] === "device" || trail[1] === "serve" ? trail[1] : null;
-if (part !== null && !help && process.platform === "linux" && process.env.KNY_DIR === undefined && !fs.existsSync(path.join(os.homedir(), ".kunumy")) && fs.existsSync(path.join(os.homedir(), ".ki"))) {
-  fail("~/.ki holds the data of ki, as Kunumy was called before, and ~/.kunumy doesn't exist: move it with release/migrate-kunumy.sh (in Kunumy's source), then start again.");
-}
 const daemon = FLAG.has("-d") ? cmd.kids?.find((k) => key(k) === "-d") : undefined;
 if (daemon !== undefined) {
   cmd = daemon;

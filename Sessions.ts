@@ -116,25 +116,6 @@ export namespace Sessions {
     return { unit: "kny-hold-" + s.id + "-" + n, sock: path.join(s.dir, "hold-" + n + ".sock") };
   }
 
-  // a session with no unit in the record whose holder of its last launch
-  // runs: an older version (run on this record since) launched it and kept
-  // none, so it is named in the record, not taken for a run whose holder
-  // never launched; unless that holder's run ended and the end is taken
-  // (the server stopped before the next run's launch): it only lingers.
-  // Such versions predate the rename, so its unit has the old name
-  function adopted(s: Session): Session {
-    const named = { unit: "ki-hold-" + s.id + "-" + s.launches, sock: holder(s, s.launches).sock };
-    if (s.unit !== "" || s.launches === 0 || !alive({ ...s, ...named })) {
-      return s;
-    }
-    const last = Hold.told(s.dir).at(-1);
-    if (last !== undefined && last.ev.k === "end" && last.seq <= s.ack) {
-      return s;
-    }
-    Session.set(s.id, named);
-    return { ...s, ...named };
-  }
-
   function alive(s: Session): boolean {
     return s.unit !== "" && ["active", "activating", "deactivating"].includes(systemctl(["is-active", s.unit]));
   }
@@ -148,8 +129,7 @@ export namespace Sessions {
   // at the server's start, before it takes requests, once the agents'
   // chats are open: the wake messages not yet in a chat are sent again;
   // the cards of calls still parked wait again, so an answer given at once
-  // finds them, and those of a holder gone are taken down; a holder an
-  // older version launched is named in the record (adopted); a stopped
+  // finds them, and those of a holder gone are taken down; a stopped
   // session's holder still running (its server killed midway) is stopped
   export function boot(gate: Gate, asked: (a: Asked) => void, wake: (w: Wake) => Promise<boolean>, change: () => void): void {
     HOOKS.gate = gate;
@@ -158,8 +138,7 @@ export namespace Sessions {
     HOOKS.change = change;
     config.RELOADED.add(() => LINKS.forEach((l) => Wire.send(l.sock, { $: "rules", rules: config.ASK })));
     Session.unsent().forEach(deliver);
-    for (const found of Session.list(null)) {
-      const s = adopted(found);
+    for (const s of Session.list(null)) {
       if (LIVE.includes(s.status)) {
         Session.parked(s.id).forEach((p) => arm(s, p));
         if (alive(s)) {
