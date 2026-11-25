@@ -245,7 +245,7 @@ export namespace Hold {
 
     const name = start.driver ?? "claude-code";
     const driver: Driver | undefined = Object.hasOwn(DRIVERS, name) ? DRIVERS[name as keyof typeof DRIVERS] : undefined;
-    const job: Job = { dir, cwd: spec.cwd, account: spec.claude, model: spec.model, own: spec.append, resume: start.resume };
+    const job: Job = { dir, cwd: spec.cwd, account: { dir: spec.claude }, model: spec.model, own: spec.append, context: { kind: "native", resume: start.resume } };
     const io: Io = { emit: h.emit, inbox: inbox(h.box), parks: (call) => Rules.match(h.rules, call.tool, call.args, spec.cwd) !== null, gate: (call, stop) => gate(h, spec.cwd, call, stop), ask: (text) => ask(h, text) };
     let end: End;
     try {

@@ -8,11 +8,14 @@
 
 import type { Ev } from "./Wire.ts";
 
+// the credential a run uses: its sign-in folder
+type Account = { dir: string };
+
 // a run's job: the holder's folder, the folder the model's own tools work
-// in, its account's sign-in folder, its model ("": the account's default),
-// its own part of the system prompt, the provider's session it resumes
-// ("": a new one)
-export type Job = { dir: string; cwd: string; account: string; model: string; own: string; resume: string };
+// in, its account, its model ("": the account's default), its own part of
+// the system prompt, its context: the provider keeps it (native), in the
+// session it resumes ("": a new one)
+export type Job = { dir: string; cwd: string; account: Account; model: string; own: string; context: { kind: "native"; resume: string } };
 
 // a tool call as the rules know it (tool and args: shell and its command),
 // and as the provider made it, which the owner's card shows

@@ -40,7 +40,7 @@ export namespace Code {
     const env = Object.fromEntries(Object.entries(ClaudeSub.bare_env()).filter(([k]) => k !== "DISABLE_AUTO_COMPACT"));
     // the owner's notes to approved calls, told with their results
     const notes = new Map<string, string>();
-    let id = job.resume;
+    let id = job.context.resume;
     let tasks = 0;
     let gating = 0;
     let end: End = { ok: false, text: "Claude Code ended before its turn did." };
@@ -79,7 +79,7 @@ export namespace Code {
       cwd                        : job.cwd,
       model                      : job.model === "" ? undefined : job.model,
       pathToClaudeCodeExecutable : await ClaudeSub.bin_on_disk(),
-      env                        : { ...env, ...ENV, CLAUDE_CONFIG_DIR: job.account, PATH: [path.join(job.dir, BIN), env.PATH].filter((p) => p !== undefined).join(path.delimiter) },
+      env                        : { ...env, ...ENV, CLAUDE_CONFIG_DIR: job.account.dir, PATH: [path.join(job.dir, BIN), env.PATH].filter((p) => p !== undefined).join(path.delimiter) },
       systemPrompt               : { type: "preset", preset: "claude_code", append: job.own },
       tools                      : { type: "preset", preset: "claude_code" },
       settingSources             : ["user", "project", "local"],

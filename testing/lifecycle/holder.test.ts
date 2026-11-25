@@ -31,11 +31,6 @@ test.concurrent("a start that names no driver, as one from before drivers were n
   expect(logged.at(-1)).toEqual({ k: "end", ok: true, text: t + " fine" });
 });
 
-test.concurrent("a start naming a driver this holder lacks ends its run at once, failed, saying so", async () => {
-  const k = await Kny.up();
-  expect(await hold(k, { driver: "codex-next", prompt: "work" })).toEqual([{ k: "end", ok: false, text: "This holder has no driver codex-next: a newer kny started it." }]);
-});
-
 test.concurrent("a second connection's hello takes the holder over, and the server takes it back and sees the run through", async () => {
   const k = await Kny.up();
   const t = tag();

@@ -728,54 +728,76 @@ export function transients(): boolean {
   return process.platform === "linux" || systemd();
 }
 
-// null: started; else why not
-export function transient(u: Unit, about: string, cmd: string[], env: Record<string, string>): string | null {
-  if (systemd()) {
+// each kind of unit: start it (null: started; else why not), whether it
+// runs, and stop it with everything it started, asked first and killed
+// after UNIT_STOP
+type Kind = {
+  start  : (u: Unit, about: string, cmd: string[], env: Record<string, string>) => string | null;
+  active : (u: Unit) => boolean;
+  halt   : (u: Unit) => void;
+};
+
+const SYSTEMD_UNIT: Kind = {
+  start: (u, about, cmd, env) => {
     const r = run(["systemd-run", "--user", "--collect", "--quiet", "--unit=" + u.name, "--description=" + about, "-p", "TimeoutStopSec=" + UNIT_STOP / 1000, ...Object.entries(env).map(([k, v]) => "--setenv=" + k + "=" + v), "--", ...cmd]);
     return r.code === 0 ? null : "systemd-run failed: " + output(r);
-  }
-  const log = fs.openSync(path.join(u.dir, u.name + ".log"), "a");
-  let p: Bun.Subprocess | null = null;
-  try {
-    const own = Object.fromEntries(UNIT_OWN.flatMap((k) => (process.env[k] ? [[k, process.env[k]]] : [])));
-    p = Bun.spawn(cmd, { env: { ...own, ...env, [UNIT_MARK]: u.name }, stdio: ["ignore", log, log], detached: true });
-    p.unref();
-    fs.writeFileSync(pid_file(u), String(p.pid));
-    return null;
-  } catch (err) {
-    p?.kill("SIGKILL");
-    return "its process didn't start: " + err_why(err);
-  } finally {
-    fs.closeSync(log);
-  }
-}
-
-// a detached unit found gone takes what it left running with it, as a
-// systemd unit's end does
-export function active(u: Unit): boolean {
-  const file = pid_file(u);
-  if (!fs.existsSync(file)) {
-    return systemd() && ["active", "activating", "deactivating"].includes(output(run(["systemctl", "--user", "is-active", u.name])));
-  }
-  if (marked(Number(read(file)) || 0, u.name)) {
-    return true;
-  }
-  sweep(u.name, "SIGKILL");
-  fs.rmSync(file, { force: true });
-  return false;
-}
-
-// it and everything it started ended: asked first, killed after
-// UNIT_STOP (or, its starter gone first, once it finds the unit gone)
-export function halt(u: Unit): void {
-  if (!fs.existsSync(pid_file(u))) {
+  },
+  active : (u) => systemd() && ["active", "activating", "deactivating"].includes(output(run(["systemctl", "--user", "is-active", u.name]))),
+  halt   : (u) => {
     if (systemd()) {
       run(["systemctl", "--user", "stop", "--no-block", u.name]);
     }
-    return;
-  }
-  sweep(u.name, "SIGTERM");
-  setTimeout(() => sweep(u.name, "SIGKILL"), UNIT_STOP).unref();
+  },
+};
+
+// one found gone takes what it left running with it, as a systemd unit's
+// end does (or, its starter gone before it was killed, once it's found so)
+const DETACHED: Kind = {
+  start: (u, _about, cmd, env) => {
+    const log = fs.openSync(path.join(u.dir, u.name + ".log"), "a");
+    let p: Bun.Subprocess | null = null;
+    try {
+      const own = Object.fromEntries(UNIT_OWN.flatMap((k) => (process.env[k] ? [[k, process.env[k]]] : [])));
+      p = Bun.spawn(cmd, { env: { ...own, ...env, [UNIT_MARK]: u.name }, stdio: ["ignore", log, log], detached: true });
+      p.unref();
+      fs.writeFileSync(pid_file(u), String(p.pid));
+      return null;
+    } catch (err) {
+      p?.kill("SIGKILL");
+      return "its process didn't start: " + err_why(err);
+    } finally {
+      fs.closeSync(log);
+    }
+  },
+  active: (u) => {
+    if (marked(Number(read(pid_file(u))) || 0, u.name)) {
+      return true;
+    }
+    sweep(u.name, "SIGKILL");
+    fs.rmSync(pid_file(u), { force: true });
+    return false;
+  },
+  halt: (u) => {
+    sweep(u.name, "SIGTERM");
+    setTimeout(() => sweep(u.name, "SIGKILL"), UNIT_STOP).unref();
+  },
+};
+
+// a unit that kept no pid file ran under systemd
+function kind(u: Unit): Kind {
+  return fs.existsSync(pid_file(u)) ? DETACHED : SYSTEMD_UNIT;
+}
+
+export function transient(u: Unit, about: string, cmd: string[], env: Record<string, string>): string | null {
+  return (systemd() ? SYSTEMD_UNIT : DETACHED).start(u, about, cmd, env);
+}
+
+export function active(u: Unit): boolean {
+  return kind(u).active(u);
+}
+
+export function halt(u: Unit): void {
+  kind(u).halt(u);
 }
 
 // for a unit's main process at its end: what it leaves running ends with
