@@ -190,7 +190,9 @@ export namespace Sessions {
   // first, once it finds the holder gone)
   function halt(s: Session): void {
     if (!fs.existsSync(pid_file(s))) {
-      systemctl(["stop", "--no-block", s.unit]);
+      if (systemd()) {
+        systemctl(["stop", "--no-block", s.unit]);
+      }
       return;
     }
     Hold.sweep(s.unit, "SIGTERM");
