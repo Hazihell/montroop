@@ -46,11 +46,12 @@ export const fake = {
   },
 };
 
-function free_port(): number {
-  const s = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response() });
-  const port = s.port ?? 0;
-  void s.stop(true);
-  return port;
+let servers = 0;
+
+// a port of this test file's own, below the range connections take theirs
+// from: each runs in a process of its own
+function port(): number {
+  return 20000 + (process.pid % 1200) * 10 + (servers++ % 10);
 }
 
 // a Kunumy server on a data folder of its own, with fake sign-ins to Claude
@@ -68,7 +69,7 @@ export class Kny {
 
   static async up(): Promise<Kny> {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "kny-"));
-    const k = new Kny(path.join(home, ".kunumy"), free_port());
+    const k = new Kny(path.join(home, ".kunumy"), port());
     fs.mkdirSync(path.join(k.dir, "claude-sub"), { recursive: true });
     const model = "claude-sub:haiku-5.5:low:slow";
     fs.writeFileSync(path.join(k.dir, "config.json"), JSON.stringify({ owner: "tester@example.com", vendors: "claude-sub", pick: model, compactor: model, agents: model }));
