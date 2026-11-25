@@ -42,7 +42,7 @@ test.concurrent("a question asked while the server is down reaches it once it's 
   const t = tag();
   await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
   await fake.next(t + "-done", { what: "tool", calls: [["ask_owner", { question: "Which word should it be?" }]] });
-  await fake.next("The answer: heron", { what: "reply", text: "It is heron." });
+  await fake.next("The answer: heron " + t, { what: "reply", text: "It is heron." });
   await fake.next(t + ": after", { what: "reply", text: t + " after" });
   const s = await k.session("q", t + ": work", repo());
   await until("the command running", () => waiting(t));
@@ -54,7 +54,7 @@ test.concurrent("a question asked while the server is down reaches it once it's 
   const asked = await s.status("waiting");
   expect(asked.waits).toBe("answer");
   expect(asked.questions.map((q) => q.text)).toEqual(["Which word should it be?"]);
-  expect((await s.say("heron", "ans-1")).status).toBe(200);
+  expect((await s.say("heron " + t, "ans-1")).status).toBe(200);
   await s.status("done");
   await until("the done wake", async () => await said(k, "[Session q] done: It is heron.") === 1);
   await k.kill();

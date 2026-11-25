@@ -226,13 +226,13 @@ export function waiting(name: string): boolean {
 }
 
 // every process running (the suite has a process namespace of its own)
-export function procs(): Array<{ pid: number; ppid: number; group: number; cmd: string }> {
+export function procs(): Array<{ pid: number; ppid: number; cmd: string }> {
   return fs.readdirSync("/proc").filter((d) => /^\d+$/.test(d)).flatMap((d) => {
     try {
       const stat = fs.readFileSync("/proc/" + d + "/stat", "utf8");
-      const [state, ppid, group] = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+      const [state, ppid] = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
       const cmd = fs.readFileSync("/proc/" + d + "/cmdline", "utf8").replaceAll("\0", " ").trim();
-      return state === "Z" ? [] : [{ pid: Number(d), ppid: Number(ppid), group: Number(group), cmd }];
+      return state === "Z" ? [] : [{ pid: Number(d), ppid: Number(ppid), cmd }];
     } catch {
       return [];
     }
