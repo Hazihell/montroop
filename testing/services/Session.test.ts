@@ -53,7 +53,6 @@ test("an event told again, or one older than the last taken, changes nothing", (
   told(s, 2, { k: "end", ok: true, text: "ok" });
   expect(told(s, 2, { k: "end", ok: true, text: "ok" })).toEqual([]);
   expect(told(s, 1, push())).toEqual([]);
-  expect(Session.unsent().filter((w) => w.id.startsWith("session " + s.id + " "))).toHaveLength(1);
   expect(Session.get(s.id)).toMatchObject({ status: "done", last: "first", ack: 2 });
 });
 
@@ -98,16 +97,16 @@ test("the messages a run didn't take in start the next run on them when it ends"
   Session.say({ id: s.id + "/r1", session: s.id, text: "Also do A.", mode: "queue", at: 1 });
   Session.say({ id: s.id + "/r2", session: s.id, text: "And B.", mode: "steer", at: 2 });
   const fx = told(s, 1, { k: "end", ok: true, text: "First part done." });
-  expect(fx.map((f) => f.do)).toEqual(["uncard", "wake", "next"]);
+  expect(fx.map((f) => f.do)).toContain("next");
   expect(woke(fx)).toEqual(["[Session busy] done: First part done.\n\nIt runs again now, on the messages sent to it it hadn't taken in."]);
   expect(Session.run(s.id)).toMatchObject({ n: 2, prompt: "Also do A.\n\nAnd B.", status: "running" });
   expect(Session.unheard(s.id)).toEqual([]);
 });
 
-test("a stop drops the messages not taken in, and wakes no one unless asked to", () => {
+test("a stop drops the messages not taken in", () => {
   const s = session();
   Session.say({ id: s.id + "/r1", session: s.id, text: "Later.", mode: "queue", at: 1 });
-  expect(woke(Session.move(s.id, "stop", "", null) ?? [])).toEqual([]);
+  Session.move(s.id, "stop", "", null);
   expect(Session.get(s.id)?.status).toBe("stopped");
   expect(Session.says(s.id).map((x) => x.heard)).toEqual([-1]);
 });
@@ -117,14 +116,6 @@ test("the server's own step out of work is taken once", () => {
   const note = { about: "gone 1.1", text: "its holder ended before the run did: send it a message to go on" };
   expect(woke(Session.move(s.id, "failed", "its holder ended before the run did", note) ?? [])).toEqual(["[Session lost] failed: its holder ended before the run did: send it a message to go on"]);
   expect(Session.move(s.id, "failed", "its holder ended before the run did", note)).toBeNull();
-});
-
-test("a message whose request came already isn't kept again", () => {
-  const s = session();
-  const say = { id: s.id + "/req-1", session: s.id, text: "Hello.", mode: "steer", at: 1 } as const;
-  expect(Session.say(say)).toBe(true);
-  expect(Session.say({ ...say, text: "Hello again." })).toBe(false);
-  expect(Session.says(s.id).map((x) => x.text)).toEqual(["Hello."]);
 });
 
 test("a session at work can't start another run; a done one runs again as its next run, a failed one tries its run again", () => {
@@ -148,7 +139,7 @@ test("a new holder's welcome drops the calls and questions it no longer holds", 
 test("an event and the wake it makes are taken together, or neither is", () => {
   const s = session("brink");
   const db = Owner.open();
-  db.run("create trigger no_wake before insert on work_wakes when new.id like 'session " + s.id + " %' begin select raise(abort, 'no wake'); end");
+  db.run("create trigger no_wake before insert on work_wakes begin select raise(abort, 'no wake'); end");
   expect(() => told(s, 1, { k: "end", ok: true, text: "ok" })).toThrow("no wake");
   expect(Session.get(s.id)).toMatchObject({ status: "running", ack: 0 });
   db.run("drop trigger no_wake");

@@ -6,6 +6,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { Hold } from "../Hold.ts";
 import type { Order } from "./fake/server.ts";
 
 const ROOT = path.resolve(import.meta.dir, "..");
@@ -14,6 +15,10 @@ const CONTROL = "http://127.0.0.1:9999";
 type Json = Record<string, unknown>;
 
 type Told = { seq: number; at: number; ev: Json & { k: string } };
+
+// the servers a test file started, killed after it (afterAll(down)), so a
+// failed test leaves none running
+const UP: Kny[] = [];
 
 type Page = {
   status: string; waits: string | null; worktree: string;
@@ -77,6 +82,7 @@ export class Kny {
   static async up(): Promise<Kny> {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "kny-"));
     const k = new Kny(path.join(home, ".kunumy"), port());
+    UP.push(k);
     fs.mkdirSync(path.join(k.dir, "claude-sub"), { recursive: true });
     const model = "claude-sub:haiku-5.5:low:slow";
     fs.writeFileSync(path.join(k.dir, "config.json"), JSON.stringify({ owner: "tester@example.com", vendors: "claude-sub", pick: model, compactor: model, agents: model }));
@@ -149,11 +155,15 @@ export class Kny {
     if (r.status !== 200) {
       throw new Error("start " + name + ": " + JSON.stringify(r.json));
     }
-    return new Session(this, String(r.json.id), name);
+    const s = new Session(this, String(r.json.id), name);
+    s.worktree = (await s.page()).worktree;
+    return s;
   }
 }
 
 class Session {
+  worktree = "";
+
   constructor(readonly k: Kny, readonly id: string, readonly name: string) {}
 
   get dir(): string {
@@ -180,15 +190,39 @@ class Session {
   }
 
   // what its holder logged, read with the server down too
-  logged(): Told[] {
-    const text = fs.existsSync(path.join(this.dir, "log.jsonl")) ? fs.readFileSync(path.join(this.dir, "log.jsonl"), "utf8") : "";
-    return text.split("\n").filter((l) => l !== "").map((l) => JSON.parse(l) as Told);
+  logged(): Array<{ ev: { k: string } }> {
+    return Hold.told(this.dir);
+  }
+
+  // a command waiting, see gate(), let go (the server may be down)
+  open(gate: string): void {
+    fs.writeFileSync(path.join(this.worktree, gate), "");
   }
 
   // its holder's process, while one runs
   holder(): number | null {
     return procs().find((p) => p.cmd.includes(" hold " + this.dir))?.pid ?? null;
   }
+}
+
+export async function down(): Promise<void> {
+  await Promise.all(UP.splice(0).map((k) => k.kill()));
+}
+
+// a text of the test's own, so the fake's orders reach only its calls
+export function tag(): string {
+  return crypto.randomUUID().slice(0, 8);
+}
+
+// a shell command that runs till its session is let go (open), then prints
+// name-done: a session at work for as long as the test needs
+export function gate(name: string): string {
+  return "until [ -f " + name + " ]; do sleep 0.05; done; echo " + name + "-done";
+}
+
+// whether a gate()'s command runs
+export function waiting(name: string): boolean {
+  return running(new RegExp("until \\[ -f " + name + " \\]")).length > 0;
 }
 
 // every process running (the suite has a process namespace of its own)
@@ -213,7 +247,7 @@ export function kill(pid: number | null | undefined): void {
   process.kill(pid, "SIGKILL");
 }
 
-export function running(pattern: RegExp): number[] {
+function running(pattern: RegExp): number[] {
   return procs().filter((p) => pattern.test(p.cmd)).map((p) => p.pid);
 }
 
@@ -240,7 +274,7 @@ export function repo(): string {
 }
 
 // an agent's chat as the app shows it: each message's kind and text
-async function chat(k: Kny, agent = k.agent): Promise<Array<{ kind: string; text: string }>> {
+export async function chat(k: Kny, agent = k.agent): Promise<Array<{ kind: string; text: string }>> {
   const meta = (await k.api("GET", "/api/tree?agent=" + agent)).json as { count: number };
   if (meta.count === 0) {
     return [];

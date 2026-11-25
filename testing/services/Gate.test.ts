@@ -21,7 +21,7 @@ function ask(gate: Gate, args: Record<string, unknown> = PUSH, signal = new Abor
 test("a call a rule names waits for the owner's answer", async () => {
   const { gate } = opened();
   const { said, cards } = ask(gate);
-  expect(cards.map((c) => [c.who, c.tool, c.input, c.what])).toEqual([["Session fix", "shell", JSON.stringify(PUSH), WHAT]]);
+  expect(cards.map((c) => [c.who, c.tool, c.input, c.what])).toEqual([["Session fix", "shell", "{\"command\":\"git push --force origin main\"}", WHAT]]);
   expect(Gate.decide(gate, cards[0].id, { ok: true, note: "once" })).toMatchObject({ waited: true });
   expect(await said).toEqual({ ok: true, note: "once" });
 });

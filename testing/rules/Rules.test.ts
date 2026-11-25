@@ -55,7 +55,7 @@ test("a rule's arguments match each string or number argument, nested too, on it
 });
 
 test("the rules a config gives are read, or say what's wrong with them", () => {
-  expect(Rules.read(undefined)).toBe(ASK);
+  expect(Rules.read(undefined)).toEqual(ASK);
   expect(Rules.read([{ what: " Deploy ", tools: "deploy", args: " " }])).toEqual([{ what: "Deploy", tools: "deploy", args: "" }]);
   expect(Rules.read({})).toBe("Give a list of up to 50 rules");
   expect(Rules.read([{ what: "x", tools: " , ! " }])).toBe("Rule 1 needs what it is, the tools it's for, and the arguments, if any, on one line each");

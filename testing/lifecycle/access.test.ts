@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { Kny } from "../rig.ts";
+import { down, Kny } from "../rig.ts";
 
 let k: Kny;
 
@@ -7,9 +7,7 @@ beforeAll(async () => {
   k = await Kny.up();
 });
 
-afterAll(async () => {
-  await k.kill();
-});
+afterAll(down);
 
 const CALLS = [["GET", ""], ["GET", "/0123abcd"], ["POST", "/0123abcd/say"], ["POST", "/0123abcd/stop"], ["POST", "/0123abcd/archive"], ["POST", "/0123abcd/resume"], ["POST", ""]];
 

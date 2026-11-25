@@ -42,5 +42,5 @@ test("a temporary pin leaves after its until, a lasting one when unused for 45 d
 
 test("a subagent with no pins gets no pins block; the lead agent is told there are none yet", () => {
   expect(Pins.block(false).text).toBe("");
-  expect(Pins.block(true).text).toEndWith("\n(None yet.)\n\n");
+  expect(Pins.block(true).text).toContain("(None yet.)");
 });

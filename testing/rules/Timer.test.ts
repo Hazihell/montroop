@@ -10,6 +10,9 @@ function at(t: Timer | string): string {
 
 test("a one-off time is read in the zone given", () => {
   expect(timer_new({ message: "Stand-up", at: "2026-11-25 09:30", zone: "America/Sao_Paulo" }, NOW)).toMatchObject({ text: "Stand-up", at: "2026-11-25T12:30:00.000Z", cron: null, zone: "America/Sao_Paulo" });
+});
+
+test("a one-off time with an offset of its own is read at that offset, whatever the zone", () => {
   expect(at(timer_new({ message: "x", at: "2026-11-25T09:30+01:00", zone: "UTC" }, Date.parse("2026-11-25T08:00:00Z")))).toBe("2026-11-25T08:30:00.000Z");
 });
 

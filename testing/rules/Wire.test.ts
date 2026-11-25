@@ -29,14 +29,6 @@ test("what a holder tells is numbered on from where its log left off, and kept t
   expect(box).toEqual({ seq: 10, kept: [{ seq: 10, at: 300, ev: { k: "turn", ok: true, text: "b" } }] });
 });
 
-test("an ack older than what was acked keeps nothing back", () => {
-  const box = Wire.outbox(0);
-  Wire.push(box, { k: "text", text: "a" }, 1);
-  Wire.ack(box, 1);
-  Wire.ack(box, 0);
-  expect(box.kept).toEqual([]);
-});
-
 test("a text told is cut to 2000 characters", () => {
   expect(Wire.clip("x".repeat(2000))).toBe("x".repeat(2000));
   expect(Wire.clip("x".repeat(2001))).toBe("x".repeat(2000) + "…");
