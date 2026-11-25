@@ -21,17 +21,22 @@
 # kunumy-browser.service. Holders of running work sessions (ki-hold-*)
 # are left running: the new server links to them.
 #
+# Work sessions' Claude Code transcripts get links under the new path's
+# name, so a session started before resumes after. A consistent copy of
+# ki.db is kept too. Run from a shell of ki's services (an agent's), it goes
+# on as the unit kunumy-migrate, since stopping them would end it.
+#
 # It refuses if ~/.kunumy (other than a rollback's link back) or
 # ~/.kunumy-migration exists. --dry-run says
 # what it would do, and shows each rewritten line, changing nothing.
-set -euo pipefail
+set -Eeuo pipefail
 
-DRY="" BACK="" BIN=""
+DRY="" BACK="" BIN="" ARGS=("$@")
 while [ $# -gt 0 ]; do
   case $1 in
     --dry-run) DRY=1;;
     --rollback) BACK=1;;
-    --bin) BIN=$2; shift;;
+    --bin) BIN=$(realpath "$2"); shift;;
     *) echo "usage: migrate-kunumy.sh [--dry-run] [--bin FILE] | --rollback [--dry-run]" >&2; exit 2;;
   esac
   shift
@@ -87,6 +92,7 @@ rewrite() {
   [ -f "$f" ] || return 0
   if [ -n "$DRY" ]; then
     if ! renamed "$f" | diff -q "$f" - > /dev/null; then
+      [[ $f != *.env ]] || say "  (an env file keeps its old names beside the new ones)"
       say "  would rewrite $f:"
       renamed "$f" | diff "$f" - | grep '^[<>]' | masked || true
     fi
@@ -94,7 +100,11 @@ rewrite() {
   fi
   mkdir -p "$(dirname "$keep")"
   cp -p "$f" "$keep"
-  renamed "$keep" > "$f.kunumy-new"
+  if [[ $f == *.env ]]; then
+    { cat "$keep"; grep -E '^(export )?(KI|UNII)_' "$keep" | renamed /dev/stdin; } > "$f.kunumy-new"
+  else
+    renamed "$keep" > "$f.kunumy-new"
+  fi
   chmod --reference="$keep" "$f.kunumy-new"
   mv "$f.kunumy-new" "$f"
   cmp -s "$keep" "$f" || say "  rewrote $f"
@@ -107,6 +117,38 @@ unit_text() {
     s#^Description=Ki server \\(ki serve\\)#Description=Kunumy server (kny serve)#;
     s#^Description=Ki device \\(ki device\\)#Description=Kunumy device (kny device)#;
     s#^Description=(Ki|Unii|UniiChat|unii) dedicated#Description=Kunumy dedicated#"
+}
+
+# Claude Code keeps a session's transcripts in projects/<its folder's
+# path, each non-alphanumeric as ->, of the path with links resolved: after
+# the move a session in ~/.ki/... looks under the ~/.kunumy name, so each
+# folder under the old name gets a link by the new one, in every Claude
+# config folder in the data
+transcripts() {
+  local old new d p
+  old=$(printf '%s' "$H/.ki/" | sed 's/[^A-Za-z0-9]/-/g')
+  new=$(printf '%s' "$H/.kunumy/" | sed 's/[^A-Za-z0-9]/-/g')
+  for d in "$1"/claude-*/projects; do
+    [ -d "$d" ] || continue
+    for p in "$d/$old"*; do
+      [ -d "$p" ] && [ ! -L "$p" ] || continue
+      if [ "$2" = make ] && [ ! -e "$d/$new${p#"$d/$old"}" ]; then
+        do_ ln -s -- "$(basename "$p")" "$d/$new${p#"$d/$old"}"
+      elif [ "$2" = remove ] && [ -L "$d/$new${p#"$d/$old"}" ]; then
+        do_ rm -- "$d/$new${p#"$d/$old"}"
+      fi
+    done
+  done
+}
+
+# run from a shell of ki's services (an agent's), stopping them would end
+# this too: it starts itself again outside them, as a unit of its own
+detached() {
+  [ -z "$DRY" ] && [ -z "${KNY_MIGRATE_UNIT:-}" ] && grep -qsE '/(ki-serve|ki-device|kny-serve|kny-device)\.service' /proc/self/cgroup || return 0
+  command -v systemd-run > /dev/null || die "this runs inside a service it stops, and systemd-run isn't here to start it outside: run it from a terminal"
+  systemd-run --user --collect --quiet --unit=kunumy-migrate --setenv=HOME="$H" --setenv=PATH="$PATH" --setenv=KNY_MIGRATE_UNIT=1 ${XDG_CONFIG_HOME:+--setenv=XDG_CONFIG_HOME="$XDG_CONFIG_HOME"} -- bash "$(realpath "$0")" "$@"
+  say "It runs in a service's shell, which stopping the services would end: it goes on as the unit kunumy-migrate. Follow it: journalctl --user -u kunumy-migrate -f"
+  exit 0
 }
 
 forward() {
@@ -140,6 +182,9 @@ forward() {
     if active "$o"; then up="$up $o"; do_ systemctl --user stop "$o"; fi
   done
   [ -n "$DRY" ] || { printf '%s\n' $on > "$SAVE/enabled"; printf '%s\n' $up > "$SAVE/active"; }
+  [ -n "$DRY" ] || for end in "" -wal -shm; do
+    [ ! -e "$H/.ki/ki.db$end" ] || cp -p "$H/.ki/ki.db$end" "$SAVE/files/ki.db$end"
+  done
   say "-- the folders (each old path left as a link to the new)"
   for m in "${MOVES[@]}"; do
     o=${m%|*} n=${m#*|}
@@ -156,6 +201,9 @@ forward() {
       do_ mv "$H/.kunumy/ki.db$end" "$H/.kunumy/kunumy.db$end"
     fi
   done
+
+  say "-- the work sessions' transcripts, under the new name too"
+  if [ -n "$DRY" ]; then transcripts "$H/.ki" make; else transcripts "$H/.kunumy" make; fi
 
   say "-- the settings"
   local data=$H/.kunumy cdir=$CONF/kunumy
@@ -219,6 +267,8 @@ back() {
     [ ! -d "$UNITS/$n.service.d" ] || do_ rm -r "$UNITS/$n.service.d"
   done
 
+  say "-- the transcripts' links"
+  transcripts "$H/.kunumy" remove
   say "-- the folders (each new path left as a link to the old, for what ran meanwhile)"
   [ ! -e "$H/.kunumy/kunumy.db" ] || for end in "" -wal -shm; do
     [ ! -e "$H/.kunumy/kunumy.db$end" ] || do_ mv "$H/.kunumy/kunumy.db$end" "$H/.kunumy/ki.db$end"
@@ -256,4 +306,5 @@ back() {
   say "== rolled back${DRY:+ (dry run)}. Check: ki version; systemctl --user status ki-serve ki-device."
 }
 
+detached "${ARGS[@]}"
 if [ -n "$BACK" ]; then back; else forward; fi
