@@ -19,6 +19,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Out } from "./Agent.ts";
+import type { Vendor } from "./AskAI.ts";
 import { Browser, MEDIA } from "./Browser.ts";
 import { call_gist, call_parse } from "./Call.ts";
 import * as config from "./Config.ts";
@@ -29,6 +30,7 @@ import { err_why } from "./Err.ts";
 import { get, rec, str, text_of } from "./Json.ts";
 import { Machine } from "./Machine.ts";
 import { Owner } from "./Owner.ts";
+import { LABELS, Pick } from "./Pick.ts";
 import { Brief } from "./Brief.ts";
 import type { Job } from "./Driver.ts";
 import { transients } from "./Service.ts";
@@ -91,6 +93,9 @@ const LEAD = 60e3;
 // what a run tells once its model has begun to answer
 const ANSWERED = new Set<Ev["k"]>(["text", "tool", "turn", "ask", "question", "limit", "end"]);
 
+// what a run tells once a usage limit's wait is over
+const GOES_ON = new Set<Ev["k"]>(["began", "text", "tool", "result", "ask", "question", "turn", "compacted", "end"]);
+
 // a stop doesn't wait for the unit to end, which takes up to its
 // TimeoutStopSec; nothing new starts in the worktree till it has
 const STOPPING = "Its holder is still stopping: try again in a few seconds.";
@@ -110,8 +115,12 @@ const FILE = /^[\w][\w.-]{0,200}$/;
 
 // each session's cards its holder's parked calls wait on, by call
 const CARDS = new Map<string, Map<string, AbortController>>();
-// each session's latest log line, once known
-const LATEST = new Map<string, string>();
+// what each session's log told lately, once known, as far as seq: its
+// latest line; the reset of the usage limit it waits on (null: none; a
+// new holder waits on none till it says so); the tokens of its latest
+// request (null: none yet)
+type Lately = { seq: number; last: string; until: number | null; used: number | null };
+const LATELY = new Map<string, Lately>();
 // the wakes being delivered
 const SENDING = new Set<string>();
 // the calls of Kunumy's tools running here, by id, with their session
@@ -231,6 +240,7 @@ export namespace Sessions {
     const launches = s.launches + 1;
     const h = Holders.named(s.id, s.dir, launches);
     Session.set(s.id, { launches, unit: h.unit, sock: h.sock });
+    LATELY.set(s.id, { ...lately(s), until: null });
     const first = s.launches > 0 && s.sdk === "" ? Session.runs(s.id)[0]?.prompt ?? prompt : prompt;
     const text = first === prompt ? prompt : first + "\n\n" + prompt;
     const t = HOOKS.tools;
@@ -390,9 +400,10 @@ export namespace Sessions {
   // one event taken into the record, once: what's left to do after it
   function take(id: string, told: Told): Effect[] {
     const fx = Session.apply(id, told);
-    const latest = latest_of(told.ev);
-    if (latest !== "") {
-      LATEST.set(id, latest);
+    // one not read yet is read from its log, which has the event already
+    const known = LATELY.get(id);
+    if (known !== undefined) {
+      LATELY.set(id, lately_after(known, told));
     }
     return fx;
   }
@@ -616,7 +627,7 @@ export namespace Sessions {
     Session.set(id, { archived: 1 });
     Holders.forget(holder(s));
     CARDS.delete(id);
-    LATEST.delete(id);
+    LATELY.delete(id);
     TRIED.delete(id);
     HOOKS.change();
     return null;
@@ -632,14 +643,39 @@ export namespace Sessions {
 
   // the session as the app and the session tool show it
   export function row(s: Session): SessionRow {
-    if (!LATEST.has(s.id)) {
-      const last = Hold.told(s.dir).map((t) => latest_of(t.ev)).findLast((b) => b !== "");
-      LATEST.set(s.id, last ?? line(s.last, LINE));
-    }
+    const told = lately(s);
     const run = Session.run(s.id);
-    const waits: Waits = Session.parked(s.id).length > 0 ? "approval" : Session.questions(s.id).length > 0 ? "answer" : null;
+    const waits: Waits = Session.parked(s.id).length > 0 ? "approval" : Session.questions(s.id).length > 0 ? "answer" : LIVE.includes(s.status) && told.until !== null ? "limit" : null;
     const ended = run?.ended ?? null;
-    return { id: s.id, name: s.name, who: Session.label(s), agent: s.agent, branch: s.branch, status: s.status, waits, last: LATEST.get(s.id) ?? "", started: run?.started ?? s.made, ended, at: s.at, unseen: ended !== null && ended > s.seen };
+    const models = Pick.models([vendor(s)], LABELS).map(([, m]) => m);
+    const model = models.find((m) => m.id === s.model || m.label === s.model);
+    // one Claude Code names on its own (opus, its default): the least window
+    const window = model?.window ?? Math.min(...models.map((m) => m.window));
+    return {
+      id: s.id, name: s.name, who: Session.label(s), agent: s.agent, branch: s.branch, task: line(Session.task(s.id), LINE), model: model?.label ?? s.model, effort: s.effort,
+      status: s.status, waits, until: waits === "limit" ? told.until : null, meter: told.used === null ? null : { tokens: told.used, window },
+      last: told.last, started: run?.started ?? s.made, ended, at: s.at, unseen: ended !== null && ended > s.seen,
+    };
+  }
+
+  // the vendor it runs at: a work session's is a Claude plan
+  function vendor(s: Session): Vendor {
+    return s.provider === "openai" ? (s.account === "key" ? "openai-api" : "openai-sub") : s.account === "key" ? "claude-api" : "claude-sub";
+  }
+
+  // what its log told lately, read from it the first time
+  function lately(s: Session): Lately {
+    const known = LATELY.get(s.id) ?? Hold.told(s.dir).reduce(lately_after, { seq: 0, last: line(s.last, LINE), until: null, used: null });
+    LATELY.set(s.id, known);
+    return known;
+  }
+
+  function lately_after(l: Lately, t: Told): Lately {
+    if (t.seq <= l.seq) {
+      return l;
+    }
+    const last = latest_of(t.ev);
+    return { seq: t.seq, last: last === "" ? l.last : last, until: t.ev.k === "limit" ? t.ev.until : GOES_ON.has(t.ev.k) ? null : l.until, used: t.ev.k === "used" ? t.ev.tokens : l.used };
   }
 
   // the session's page, with a page of its log (log)
@@ -769,7 +805,7 @@ export namespace Sessions {
   function read(s: Session, after: number | null, n: number): string {
     const p = page(s, 0, Infinity, null);
     const run = p.runs.at(-1) ?? null;
-    const all = p.log.filter((t) => !["began", "heard", "replied", "compacted", "dropped"].includes(t.ev.k));
+    const all = p.log.filter((t) => !["began", "heard", "replied", "compacted", "dropped", "used"].includes(t.ev.k));
     const shown = after === null ? all.slice(-TAIL) : all.filter((t) => t.seq > after).slice(0, Math.min(Math.max(1, n), LINES_MOST));
     const more = after !== null && shown.length > 0 && all.at(-1) !== shown.at(-1);
     const where = { folder: "Folder " + p.worktree, detached: "Worktree " + p.worktree + " at " + p.base + ", on no branch", branch: "Branch " + p.branch + " from " + p.base + ", worktree " + p.worktree }[place(s)];

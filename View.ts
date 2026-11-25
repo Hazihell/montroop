@@ -36,14 +36,22 @@ export type Live = { kind: Kind; text: string; of?: string };
 export type Mate = { id: string; name: string; about: string; picture: string; unread: number; last: string; busy: boolean; asks?: number; archived: number; subs?: SubRow[]; works?: SessionRow[] };
 
 // what a work session waits on: the owner's approval of a call it parked,
-// or its agent's answer to its question
-export type Waits = "approval" | "answer" | null;
+// its agent's answer to its question, or a usage limit's reset
+export type Waits = "approval" | "answer" | "limit" | null;
 
 // a work session or subagent as the app lists it: who, the name its cards
-// are asked by; last, its latest line; started and ended, its latest
-// run's; at, when its record last changed; unseen, its run ended since the
-// owner last looked
-export type SessionRow = { id: string; name: string; who: string; agent: string; branch: string; status: Status; waits: Waits; last: string; started: number; ended: number | null; at: number; unseen: boolean };
+// are asked by; task, its first run's message; model ("": its account's
+// default) and effort ("": the model's), as names a person reads; until,
+// the reset of the usage limit it waits on; meter, how full its context
+// was at its latest request (null: none yet); last, its latest line;
+// started and ended, its latest run's; at, when its record last changed;
+// unseen, its run ended since the owner last looked
+export type SessionRow = {
+  id: string; name: string; who: string; agent: string; branch: string; task: string; model: string; effort: string;
+  status: Status; waits: Waits; until: number | null; meter: Meter | null; last: string; started: number; ended: number | null; at: number; unseen: boolean;
+};
+
+export type Meter = { tokens: number; window: number };
 
 // a work session's page: its runs, the calls and questions it waits on,
 // the messages sent to it (heard: 1 taken in, 0 not yet, -1 dropped as it
@@ -344,9 +352,13 @@ export function talk_percent(talk: Talk): number {
   return Math.ceil(talk.used * 100);
 }
 
+// a count of tokens, short: 12K, 1M
+export function tokens_said(n: number): string {
+  return n >= 1e6 ? +(n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "K" : String(n);
+}
+
 export function talk_tokens(talk: Talk): string {
-  const k = (n: number) => (n >= 1e6 ? +(n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "K" : String(n));
-  return "about " + k(talk.tokens) + " of " + talk.model + "'s " + k(talk.window) + " tokens" + (talk.guess ? ", guessed: no request yet" : ", in its last request and the messages since");
+  return "about " + tokens_said(talk.tokens) + " of " + talk.model + "'s " + tokens_said(talk.window) + " tokens" + (talk.guess ? ", guessed: no request yet" : ", in its last request and the messages since");
 }
 
 export function view_new(agent: string): View {

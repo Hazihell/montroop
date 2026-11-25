@@ -96,6 +96,41 @@ test.concurrent("a review stopped mid-run has its worktree removed once its hold
   expect(waiting(t)).toBe(false);
 });
 
+test.concurrent("one lists with its task, model and effort, and how full its context was at its latest request", async () => {
+  const k = await Kny.up();
+  const t = tag();
+  await fake.next(t + ": count the herons", { what: "reply", text: "Twelve.", used: { input: 1200, read: 30000, write: 800 } });
+  const [s] = await k.subagents({ task: t + ": count the herons", name: "ls", model: "haiku-5.5", effort: "low", memory: false });
+
+  expect(await s.status("done")).toMatchObject({ task: t + ": count the herons", model: "haiku-5.5", effort: "low", meter: { tokens: 32000, window: 1e6 } });
+});
+
+// its agent on another vendor, which the limit doesn't stop
+test.concurrent("one waiting out a usage limit lists as waiting on it, with its reset, till it is stopped, and not once resumed", async () => {
+  const model = "openai-api:gpt-6-luna:low:slow";
+  const k = await Kny.up({ vendors: "claude-sub,openai-api", pick: model, compactor: model, agents: model }, ROOT, { openai: "sk-proj-test-" + tag() });
+  const t = tag();
+  const reset = Date.now() + 3600e3;
+  await fake.next(t + ": work", { what: "error", kind: "usage-limit", reset });
+  const [s] = await k.subagents({ task: t + ": work", name: "lw", model: "haiku-5.5", memory: false });
+
+  const parked = await until("it waits on the limit", async () => {
+    const p = await s.page();
+    return p.waits === "limit" ? p : null;
+  });
+  expect(parked).toMatchObject({ status: "running", meter: null });
+  // the reset as Claude Code tells it, in whole seconds
+  expect(Math.abs((parked.until ?? 0) - reset)).toBeLessThan(1000);
+  expect((await k.api("POST", "/api/sessions/" + s.id + "/stop", {})).status).toBe(200);
+  expect(await s.status("stopped")).toMatchObject({ waits: null, until: null });
+  await fake.lift(reset);
+  await fake.next(t + ": work", { what: "stall", ms: 3000 });
+  await until("its holder gone", () => s.holder() === null);
+  expect((await k.api("POST", "/api/sessions/" + s.id + "/resume", {})).status).toBe(200);
+
+  expect(await s.status("running")).toMatchObject({ waits: null, until: null });
+});
+
 test.concurrent("a usage limit is waited out in its holder, and it goes on by itself at the reset", async () => {
   const k = await Kny.up();
   const t = tag();
@@ -146,13 +181,13 @@ test.concurrent("one at work through a server restart goes on in the same holder
   expect(await said(k, s.woke("failed:"))).toBe(0);
 });
 
-test.concurrent("one on an API key runs Kunumy's loop, and its calls of Kunumy's tools, on a device and on its agent's memory, are answered", async () => {
+test.concurrent("one on an API key runs Kunumy's loop, and its calls of Kunumy's tools, on a device and on its agent's memory, are answered; its latest request's tokens make its meter", async () => {
   const model = "claude-api:haiku-5.5:low:slow";
   const k = await Kny.up({ vendors: "claude-api", pick: model, compactor: model, agents: model }, ROOT, { anthropic: "sk-ant-api03-test-" + tag() });
   const t = tag();
   await k.device("box");
   await fake.next(t + ": work", { what: "tool", calls: [["shell", { device: "box", command: "echo " + t + "-ran" }], ["search", { query: "heron-" + t }]] });
-  await fake.next(t + "-ran", { what: "reply", text: t + " finished" });
+  await fake.next(t + "-ran", { what: "reply", text: t + " finished", used: { input: 900, read: 40000, write: 600 } });
   const [s] = await k.subagents({ task: t + ": work", name: "ak" });
 
   const done = await s.status("done");
@@ -160,6 +195,7 @@ test.concurrent("one on an API key runs Kunumy's loop, and its calls of Kunumy's
   expect(results(done.log, "Nothing in this chat matches.").map((x) => x.ev.error)).toEqual([false]);
   expect(new Set((await fake.seen(t + ": work")).map((x) => x.vendor))).toEqual(new Set(["claude-api"]));
   expect(done.runs[0].report).toBe(t + " finished");
+  expect(done.meter).toEqual({ tokens: 41500, window: 1e6 });
 });
 
 for (const via of VIAS) {

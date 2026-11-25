@@ -61,7 +61,7 @@ export namespace Loop {
 
   export function over<S, E>(wire: Api<S, E>, vendor: Vendor): Driver {
     return async (job, io) => {
-      const ask = Loop.asked(job, vendor);
+      const ask = { ...Loop.asked(job, vendor), used: (tokens: number) => io.emit({ k: "used", tokens }) };
       const key = wire.auth ? "" : config.KEYS[wire.key];
       if (!key && !wire.auth) {
         return { ok: false, text: "no API key: set " + wire.key.toUpperCase() + "_API_KEY" };

@@ -28,7 +28,8 @@ const UP: Kny[] = [];
 const DEVICES: Bun.Subprocess[] = [];
 
 type Page = {
-  status: string; waits: string | null; worktree: string;
+  status: string; waits: string | null; until: number | null; worktree: string;
+  task: string; model: string; effort: string; meter: { tokens: number; window: number } | null;
   runs: Array<{ n: number; status: string; attempts: number; why: string; report: string }>;
   parked: Array<{ id: string; tool: string; input: string }>; questions: Array<{ id: string; text: string }>;
   says: Array<{ id: string; heard: number }>; log: Told[];

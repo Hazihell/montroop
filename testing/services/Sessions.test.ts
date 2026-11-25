@@ -4,6 +4,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { Session } from "../../Session.ts";
 import { Sessions } from "../../Sessions.ts";
+import type { Ev } from "../../Wire.ts";
 
 const mine = Session.add({ id: "0123abcd", name: "mine", agent: "owner1", repo: "/repo", base: "main", branch: "kny/mine", worktree: "/repo-mine", account: "", model: "", dir: path.join(DIR, "sessions", "0123abcd") }, "the first message");
 
@@ -39,4 +40,22 @@ test("a session's read shows the usage limit its run waits out", () => {
   fs.mkdirSync(mine.dir, { recursive: true });
   fs.writeFileSync(path.join(mine.dir, "log.jsonl"), JSON.stringify({ seq: 1, at: 1, ev: { k: "limit", until: Date.now() + 3600e3 } }) + "\n");
   expect(Sessions.tool("owner1", { action: "read", name: "mine" }).text).toMatch(/\n1 limit: waits for a usage limit, till .*\d\d:\d\d$/);
+});
+
+// a subagent on a ChatGPT plan, its log as given, as the app lists it
+function listed(id: string, log: Ev[]): ReturnType<typeof Sessions.row> {
+  const s = Session.add({ id, name: "s-" + id, agent: "owner2", repo: "", base: "", branch: "", worktree: "/scratch/owner2/sessions/s-" + id, provider: "openai", account: "chatgpt", model: "gpt-6.2-astra", effort: "high", memory: 0, write: 1, device: "", dir: path.join(DIR, "sessions", id) }, "tally the herons");
+  fs.mkdirSync(s.dir, { recursive: true });
+  fs.writeFileSync(path.join(s.dir, "log.jsonl"), log.map((ev, k) => JSON.stringify({ seq: k + 1, at: Date.now() + k, ev }) + "\n").join(""));
+  return Sessions.row(s);
+}
+
+test("one waiting out a usage limit lists as waiting on it, with its reset, and how full its context was at its latest request, in its plan's window", () => {
+  expect(listed("89abcd01", [{ k: "used", tokens: 68000 }, { k: "text", text: "Counting." }, { k: "limit", until: 1795620000000 }])).toMatchObject({
+    task: "tally the herons", model: "gpt-6.2-astra", effort: "high", status: "running", waits: "limit", until: 1795620000000, meter: { tokens: 68000, window: 272000 },
+  });
+});
+
+test("one that went on after a usage limit no longer lists as waiting on it", () => {
+  expect(listed("89abcd02", [{ k: "limit", until: 1795620000000 }, { k: "text", text: "Going on." }])).toMatchObject({ status: "running", waits: null, until: null, meter: null, last: "Going on." });
 });

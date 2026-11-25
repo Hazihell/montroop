@@ -183,6 +183,11 @@ export namespace Session {
     return opened().query("select * from work_runs where session = ? order by n").all(id) as Run[];
   }
 
+  // what its first run was started on
+  export function task(id: string): string {
+    return (opened().query("select prompt from work_runs where session = ? order by n limit 1").get(id) as { prompt: string } | null)?.prompt ?? "";
+  }
+
   export function run(id: string): Run | null {
     return (opened().query("select * from work_runs where session = ? order by n desc limit 1").get(id) as Run | null) ?? null;
   }
