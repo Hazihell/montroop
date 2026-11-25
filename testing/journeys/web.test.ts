@@ -58,7 +58,7 @@ test.concurrent("the owner opens a work session from what runs, reads its report
   await page.getByRole("textbox", { name: "Message typo" }).fill("j2: and the other one");
   await page.getByRole("button", { name: "Send" }).click();
   await page.getByText("Fixed the other one too.").waitFor();
-  expect((await s.page()).runs.map((r) => r.status)).toEqual(["done", "done"]);
+  await until("its second run done", async () => (await s.page()).runs.map((r) => r.status).join() === "done,done");
   await k.kill();
 });
 
