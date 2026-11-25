@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { err_code } from "./Err.ts";
+import { err_code, err_why } from "./Err.ts";
 
 export type Part = "serve" | "device";
 
@@ -690,6 +690,121 @@ function read(file: string): string | null {
     return fs.readFileSync(file, "utf8");
   } catch {
     return null;
+  }
+}
+
+// A transient unit: a process the server starts that outlives it, as a
+// systemd user unit where the user's systemd answers, else (Linux without
+// it, as in a container) as a detached process kept track of by a file of
+// its pid in dir, its output in a log beside it. Which one a unit is, is
+// told by that file, so units started either way are both found again.
+type Unit = { name: string; dir: string };
+
+// a detached unit's own variable: its name, which it and all it starts
+// carry, as a systemd unit's processes are in its cgroup
+const UNIT_MARK = "KNY_HOLD";
+
+// the variables a systemd unit has from the user's manager, which a
+// detached one takes from its starter
+const UNIT_OWN = ["HOME", "USER", "LOGNAME", "TMPDIR", "XDG_RUNTIME_DIR"];
+
+// how long a unit told to stop has before it's killed
+const UNIT_STOP = 10e3;
+
+let SYSTEMD: boolean | null = null;
+
+function systemd(): boolean {
+  SYSTEMD ??= Bun.which("systemd-run") !== null && run(["systemctl", "--user", "show-environment"]).code === 0;
+  return SYSTEMD;
+}
+
+function pid_file(u: Unit): string {
+  return path.join(u.dir, u.name + ".pid");
+}
+
+// whether units can start here
+export function transients(): boolean {
+  return process.platform === "linux" || systemd();
+}
+
+// null: started; else why not
+export function transient(u: Unit, about: string, cmd: string[], env: Record<string, string>): string | null {
+  if (systemd()) {
+    const r = run(["systemd-run", "--user", "--collect", "--quiet", "--unit=" + u.name, "--description=" + about, "-p", "TimeoutStopSec=" + UNIT_STOP / 1000, ...Object.entries(env).map(([k, v]) => "--setenv=" + k + "=" + v), "--", ...cmd]);
+    return r.code === 0 ? null : "systemd-run failed: " + output(r);
+  }
+  const log = fs.openSync(path.join(u.dir, u.name + ".log"), "a");
+  let p: Bun.Subprocess | null = null;
+  try {
+    const own = Object.fromEntries(UNIT_OWN.flatMap((k) => (process.env[k] ? [[k, process.env[k]]] : [])));
+    p = Bun.spawn(cmd, { env: { ...own, ...env, [UNIT_MARK]: u.name }, stdio: ["ignore", log, log], detached: true });
+    p.unref();
+    fs.writeFileSync(pid_file(u), String(p.pid));
+    return null;
+  } catch (err) {
+    p?.kill("SIGKILL");
+    return "its process didn't start: " + err_why(err);
+  } finally {
+    fs.closeSync(log);
+  }
+}
+
+// a detached unit found gone takes what it left running with it, as a
+// systemd unit's end does
+export function active(u: Unit): boolean {
+  const file = pid_file(u);
+  if (!fs.existsSync(file)) {
+    return systemd() && ["active", "activating", "deactivating"].includes(output(run(["systemctl", "--user", "is-active", u.name])));
+  }
+  if (marked(Number(read(file)) || 0, u.name)) {
+    return true;
+  }
+  sweep(u.name, "SIGKILL");
+  fs.rmSync(file, { force: true });
+  return false;
+}
+
+// it and everything it started ended: asked first, killed after
+// UNIT_STOP (or, its starter gone first, once it finds the unit gone)
+export function halt(u: Unit): void {
+  if (!fs.existsSync(pid_file(u))) {
+    if (systemd()) {
+      run(["systemctl", "--user", "stop", "--no-block", u.name]);
+    }
+    return;
+  }
+  sweep(u.name, "SIGTERM");
+  setTimeout(() => sweep(u.name, "SIGKILL"), UNIT_STOP).unref();
+}
+
+// for a unit's main process at its end: what it leaves running ends with
+// it (systemd does that itself)
+export function reap(): void {
+  const name = process.env[UNIT_MARK];
+  if (name !== undefined) {
+    sweep(name, "SIGKILL");
+  }
+}
+
+// a process that runs, not a zombie, of the detached unit name (so not one
+// that took the id of one since)
+function marked(pid: number, name: string): boolean {
+  try {
+    const stat = fs.readFileSync("/proc/" + pid + "/stat", "utf8");
+    return !stat.slice(stat.lastIndexOf(")") + 2).startsWith("Z") && fs.readFileSync("/proc/" + pid + "/environ", "utf8").split("\0").includes(UNIT_MARK + "=" + name);
+  } catch {
+    return false;
+  }
+}
+
+// every process of the unit's but this one, signalled
+function sweep(name: string, signal: "SIGTERM" | "SIGKILL"): void {
+  for (const pid of fs.readdirSync("/proc").filter((d) => /^\d+$/.test(d)).map(Number)) {
+    if (pid !== process.pid && marked(pid, name)) {
+      try {
+        process.kill(pid, signal);
+      } catch {}
+    }
   }
 }
 

@@ -34,7 +34,7 @@ const CONNECTORS = ["mcp__claude_ai_Slack", "mcp__claude_ai_Linear", "mcp__claud
 // what turns off what Claude Code does beyond calling the model; its
 // prompt cache pinned to an hour (CLAUDE_CODE_PROMPT_CACHE_TTL comes
 // before its own choice, which is an hour on a plan but 5 minutes under
-// extra usage), as is our mark (ClaudeSub.inbox): the API refuses a 1h
+// extra usage), as is our mark (inbox): the API refuses a 1h
 // mark after a 5m one
 const ENV = {
   CLAUDE_CODE_PROMPT_CACHE_TTL             : "1h",
@@ -87,7 +87,7 @@ type Sdk = typeof import("@anthropic-ai/claude-agent-sdk");
 
 type Code = {
   q    : Query;
-  box  : ReturnType<typeof ClaudeSub.inbox>;
+  box  : ReturnType<typeof inbox>;
   proc : child.ChildProcess | null;
   exit : Promise<void>;
   gone : () => void;
@@ -344,7 +344,7 @@ export namespace ClaudeSub {
   }
 
   export function start(sdk: Sdk, bin: string, ask: Ask, held: boolean): Code {
-    const box = ClaudeSub.inbox();
+    const box = inbox();
     let gone = () => {};
     const exit = new Promise<void>((ok) => (gone = ok));
     if (held) {
@@ -657,37 +657,37 @@ export namespace ClaudeSub {
     return results.map((b) => ({ kind: "echo", text: (get(b, "is_error") ? "error: " : "") + (AskAI.show(get(b, "content")) || "(no output)"), of: text_of(get(b, "tool_use_id")) }));
   }
 
-  // the messages Claude Code reads, as they come; closed: it ends. A put's
-  // text `mark` (-1: none) ends a cache entry, an hour's (ENV): the view's
-  // mark (AskAI.view_blocks), so a turn reads the view the turn before
-  // cached. One only: a request takes four, and Claude Code marks
-  // three of its own: our system prompt's shared part, before the
-  // boundary, its own part (ClaudeSub.options), and its last message
-  export function inbox() {
-    const queue: SDKUserMessage[] = [];
-    let wake = () => {};
-    let shut = false;
-    const push = (content: unknown[]) => {
-      queue.push({ type: "user", message: { role: "user", content: content as Exclude<SDKUserMessage["message"]["content"], string> }, parent_tool_use_id: null });
-      wake();
-    };
-    const put = (texts: string[], imgs: Img[], mark = -1) => push(Anthropic.content(texts, imgs).map((b, k) => (k === mark ? { ...b, cache_control: HOUR } : b)));
-    const close = () => {
-      shut = true;
-      wake();
-    };
-    async function* read(): AsyncGenerator<SDKUserMessage> {
-      for (;;) {
-        for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
-          yield next;
-        }
-        if (shut) {
-          return;
-        }
-        await new Promise<void>((ok) => (wake = ok));
-      }
-    }
-    return { put, close, read, empty: () => queue.length === 0, open: () => !shut };
-  }
+}
 
+// the messages Claude Code reads, as they come; closed: it ends. A put's
+// text `mark` (-1: none) ends a cache entry, an hour's (ENV): the view's
+// mark (AskAI.view_blocks), so a turn reads the view the turn before
+// cached. One only: a request takes four, and Claude Code marks
+// three of its own: our system prompt's shared part, before the
+// boundary, its own part (ClaudeSub.options), and its last message
+function inbox() {
+  const queue: SDKUserMessage[] = [];
+  let wake = () => {};
+  let shut = false;
+  const push = (content: unknown[]) => {
+    queue.push({ type: "user", message: { role: "user", content: content as Exclude<SDKUserMessage["message"]["content"], string> }, parent_tool_use_id: null });
+    wake();
+  };
+  const put = (texts: string[], imgs: Img[], mark = -1) => push(Anthropic.content(texts, imgs).map((b, k) => (k === mark ? { ...b, cache_control: HOUR } : b)));
+  const close = () => {
+    shut = true;
+    wake();
+  };
+  async function* read(): AsyncGenerator<SDKUserMessage> {
+    for (;;) {
+      for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
+        yield next;
+      }
+      if (shut) {
+        return;
+      }
+      await new Promise<void>((ok) => (wake = ok));
+    }
+  }
+  return { put, close, read };
 }

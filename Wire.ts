@@ -1,31 +1,33 @@
 // Wire
 // ====
-// A work session's holder (Hold) and the server talk over a unix socket,
+// A holder (Hold) and the server talk over a unix socket,
 // one JSON message a line. The holder numbers what it tells (seq) and keeps
 // it until the server acks it, telling it again after each hello; the
-// newest hello owns the session, the connection it replaces is closed.
+// newest hello owns the holder, the connection it replaces is closed.
 // Either side may run an older program than the other (a holder outlives
 // the server that started it): a message or event a side doesn't know is
 // ignored (an event still acked), and a message's fields are only ever
 // added, never renamed or removed. v: the sender's VERSION, raised with
-// each change, so a side can tell what the other knows.
+// each change, so a side can tell what the other knows (2: the holder's
+// start names its driver).
 
 import type * as net from "node:net";
 import { rec } from "./Json.ts";
 import type { Rule } from "./Rules.ts";
 
-// a call a rule named, parked until the owner answers it (id: Claude
-// Code's tool use id, which the answer names)
+// a call a rule named, parked until the owner answers it (id: the
+// provider's tool use id, which the answer names; tool and input: the
+// provider's own)
 export type Ask = { id: string; tool: string; input: Record<string, unknown>; what: string };
 
-// a question the session asked its agent (ask_owner), its call waiting
+// a question the run asked its agent (ask_owner), its call waiting
 // for the answer
 export type Asking = { id: string; text: string };
 
-// what a session did. began: Claude Code's session id, which resumes it;
+// what a run did. began: the provider's session id, which resumes it;
 // heard: a message the server sent went in; replied: a question got its
-// answer; report: the session's result; turn: Claude Code finished a turn;
-// end: the holder's run is over and it exits
+// answer; report: the run's result; turn: the model finished a turn; end:
+// the holder's run is over and it exits
 export type Ev =
   | { k: "began"; sdk: string }
   | { k: "text"; text: string }
@@ -44,13 +46,13 @@ export type Ev =
 
 export type Told = { seq: number; at: number; ev: Ev };
 
-export const VERSION = 1;
+export const VERSION = 2;
 
 const CLIP = 2000;
 
-// rules: the ask rules changed; say: a message for the session (answer:
-// the answer to its first question waiting, if one still waits)
-type ToHold =
+// rules: the ask rules changed; say: a message for the run (answer: the
+// answer to its first question waiting, if one still waits)
+export type ToHold =
   | { $: "hello"; v: number; ack: number; rules: Rule[] }
   | { $: "ack"; seq: number }
   | { $: "rules"; rules: Rule[] }
