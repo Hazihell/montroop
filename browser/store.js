@@ -3,13 +3,13 @@ import { copyFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { Database } from 'bun:sqlite';
 
-const profile = process.env.KI_BROWSER_PROFILE ?? `${homedir()}/.local/share/unii-browser/profile/Default`;
+const profile = process.env.KNY_BROWSER_PROFILE ?? `${homedir()}/.local/share/kunumy-browser/profile/Default`;
 
 export function saved(origin, username) {
   const found = [];
   for (const file of ['Login Data', 'Login Data For Account']) {
     if (!Bun.file(`${profile}/${file}`).size) continue;
-    const copy = mkdtempSync(`${process.env.XDG_RUNTIME_DIR ?? tmpdir()}/unii-browser-`);
+    const copy = mkdtempSync(`${process.env.XDG_RUNTIME_DIR ?? tmpdir()}/kunumy-browser-`);
     copyFileSync(`${profile}/${file}`, `${copy}/db`);
     const db = new Database(`${copy}/db`, { readonly: true });
     try {

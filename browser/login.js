@@ -5,7 +5,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 
-const endpoint = process.env.KI_BROWSER_ENDPOINT ?? 'http://127.0.0.1:9222';
+const endpoint = process.env.KNY_BROWSER_ENDPOINT ?? 'http://127.0.0.1:9222';
 const server = new Server({ name: 'brave-login', version: '1' }, { capabilities: { tools: {} } });
 const result = (status, reason) => ({ content: [{ type: 'text', text: JSON.stringify({ status, reason }) }] });
 

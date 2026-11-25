@@ -10,7 +10,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import { saved } from './store.js';
 import { challenge } from './challenge.js';
 
-const endpoint = process.env.KI_BROWSER_ENDPOINT ?? 'http://127.0.0.1:9222';
+const endpoint = process.env.KNY_BROWSER_ENDPOINT ?? 'http://127.0.0.1:9222';
 const withheld = new Set(['browser_install', 'browser_close']);
 const secrets = new Set();
 let secretEntries = {};
@@ -23,7 +23,7 @@ const upstreamSecrets = new Proxy({}, {
   getOwnPropertyDescriptor: () => ({ enumerable: true, configurable: true }),
   get: (_target, key) => secretEntries[key],
 });
-const outputDir = process.env.KI_BROWSER_OUTPUT ?? `${homedir()}/.local/state/unii-browser/mcp`;
+const outputDir = process.env.KNY_BROWSER_OUTPUT ?? `${homedir()}/.local/state/kunumy-browser/mcp`;
 mkdirSync(outputDir, { recursive: true, mode: 0o700 });
 const upstream = await createConnection({ outputDir, browser: { cdpEndpoint: endpoint }, secrets: upstreamSecrets, snapshot: { mode: 'full' } });
 const [local, remote] = InMemoryTransport.createLinkedPair();

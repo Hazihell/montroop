@@ -1,5 +1,5 @@
 [Unit]
-Description=Ki dedicated Brave browser
+Description=Kunumy dedicated Brave browser
 StartLimitIntervalSec=0
 
 [Service]
@@ -9,7 +9,7 @@ Environment=WAYLAND_DISPLAY=wayland-0
 Environment=XDG_RUNTIME_DIR=%t
 UMask=0077
 ExecStartPre=/usr/bin/test -S /tmp/.X11-unix/X0
-ExecStart=/usr/bin/brave-browser --user-data-dir=%h/.local/share/unii-browser/profile --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 --password-store=basic --no-first-run --no-default-browser-check --disable-background-mode --disable-breakpad --ozone-platform=x11 about:blank
+ExecStart=/usr/bin/brave-browser --user-data-dir=%h/.local/share/kunumy-browser/profile --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 --password-store=basic --no-first-run --no-default-browser-check --disable-background-mode --disable-breakpad --ozone-platform=x11 about:blank
 Restart=always
 RestartSec=5
 TimeoutStopSec=20
