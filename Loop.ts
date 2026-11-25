@@ -13,7 +13,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Agent, type Item, type Out, type Step, type Use, type Wire as Api } from "./Agent.ts";
-import { AskAI, type Ask, type Vendor } from "./AskAI.ts";
+import { AskAI, type Ask, type Event, type Vendor } from "./AskAI.ts";
 import * as config from "./Config.ts";
 import type { Driver, Io, Job } from "./Driver.ts";
 import { err_why } from "./Err.ts";
@@ -48,6 +48,16 @@ export namespace Loop {
     };
   }
 
+  // what a usage limit's wait tells the server: a long one (Limit.hit;
+  // a short one is the service being busy)
+  export function limits(io: Io): (ev: Event) => void {
+    return (ev) => {
+      if (ev.$ === "Limit" && ev.limit !== null) {
+        io.emit({ k: "limit", until: ev.limit.until });
+      }
+    };
+  }
+
   export function over<S, E>(wire: Api<S, E>, vendor: Vendor): Driver {
     return async (job, io) => {
       const ask = Loop.asked(job, vendor);
@@ -56,7 +66,7 @@ export namespace Loop {
         return { ok: false, text: "no API key: set " + wire.key.toUpperCase() + "_API_KEY" };
       }
       const abort = new AbortController();
-      const on = () => {};
+      const on = Loop.limits(io);
       const run = { ask, on, abort, end: AskAI.end(""), limit: Limit.make(ask, on, abort.signal) };
       const c = job.context;
       const items: Item[] = [];

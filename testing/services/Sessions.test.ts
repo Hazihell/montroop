@@ -1,5 +1,6 @@
 import { DIR } from "../home.ts";
 import { expect, test } from "bun:test";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { Session } from "../../Session.ts";
 import { Sessions } from "../../Sessions.ts";
@@ -21,4 +22,10 @@ test("another agent can't read, send to, stop or archive a session", () => {
 
 test("a message sent with the session tool needs a request, so a retry sends it once", () => {
   expect(Sessions.tool("owner1", { action: "send", name: "mine", text: "hello" })).toEqual({ text: "send needs a request: an id of your own for this message (any new text); on a retry, the same one, so it's sent once.", fail: true });
+});
+
+test("a session's read shows the usage limit its run waits out", () => {
+  fs.mkdirSync(mine.dir, { recursive: true });
+  fs.writeFileSync(path.join(mine.dir, "log.jsonl"), JSON.stringify({ seq: 1, at: 1, ev: { k: "limit", until: Date.now() + 3600e3 } }) + "\n");
+  expect(Sessions.tool("owner1", { action: "read", name: "mine" }).text).toMatch(/\n1 limit: waits for a usage limit, till .*\d\d:\d\d$/);
 });

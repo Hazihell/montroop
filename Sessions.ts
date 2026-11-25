@@ -28,7 +28,7 @@ import { transients } from "./Service.ts";
 import { LIVE, Session, type Effect, type Mode, type Parked, type Run } from "./Session.ts";
 import type { Wake } from "./Wake.ts";
 import { Team } from "./Team.ts";
-import { PICTURE, SESSION, VIDEO, type SessionPage, type SessionRow, type Waits } from "./View.ts";
+import { clock, PICTURE, SESSION, VIDEO, type SessionPage, type SessionRow, type Waits } from "./View.ts";
 import type { Ev, Told } from "./Wire.ts";
 import { Worktree } from "./Worktree.ts";
 
@@ -531,6 +531,7 @@ export namespace Sessions {
       ev.k === "ask" ? "asks the user: " + ev.what + " (" + ev.tool + ")" :
       ev.k === "answered" ? (ev.ok ? "approved" : "denied") :
       ev.k === "question" || ev.k === "report" || ev.k === "turn" || ev.k === "end" ? ev.text :
+      ev.k === "limit" ? "waits for a usage limit, till " + clock(ev.until) :
       "";
   }
 

@@ -93,6 +93,13 @@ test("a question makes the session wait for its agent's answer, and wakes it wit
   expect(Session.get(s.id)?.status).toBe("running");
 });
 
+test("a run stopped by a usage limit wakes its agent, saying it goes on by itself, and stays at work", () => {
+  const s = session("spent");
+  const [wake] = woke(told(s, 1, { k: "limit", until: Date.now() + 2 * 3600e3 }));
+  expect(wake).toMatch(/^\[Session spent\] waiting: a usage limit, till .*\d\d:\d\d\. It goes on by itself then: nothing to do\.$/);
+  expect(Session.get(s.id)?.status).toBe("running");
+});
+
 test("the messages a run didn't take in start the next run on them when it ends", () => {
   const s = session("busy");
   Session.say({ id: s.id + "/r1", session: s.id, text: "Also do A.", mode: "queue", at: 1 });

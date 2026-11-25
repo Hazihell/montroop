@@ -83,7 +83,7 @@ export namespace Code {
     // the API refuses an hour's mark after Claude Code's own 5 minutes' one
     const ttl = marked >= 0 ? { CLAUDE_CODE_PROMPT_CACHE_TTL: "1h" } : {};
     const watch: Limits = { info: null, hit: false, over: false, cut: null };
-    const limit = Limit.make(Loop.asked(job, "claude-sub"), () => {}, new AbortController().signal);
+    const limit = Limit.make(Loop.asked(job, "claude-sub"), Loop.limits(io), new AbortController().signal);
     const gates = gated(io);
     let id = c.kind === "native" ? c.resume : "";
     let tasks = 0;
@@ -154,7 +154,7 @@ export namespace Code {
     const bin = await ClaudeSub.bin_on_disk();
     const dir = signed_in(job);
     const ask = Loop.asked(job, "claude-sub");
-    const limit = Limit.make(ask, () => {}, new AbortController().signal);
+    const limit = Limit.make(ask, Loop.limits(io), new AbortController().signal);
     const base = ClaudeSub.options(ask, new AbortController(), sdk.BUILTIN_TOOL_NAMES, sdk.SYSTEM_PROMPT_DYNAMIC_BOUNDARY);
     // its own tools (web search, tool search): a turn that called no
     // other waits out a limit in a new Claude Code (ClaudeSub.run)
