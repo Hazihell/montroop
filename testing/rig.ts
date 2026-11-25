@@ -9,7 +9,7 @@ import * as path from "node:path";
 import { Hold } from "../Hold.ts";
 import type { Order } from "./fake/server.ts";
 
-const ROOT = path.resolve(import.meta.dir, "..");
+export const ROOT = path.resolve(import.meta.dir, "..");
 const CONTROL = "http://127.0.0.1:9999";
 
 type Json = Record<string, unknown>;
@@ -56,6 +56,12 @@ export const fake = {
     const res = await fetch(CONTROL + "/log?match=" + encodeURIComponent(match));
     return ((await res.json()) as { log: Array<{ model: string; latest: string; tools: string[] }> }).log;
   },
+  // what the latest model call whose newest message has match was sent,
+  // message by message
+  async last(match: string): Promise<Array<{ role: string; text: string }>> {
+    const r = (await (await fetch(CONTROL + "/last?match=" + encodeURIComponent(match))).json()) as { log: Array<{ said: Array<{ role: string; text: string }> }> };
+    return r.log[0]?.said ?? [];
+  },
 };
 
 // a port no other test server takes (claimed with a folder in the suite's
@@ -73,7 +79,8 @@ function port(): number {
   throw new Error("no port left");
 }
 
-// a Kunumy server on a data folder of its own, with fake sign-ins to Claude
+// a Kunumy server on a data folder of its own, with fake sign-ins to
+// Claude; root: the checkout it runs (another version's, see older())
 export class Kny {
   proc: Bun.Subprocess | null = null;
   cookie = "";
@@ -81,15 +88,16 @@ export class Kny {
   readonly url: string;
   readonly home: string;
 
-  private constructor(readonly dir: string, readonly port: number) {
+  private constructor(readonly dir: string, readonly port: number, public root: string) {
     this.url = "http://127.0.0.1:" + port;
     this.home = path.dirname(dir);
   }
 
-  // more: config.json's settings beyond the suite's own
-  static async up(more: Json = {}): Promise<Kny> {
+  // more: config.json's settings beyond the suite's own; root: the checkout
+  // the server runs from
+  static async up(more: Json = {}, root = ROOT): Promise<Kny> {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "kny-"));
-    const k = new Kny(path.join(home, ".kunumy"), port());
+    const k = new Kny(path.join(home, ".kunumy"), port(), root);
     UP.push(k);
     fs.mkdirSync(path.join(k.dir, "claude-sub"), { recursive: true });
     const model = "claude-sub:haiku-5.5:low:slow";
@@ -109,7 +117,7 @@ export class Kny {
   // a server started on this data folder; up: once it serves
   spawn(): Bun.Subprocess {
     const log = fs.openSync(path.join(this.home, "serve.log"), "a");
-    const proc = Bun.spawn(["bun", path.join(ROOT, "Cli.ts"), "serve", String(this.port)], { cwd: this.home, env: this.env(), stdio: ["ignore", log, log] });
+    const proc = Bun.spawn(["bun", path.join(this.root, "Cli.ts"), "serve", String(this.port)], { cwd: this.home, env: this.env(), stdio: ["ignore", log, log] });
     fs.closeSync(log);
     return proc;
   }
@@ -131,7 +139,7 @@ export class Kny {
   }
 
   async login(): Promise<void> {
-    const out = Bun.spawnSync(["bun", path.join(ROOT, "Cli.ts"), "serve", "login"], { env: this.env() }).stdout.toString();
+    const out = Bun.spawnSync(["bun", path.join(this.root, "Cli.ts"), "serve", "login"], { env: this.env() }).stdout.toString();
     const code = /\b(\d{6})\b/.exec(out)?.[1] ?? "";
     const res = await fetch(this.url + "/auth", { method: "POST", body: new URLSearchParams({ code }), redirect: "manual" });
     this.cookie = res.headers.getSetCookie().map((c) => c.split(";")[0]).find((c) => c.startsWith("kunumy=")) ?? "";
@@ -220,6 +228,28 @@ class Session {
   holder(): number | null {
     return procs().find((p) => p.cmd.includes(" hold " + this.dir))?.pid ?? null;
   }
+}
+
+// a checkout of the last commit whose holders spoke the wire's version
+// before this one (Wire's VERSION), so a test can start its server and
+// holders; made once per test file
+let OLDER: string | null = null;
+export function older(): string {
+  if (OLDER !== null) {
+    return OLDER;
+  }
+  const version = /export const VERSION = (\d+);/.exec(fs.readFileSync(path.join(ROOT, "Wire.ts"), "utf8"))?.[1];
+  const raised = git(ROOT, "log", "-1", "--format=%H", "-S", "export const VERSION = " + version + ";", "--", "Wire.ts");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "older-"));
+  const r = Bun.spawnSync(["sh", "-c", "git -C \"$1\" archive \"$2^\" | tar -x -C \"$3\"", "sh", ROOT, raised, dir], { stderr: "pipe" });
+  if (r.exitCode !== 0 || raised === "") {
+    throw new Error("no checkout of the version before " + version + ": " + r.stderr.toString());
+  }
+  fs.symlinkSync(path.join(ROOT, "node_modules"), path.join(dir, "node_modules"));
+  fs.mkdirSync(path.join(dir, "ui"), { recursive: true });
+  fs.symlinkSync(path.join(ROOT, "ui", "dist"), path.join(dir, "ui", "dist"));
+  OLDER = dir;
+  return dir;
 }
 
 export async function down(): Promise<void> {

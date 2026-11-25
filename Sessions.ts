@@ -1,44 +1,36 @@
 // Sessions
 // ========
-// The server's side of work sessions: it starts each run's holder (Hold) as
-// a systemd user unit of its own (where the user's systemd doesn't answer,
-// as in a container, as a detached process group), so a server restart or
-// deploy leaves it running; links to it over its socket, taking in what it
-// tells (Wire) into the session's record (Session) and acking it; shows each call it
-// parks as the owner's Ask card (Gate) and sends the answer back. On boot
-// it links again to the holders still running, and marks the sessions
-// whose holder is gone as failed, to resume. When a run ends, or waits on
-// the owner or on its agent's answer, the agent gets one message that
-// starts its turn ("[Session name] done: …"), kept in the record till it's
-// in the agent's chat, so a restart neither loses nor repeats it. Agents
-// drive their own sessions with the session tool.
+// The server's side of work sessions: each run is a holder's (Holders),
+// running Claude Code in the session's worktree; what it tells goes into
+// the session's record (Session); each call it parks shows as the owner's
+// Ask card (Gate), whose answer goes back to it. On boot the holders still
+// running are adopted, and the sessions whose holder is gone marked as
+// failed, to resume. When a run ends, or waits on the owner or on its
+// agent's answer, the agent gets one message that starts its turn
+// ("[Session name] done: …"), kept in the record till it's in the agent's
+// chat, so a restart neither loses nor repeats it. Agents drive their own
+// sessions with the session tool.
 
 import * as fs from "node:fs";
-import * as net from "node:net";
 import * as path from "node:path";
 import type { Out } from "./Agent.ts";
 import { Browser, MEDIA } from "./Browser.ts";
 import { call_gist, call_parse } from "./Call.ts";
 import * as config from "./Config.ts";
-import { err_why } from "./Err.ts";
 import { Gate, type Asked } from "./Gate.ts";
-import { Hold, MARK, SPEC, START, type Spec, type Start } from "./Hold.ts";
+import { Hold, SPEC, type Spec } from "./Hold.ts";
+import { Holders, type Holder } from "./Holders.ts";
 import { get, rec, str, text_of } from "./Json.ts";
 import { Machine } from "./Machine.ts";
 import { Owner } from "./Owner.ts";
 import { Brief } from "./Brief.ts";
-import { command, output, run } from "./Service.ts";
+import { transients } from "./Service.ts";
 import { LIVE, Session, type Effect, type Mode, type Parked, type Run } from "./Session.ts";
 import type { Wake } from "./Wake.ts";
 import { Team } from "./Team.ts";
 import { PICTURE, SESSION, VIDEO, type SessionPage, type SessionRow, type Waits } from "./View.ts";
-import { VERSION, Wire, type Ev, type Told } from "./Wire.ts";
+import type { Ev, Told } from "./Wire.ts";
 import { Worktree } from "./Worktree.ts";
-
-// a session's link to its holder: the socket (null: none now), the
-// owner's cards its parked calls wait on, the tries to connect since it
-// last did, the next try's timer
-type Link = { sock: net.Socket | null; waits: Map<string, AbortController>; tries: number; timer: Timer | null };
 
 // what a new session needs: its agent; a repo on this computer, the ref
 // its branch starts from and the branch ("": kny/<name>); its name; the
@@ -64,19 +56,9 @@ const LINES = 50;
 const LINES_MOST = 200;
 const LINE = 300;
 
-// how long, at most, between tries to reach a holder that runs
-const RETRY = 5000;
-
 // how long, at most, between tries to deliver a wake its agent's chat
 // didn't take
 const REDELIVER = 60e3;
-
-// the variables a holder's Claude Code works with, from the server's
-const ENV = ["PATH", "LANG", "SHELL", "SSH_AUTH_SOCK", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "NODE_EXTRA_CA_CERTS"];
-
-// and those a unit has from the user's systemd, which a detached holder
-// takes from the server
-const OWN = ["HOME", "USER", "LOGNAME", "TMPDIR", "XDG_RUNTIME_DIR"];
 
 const AGAIN = "Your process was stopped before you were done, so the outcome of your last calls is unknown. Check what they did before doing any again, then go on with the task. The message you were working on:\n\n";
 
@@ -99,13 +81,8 @@ const SENT: Record<Sent, string> = {
 // download
 const FILE = /^[\w][\w.-]{0,200}$/;
 
-// how long a holder told to stop has before it's killed
-const STOP_MS = 10e3;
-
-// whether new holders run as systemd units, once asked
-let SYSTEMD: boolean | null = null;
-
-const LINKS = new Map<string, Link>();
+// each session's cards its holder's parked calls wait on, by call
+const CARDS = new Map<string, Map<string, AbortController>>();
 // each session's latest log line, once known
 const LATEST = new Map<string, string>();
 // the wakes being delivered
@@ -117,73 +94,14 @@ const HOOKS = { gate: null as Gate | null, asked: (_: Asked) => {}, wake: (_: Wa
 
 export namespace Sessions {
 
-  function systemctl(args: string[]): string {
-    const r = run(["systemctl", "--user", ...args]);
-    return output(r);
+  function holder(s: Session): Holder {
+    return { id: s.id, dir: s.dir, unit: s.unit, sock: s.sock };
   }
 
-  // holders run as systemd units where the user's systemd answers; on
-  // Linux without it (a container), detached
-  function systemd(): boolean {
-    SYSTEMD ??= Bun.which("systemd-run") !== null && run(["systemctl", "--user", "show-environment"]).code === 0;
-    return SYSTEMD;
-  }
-
-  // a detached holder's process id, kept under its unit's name: a holder
-  // with none ran as a unit
-  function pid_file(s: { dir: string; unit: string }): string {
-    return path.join(s.dir, s.unit + ".pid");
-  }
-
-  // 0: none kept
-  function pid_of(s: Session): number {
-    try {
-      return Number(fs.readFileSync(pid_file(s), "utf8")) || 0;
-    } catch {
-      return 0;
-    }
-  }
-
-  // the unit and socket of a session's holder of launch n
-  function holder(s: Session, n: number): { unit: string; sock: string } {
-    return { unit: "kny-hold-" + s.id + "-" + n, sock: path.join(s.dir, "hold-" + n + ".sock") };
-  }
-
-  // a detached holder gone takes what it left running with it, as a
-  // unit's end does
-  function alive(s: Session): boolean {
-    if (s.unit === "") {
-      return false;
-    }
-    if (!fs.existsSync(pid_file(s))) {
-      return systemd() && ["active", "activating", "deactivating"].includes(systemctl(["is-active", s.unit]));
-    }
-    if (Hold.marked(pid_of(s), s.unit)) {
-      return true;
-    }
-    Hold.sweep(s.unit, "SIGKILL");
-    fs.rmSync(pid_file(s), { force: true });
-    return false;
-  }
-
-  // its holder and everything it started ended, as a unit's stop does:
-  // asked first, killed after TimeoutStopSec (or, the server restarted
-  // first, once it finds the holder gone)
-  function halt(s: Session): void {
-    if (!fs.existsSync(pid_file(s))) {
-      if (systemd()) {
-        systemctl(["stop", "--no-block", s.unit]);
-      }
-      return;
-    }
-    Hold.sweep(s.unit, "SIGTERM");
-    setTimeout(() => Hold.sweep(s.unit, "SIGKILL"), STOP_MS).unref();
-  }
-
-  function link_of(id: string): Link {
-    const l = LINKS.get(id) ?? { sock: null, waits: new Map(), tries: 0, timer: null };
-    LINKS.set(id, l);
-    return l;
+  function cards(id: string): Map<string, AbortController> {
+    const c = CARDS.get(id) ?? new Map<string, AbortController>();
+    CARDS.set(id, c);
+    return c;
   }
 
   // at the server's start, before it takes requests, once the agents'
@@ -196,20 +114,25 @@ export namespace Sessions {
     HOOKS.asked = asked;
     HOOKS.wake = wake;
     HOOKS.change = change;
-    config.RELOADED.add(() => LINKS.forEach((l) => Wire.send(l.sock, { $: "rules", rules: config.ASK })));
+    Holders.boot({ held, told: (id, t) => {
+      const fx = take(id, t);
+      return () => after(id, fx);
+    }, welcome, gone });
     Session.unsent().forEach(deliver);
     for (const s of Session.list(null)) {
       if (LIVE.includes(s.status)) {
         Session.parked(s.id).forEach((p) => arm(s, p));
-        if (alive(s)) {
-          link(s.id);
-        } else {
-          gone(s.id);
-        }
-      } else if (s.status === "stopped" && alive(s)) {
-        halt(s);
+        Holders.adopt(s.id);
+      } else if (s.status === "stopped" && Holders.alive(holder(s))) {
+        Holders.stop(holder(s));
       }
     }
+  }
+
+  // a live session's holder, to link to
+  function held(id: string): { holder: Holder; ack: number } | null {
+    const s = Session.get(id);
+    return s === null || !LIVE.includes(s.status) ? null : { holder: holder(s), ack: s.ack };
   }
 
   function start(b: Begin): Session | string {
@@ -226,7 +149,7 @@ export namespace Sessions {
     if (b.prompt.trim() === "") {
       return "A session starts with a message.";
     }
-    if (process.platform !== "linux" && !systemd()) {
+    if (!transients()) {
       return "Work sessions run as systemd user units, and systemd-run isn't here.";
     }
     const top = Worktree.top(b.repo);
@@ -259,150 +182,41 @@ export namespace Sessions {
   // about, its agent is told
   function launch(s: Session, prompt: string, about: string | null): string | null {
     const launches = s.launches + 1;
-    const { unit, sock } = holder(s, launches);
-    Session.set(s.id, { launches, unit, sock });
+    const h = Holders.named(s.id, s.dir, launches);
+    Session.set(s.id, { launches, unit: h.unit, sock: h.sock });
     const first = s.launches > 0 && s.sdk === "" ? Session.runs(s.id)[0]?.prompt ?? prompt : prompt;
-    const begin: Start = { prompt: first === prompt ? prompt : first + "\n\n" + prompt, resume: s.sdk, rules: config.ASK, sock };
-    fs.writeFileSync(path.join(s.dir, START), JSON.stringify(begin, null, 1) + "\n", { mode: 0o600 });
-    const why = systemd() ? unit_run(s, unit) : detach(s, unit);
+    const why = Holders.launch(h, "Kunumy work session " + s.name, { driver: "claude-code", prompt: first === prompt ? prompt : first + "\n\n" + prompt, resume: s.sdk, rules: config.ASK });
     if (why !== null) {
       after(s.id, Session.move(s.id, "failed", why, about === null ? null : { about, text: why }) ?? []);
       return why;
     }
-    unlink(s.id);
-    link(s.id);
     HOOKS.change();
     return null;
   }
 
-  // the server's variables of these keys, and its data folder
-  function env_of(keys: string[]): Record<string, string> {
-    return { ...Object.fromEntries(keys.flatMap((k) => (process.env[k] ? [[k, process.env[k]]] : []))), KNY_DIR: config.DIR };
-  }
-
-  function unit_run(s: Session, unit: string): string | null {
-    const env = Object.entries(env_of(ENV)).map(([k, v]) => "--setenv=" + k + "=" + v);
-    const r = run(["systemd-run", "--user", "--collect", "--quiet", "--unit=" + unit, "--description=Kunumy work session " + s.name, "-p", "TimeoutStopSec=" + STOP_MS / 1000, ...env, "--", ...command(), "hold", s.dir]);
-    return r.code === 0 ? null : "systemd-run failed: " + output(r);
-  }
-
-  // its output in a log beside its pid
-  function detach(s: Session, unit: string): string | null {
-    const log = fs.openSync(path.join(s.dir, unit + ".log"), "a");
-    let held: Bun.Subprocess | null = null;
-    try {
-      held = Bun.spawn([...command(), "hold", s.dir], { env: { ...env_of([...ENV, ...OWN]), [MARK]: unit }, stdio: ["ignore", log, log], detached: true });
-      held.unref();
-      fs.writeFileSync(pid_file({ dir: s.dir, unit }), String(held.pid));
-      return null;
-    } catch (err) {
-      held?.kill("SIGKILL");
-      return "its holder didn't start: " + err_why(err);
-    } finally {
-      fs.closeSync(log);
-    }
-  }
-
-  function link(id: string): void {
-    const s = Session.get(id);
-    const l = link_of(id);
-    if (s === null || l.sock !== null) {
-      return;
-    }
-    const sock = net.createConnection(s.sock);
-    l.sock = sock;
-    sock.setEncoding("utf8");
-    sock.on("connect", () => {
-      l.tries = 0;
-      Wire.send(sock, { $: "hello", v: VERSION, ack: Session.get(id)?.ack ?? 0, rules: config.ASK });
-    });
-    sock.on("data", Wire.lines((msg) => {
-      try {
-        got(id, sock, msg);
-      } catch (err) {
-        console.error("kny: session " + id + ": " + err_why(err));
-      }
-    }));
-    sock.on("error", () => {});
-    sock.on("close", () => {
-      if (l.sock === sock) {
-        l.sock = null;
-        lost(id);
-      }
-    });
-  }
-
-  function unlink(id: string): void {
-    const l = LINKS.get(id);
-    if (l === undefined) {
-      return;
-    }
-    clearTimeout(l.timer ?? undefined);
-    const sock = l.sock;
-    l.sock = null;
-    sock?.destroy();
-  }
-
-  // the link fell or never came: tried again while the holder runs, else
-  // what it left in the log is taken in
-  function lost(id: string): void {
-    const l = LINKS.get(id);
-    const s = Session.get(id);
-    if (l === undefined || s === null || !LIVE.includes(s.status)) {
-      return;
-    }
-    l.tries += 1;
-    clearTimeout(l.timer ?? undefined);
-    l.timer = setTimeout(() => {
-      l.timer = null;
-      const now = Session.get(id);
-      if (now === null || !LIVE.includes(now.status) || l.sock !== null) {
-        return;
-      }
-      if (alive(now)) {
-        link(id);
-      } else {
-        gone(id);
-      }
-    }, Math.min(RETRY, 100 * l.tries));
-  }
-
-  // the holder is gone: what its log holds past the last ack is taken in;
-  // a run it left unfinished failed, to resume; a run the record started
-  // whose holder never launched (the server stopped first) launches
-  function gone(id: string): void {
-    const s = Session.get(id);
-    if (s === null) {
-      return;
-    }
-    if (s.sock !== "") {
-      fs.rmSync(s.sock, { force: true });
-    }
-    Hold.told(s.dir).filter((t) => t.seq > s.ack).forEach((t) => after(id, take(id, t)));
+  // the holder is gone, its log taken in: a run it left unfinished
+  // failed, to resume; a run the record started whose holder never
+  // launched (the server stopped first) launches
+  function gone(id: string, was: Holder): void {
     const now = Session.get(id);
     const run = Session.run(id);
     if (now !== null && run !== null && LIVE.includes(now.status)) {
       if (now.unit === "") {
         next_run(id);
-      } else if (now.unit === s.unit) {
+      } else if (now.unit === was.unit) {
         after(id, Session.move(id, "failed", GONE, { about: "gone " + attempt(run), text: GONE + ": send it a message to go on" }) ?? []);
       }
     }
     HOOKS.change();
   }
 
-  function got(id: string, sock: net.Socket, msg: Record<string, unknown>): void {
-    if (msg.$ === "welcome") {
-      const held = (Array.isArray(msg.asks) ? msg.asks : []).map((a) => str(get(a, "id")) ?? "");
-      const waits = (Array.isArray(msg.questions) ? msg.questions : []).map((q) => str(get(q, "id")) ?? "");
-      after(id, Session.welcome(id, held, waits));
-      Session.parked(id).filter((p) => p.ok !== null).forEach((p) => Wire.send(sock, { $: "answer", id: p.id, ok: p.ok === 1, note: p.note }));
-      Session.unheard(id).filter((say) => say.mode !== "queue").forEach((say) => Wire.send(sock, { $: "say", id: say.id, text: say.text, answer: say.mode === "answer" }));
-    } else if (msg.$ === "ev" && typeof msg.seq === "number" && rec(msg.ev)) {
-      const fx = take(id, { seq: msg.seq, at: Number(msg.at) || Date.now(), ev: msg.ev as Ev });
-      Wire.send(sock, { $: "ack", seq: msg.seq });
-      after(id, fx);
-    }
+  // a link's first message: the record catches up with what the holder
+  // still has parked and waiting, and the holder with the answers and
+  // messages it hasn't taken in
+  function welcome(id: string, asks: string[], questions: string[]): void {
+    after(id, Session.welcome(id, asks, questions));
+    Session.parked(id).filter((p) => p.ok !== null).forEach((p) => Holders.send(id, { $: "answer", id: p.id, ok: p.ok === 1, note: p.note }));
+    Session.unheard(id).filter((say) => say.mode !== "queue").forEach((say) => Holders.send(id, { $: "say", id: say.id, text: say.text, answer: say.mode === "answer" }));
   }
 
   // one event taken into the record, once: what's left to do after it
@@ -417,7 +231,7 @@ export namespace Sessions {
 
   // what a change to the record leaves to do, done once it's in
   function after(id: string, fx: Effect[]): void {
-    const waits = LINKS.get(id)?.waits;
+    const waits = CARDS.get(id);
     for (const f of fx) {
       if (f.do === "wake") {
         deliver(f.wake);
@@ -454,22 +268,22 @@ export namespace Sessions {
   // a parked call shown as the owner's card in its agent's chat, waiting
   // for an answer, which goes to the holder
   function arm(s: Session, p: Parked): void {
-    const l = link_of(s.id);
-    if (HOOKS.gate === null || l.waits.has(p.id) || p.ok !== null) {
+    const waits = cards(s.id);
+    if (HOOKS.gate === null || waits.has(p.id) || p.ok !== null) {
       return;
     }
     const stop = new AbortController();
-    l.waits.set(p.id, stop);
+    waits.set(p.id, stop);
     let input: Record<string, unknown> = {};
     try {
       const x: unknown = JSON.parse(p.input);
       input = rec(x) ? x : {};
     } catch {}
     void Gate.wait(HOOKS.gate, s.agent, SESSION + s.name, "session", p.tool, input, p.what, stop.signal, HOOKS.asked).then((said) => {
-      l.waits.delete(p.id);
+      waits.delete(p.id);
       if (said !== null) {
         Session.answer(p.id, said.ok, said.note);
-        Wire.send(l.sock, { $: "answer", id: p.id, ok: said.ok, note: said.note });
+        Holders.send(s.id, { $: "answer", id: p.id, ok: said.ok, note: said.note });
       }
     });
   }
@@ -515,7 +329,7 @@ export namespace Sessions {
       return { why: "Say something." };
     }
     const live = LIVE.includes(s.status);
-    if (!live && alive(s)) {
+    if (!live && Holders.alive(holder(s))) {
       return { why: STOPPING };
     }
     const as: Mode = live && Session.questions(id).length > 0 ? "answer" : mode;
@@ -527,7 +341,7 @@ export namespace Sessions {
     }
     if (live) {
       if (as !== "queue") {
-        Wire.send(LINKS.get(id)?.sock, { $: "say", id: key, text, answer: as === "answer" });
+        Holders.send(id, { $: "say", id: key, text, answer: as === "answer" });
       }
       return as === "answer" ? "answered" : as === "steer" ? "steered" : "queued";
     }
@@ -549,7 +363,7 @@ export namespace Sessions {
     if (s.status === "done" || LIVE.includes(s.status)) {
       return "Session " + s.name + " is " + s.status + ": nothing to resume.";
     }
-    if (alive(s)) {
+    if (Holders.alive(holder(s))) {
       return STOPPING;
     }
     const run = Session.again(id, null);
@@ -569,11 +383,8 @@ export namespace Sessions {
     if (fx === null) {
       return "Session " + s.name + " is " + s.status + " already.";
     }
-    unlink(id);
+    Holders.stop(holder(s));
     void Browser.close(s.dir);
-    if (s.unit !== "") {
-      halt(s);
-    }
     if (wake) {
       Session.set(id, { seen: Date.now() });
     }
@@ -591,7 +402,7 @@ export namespace Sessions {
     if (LIVE.includes(s.status)) {
       return "Session " + s.name + " is " + s.status + ": stop it first.";
     }
-    if (alive(s)) {
+    if (Holders.alive(holder(s))) {
       return STOPPING;
     }
     const why = Worktree.remove(s.repo, s.base, s.branch, s.worktree, force);
@@ -600,9 +411,9 @@ export namespace Sessions {
     }
     void Browser.forget(s.dir);
     Session.set(id, { archived: 1 });
-    LINKS.delete(id);
+    Holders.forget(holder(s));
+    CARDS.delete(id);
     LATEST.delete(id);
-    Hold.forget(s.dir);
     HOOKS.change();
     return null;
   }

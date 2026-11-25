@@ -90,6 +90,27 @@ test.concurrent("a run that ends while the server is down is taken from its log 
   expect(await said(k, wake_text("session", "qd", "failed:"))).toBe(0);
 });
 
+test.concurrent("a holder whose run ended while the server was down is adopted while it waits to be acked, and its end wakes the agent once", async () => {
+  const k = await Kny.up();
+  const t = tag();
+  await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
+  await fake.next(t + "-done", { what: "reply", text: t + " finished" });
+  const s = await k.session("ld", t + ": work", repo());
+  await until("the command running", () => waiting(t));
+  const holder = s.holder();
+  await k.kill();
+  s.open(t);
+  await until("the run's end logged", () => s.logged().some((x) => x.ev.k === "end"));
+  expect(s.holder()).toBe(holder);
+  await k.start();
+
+  expect((await s.status("done")).runs).toMatchObject([{ n: 1, status: "done", attempts: 1 }]);
+  await until("its holder ended, all it told taken", () => s.holder() === null);
+  await until("the done wake", async () => await said(k, wake_text("session", "ld", "done: ") + t + " finished") === 1);
+  // its holder gone with all it told acked, nothing is left to wake it again
+  expect(await said(k, wake_text("session", "ld", "done:"))).toBe(1);
+});
+
 test.concurrent("a new server waits for the running one's lock, then takes over its sessions' running holders", async () => {
   const k = await Kny.up();
   const t = tag();
