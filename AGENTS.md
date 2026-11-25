@@ -32,6 +32,8 @@ fake log | fake last [--json] | fake clear
 
 `--match TEXT` limits a command to the call whose latest message has TEXT. Use it whenever calls run at once: the chat, the compactor (`--match Compaction:`) and subagents.
 
+The fake claude-sub account has one claude.ai connector, Gmail, which Claude Code runs itself: `fake tool mcp__claude_ai_Gmail__list_messages '{}'` (asks no one) or `mcp__claude_ai_Gmail__send_message '{"to":"a@example.com","body":"hi"}'` (an `ask` rule's card).
+
 Touch is tested on a phone, never in desktop Chromium's phone emulation: its made-up touches skip Chrome's own gestures, flings and snapping. The phone is an Android emulator with a current Chrome, in an image of its own; it shares the rig's network, so it has no internet and opens Kunumy at `http://127.0.0.1:8788` (it needs `/dev/kvm`; its screen is drawn in software, so give it 6 cores):
 
 ```sh
