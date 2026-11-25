@@ -31,7 +31,7 @@
 # what it would do, and shows each rewritten line, changing nothing.
 set -Eeuo pipefail
 
-DRY="" BACK="" BIN="" ARGS=("$@")
+DRY="" BACK="" BIN=""
 while [ $# -gt 0 ]; do
   case $1 in
     --dry-run) DRY=1;;
@@ -82,8 +82,10 @@ renamed() {
 
 # the lines a preview shows, secret values hidden
 masked() {
-  sed -E "s/((token|key|secret|password|auth)[A-Za-z0-9_]*[\"']?[[:space:]]*[=:][[:space:]]*[\"']?)[^\$\"'[:space:],}][^\"'[:space:],}]*/\1…/Ig;
-    s/(bearer[[:space:]]+)[^\$\"'[:space:]][^\"'[:space:]]*/\1…/Ig; s/^/      /"
+  sed -E "s/(bearer[[:space:]]+)[^\$\"'[:space:]][^\"'[:space:]]*/\1…/Ig;
+    s/(--?[A-Za-z-]*(token|key|secret|pass|auth)[A-Za-z-]*[[:space:]=]+)[^\$\"'[:space:]-][^\"'[:space:]]*/\1…/Ig;
+    s/((token|key|secret|pass|auth)[A-Za-z0-9_]*\"[[:space:]]*:[[:space:]]*\")[^\$\"][^\"]*/\1…/Ig;
+    s/((token|key|secret|pass|auth)[A-Za-z0-9_]*=)[^\$\"][^\"]*/\1…/Ig; s/^/      /"
 }
 
 # file $1 rewritten by renamed(), its original kept as $SAVE/files/$2
@@ -101,7 +103,7 @@ rewrite() {
   mkdir -p "$(dirname "$keep")"
   cp -p "$f" "$keep"
   if [[ $f == *.env ]]; then
-    { cat "$keep"; grep -E '^(export )?(KI|UNII)_' "$keep" | renamed /dev/stdin; } > "$f.kunumy-new"
+    { cat "$keep"; { grep -E '^(export )?(KI|UNII)_' "$keep" || true; } | renamed /dev/stdin; } > "$f.kunumy-new"
   else
     renamed "$keep" > "$f.kunumy-new"
   fi
@@ -146,7 +148,7 @@ transcripts() {
 detached() {
   [ -z "$DRY" ] && [ -z "${KNY_MIGRATE_UNIT:-}" ] && grep -qsE '/(ki-serve|ki-device|kny-serve|kny-device)\.service' /proc/self/cgroup || return 0
   command -v systemd-run > /dev/null || die "this runs inside a service it stops, and systemd-run isn't here to start it outside: run it from a terminal"
-  systemd-run --user --collect --quiet --unit=kunumy-migrate --setenv=HOME="$H" --setenv=PATH="$PATH" --setenv=KNY_MIGRATE_UNIT=1 ${XDG_CONFIG_HOME:+--setenv=XDG_CONFIG_HOME="$XDG_CONFIG_HOME"} -- bash "$(realpath "$0")" "$@"
+  systemd-run --user --collect --quiet --unit=kunumy-migrate --setenv=HOME="$H" --setenv=PATH="$PATH" --setenv=KNY_MIGRATE_UNIT=1 ${XDG_CONFIG_HOME:+--setenv=XDG_CONFIG_HOME="$XDG_CONFIG_HOME"} -- bash "$(realpath "$0")" ${BACK:+--rollback} ${BIN:+--bin "$BIN"}
   say "It runs in a service's shell, which stopping the services would end: it goes on as the unit kunumy-migrate. Follow it: journalctl --user -u kunumy-migrate -f"
   exit 0
 }
@@ -163,6 +165,7 @@ forward() {
   [ -x "$BIN" ] || die "no kny program at $BIN: build it (bun run build) or give --bin FILE"
   "$BIN" version | grep -q '^kny ' || die "$BIN doesn't say it is kny"
   command -v systemctl > /dev/null || die "systemctl isn't here: this moves systemd user services"
+  detached
   local pid
   pid=$(cat "$H/.ki/server.pid" 2>/dev/null || true)
   if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && ! active ki-serve; then
@@ -257,6 +260,7 @@ forward() {
 back() {
   local o n
   [ -d "$SAVE" ] || die "no $SAVE: nothing to roll back"
+  detached
   say "== moving Kunumy back to ki${DRY:+ (dry run: nothing changes)}"
   say "-- the services"
   for s in "${SERVICES[@]}"; do
@@ -306,5 +310,4 @@ back() {
   say "== rolled back${DRY:+ (dry run)}. Check: ki version; systemctl --user status ki-serve ki-device."
 }
 
-detached "${ARGS[@]}"
 if [ -n "$BACK" ]; then back; else forward; fi

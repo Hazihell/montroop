@@ -7,8 +7,7 @@
 # Downloads kny-<ver>-<os>-<arch>.tar.gz from this release, checks its
 # sha256, and moves the executable to $KNY_BIN (default ~/.local/bin/kny).
 # No sudo. With KNY_BIN set to an installed kny, it replaces that one in
-# place. The
-# background services kny made (`kny serve -d`, `kny device -d`: a systemd
+# place. The background services kny made (`kny serve -d`, `kny device -d`: a systemd
 # user unit or LaunchAgent kny-serve / kny-device holding "kny-made") that
 # run are restarted on the new kny once it is in place, last; a service you
 # made yourself is left alone (it keeps the old kny till you restart it).
