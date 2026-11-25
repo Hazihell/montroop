@@ -107,6 +107,8 @@ test.concurrent("a holder whose run ended while the server was down is adopted w
   expect((await s.status("done")).runs).toMatchObject([{ n: 1, status: "done", attempts: 1 }]);
   await until("its holder ended, all it told taken", () => s.holder() === null);
   await until("the done wake", async () => await said(k, wake_text("session", "ld", "done: ") + t + " finished") === 1);
+  // its holder gone with all it told acked, nothing is left to wake it again
+  expect(await said(k, wake_text("session", "ld", "done:"))).toBe(1);
 });
 
 test.concurrent("a new server waits for the running one's lock, then takes over its sessions' running holders", async () => {

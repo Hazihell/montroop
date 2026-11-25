@@ -730,7 +730,7 @@ export function transients(): boolean {
 
 // each kind of unit: start it (null: started; else why not), whether it
 // runs, and stop it with everything it started, asked first and killed
-// after UNIT_STOP
+// after UNIT_STOP (or, its starter gone before that, once it's found gone)
 type Kind = {
   start  : (u: Unit, about: string, cmd: string[], env: Record<string, string>) => string | null;
   active : (u: Unit) => boolean;
@@ -751,7 +751,7 @@ const SYSTEMD_UNIT: Kind = {
 };
 
 // one found gone takes what it left running with it, as a systemd unit's
-// end does (or, its starter gone before it was killed, once it's found so)
+// end does
 const DETACHED: Kind = {
   start: (u, _about, cmd, env) => {
     const log = fs.openSync(path.join(u.dir, u.name + ".log"), "a");

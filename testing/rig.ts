@@ -9,7 +9,7 @@ import * as path from "node:path";
 import { Hold } from "../Hold.ts";
 import type { Order } from "./fake/server.ts";
 
-const ROOT = path.resolve(import.meta.dir, "..");
+export const ROOT = path.resolve(import.meta.dir, "..");
 const CONTROL = "http://127.0.0.1:9999";
 
 type Json = Record<string, unknown>;

@@ -1,7 +1,7 @@
 import { afterAll, expect, test } from "bun:test";
 import * as path from "node:path";
 import { wake_text } from "../../Wake.ts";
-import { down, fake, gate, Kny, older, procs, repo, said, tag, until, waiting } from "../rig.ts";
+import { down, fake, gate, Kny, older, procs, repo, ROOT, said, tag, until, waiting } from "../rig.ts";
 
 afterAll(down);
 
@@ -16,7 +16,7 @@ test.concurrent("a holder of the version before is adopted by this version's ser
   await until("the command running", () => waiting(t));
   const holder = s.holder();
   await k.kill();
-  k.root = path.resolve(import.meta.dir, "../..");
+  k.root = ROOT;
   await k.start();
 
   expect(s.holder()).toBe(holder);
@@ -25,7 +25,7 @@ test.concurrent("a holder of the version before is adopted by this version's ser
   await until("the done wake", async () => await said(k, wake_text("session", "old", "done: ") + t + " finished") === 1);
   await until("its holder ended", () => s.holder() === null);
   expect((await s.say(t + ": more", "more-1")).status).toBe(200);
-  await until("this version's holder", () => s.holder() !== null && procs().some((p) => p.pid === s.holder() && p.cmd.includes(path.resolve(import.meta.dir, "../../Cli.ts"))));
+  await until("this version's holder", () => s.holder() !== null && procs().some((p) => p.pid === s.holder() && p.cmd.includes(path.join(ROOT, "Cli.ts"))));
   await until("its command running", () => waiting(t + "b"));
   s.open(t + "b");
   const next = await until("the next run done", async () => {
