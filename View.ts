@@ -298,7 +298,7 @@ const WAIT = "compressing…";
 const SUMS = "compressing earlier messages…";
 
 const UNSENT = "Sends once connected.";
-const OLDER  = "This troop is older than the server: run `troop update`.";
+const OLDER  = "This Montroop is older than the server: run `troop update`.";
 const NEWER  = "The server runs an older Montroop than this one: run `troop update` there. Trying again every " + SLOW / 1000 + " s.";
 
 const MARKS: Array<[string, number, string]> = [

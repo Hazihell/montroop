@@ -2643,7 +2643,7 @@ export namespace Main {
         open(ws: Sock) {
           Main.event("a socket", () => {
             if (ws.data.wire !== String(WIRE)) {
-              ws.send(JSON.stringify({ $: "error", text: "This page or troop is older than the server: reload or reopen it (`troop update` for the latest).", build: Web.BUILD, wire: WIRE }));
+              ws.send(JSON.stringify({ $: "error", text: "This page or Montroop is older than the server: reload or reopen it (`troop update` for the latest).", build: Web.BUILD, wire: WIRE }));
               return;
             }
             Main.socks.add(ws);

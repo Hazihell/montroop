@@ -225,7 +225,7 @@ function linux_check(part: Part): void {
   const from = run(["systemctl", "--user", "show", "--property=FragmentPath", "--value", n + ".service"]).out;
   const theirs = mine !== null && !mine.includes(MARK) ? file : from !== "" && !same(from, file) ? from : null;
   if (theirs !== null) {
-    fail(n + " isn't Montroop's: " + theirs + " is a unit troop didn't make, so troop leaves it as it is. To use troop " + part + " -d, remove it (systemctl --user disable --now " + n + ", then the file); or keep using it.");
+    fail(n + " isn't Montroop's: " + theirs + " is a unit Montroop didn't make, so Montroop leaves it as it is. To use troop " + part + " -d, remove it (systemctl --user disable --now " + n + ", then the file); or keep using it.");
   }
 }
 
