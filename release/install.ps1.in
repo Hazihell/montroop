@@ -2,7 +2,7 @@
 # or Windows PowerShell 5.1):
 #   irm https://github.com/Hazihell/kunumy/releases/latest/download/install.ps1 | iex
 # (or this release's own: .../releases/download/@VER@/install.ps1, the only
-# line for a release candidate, N.rcM: its `kny update` refuses)
+# line for a release candidate, N.rcM)
 #
 # Like install.sh: downloads kny-<ver>-windows-<arch>.zip from this
 # release, checks its sha256, and puts its kny.exe at $env:KNY_BIN (default
@@ -10,9 +10,8 @@
 # PATH. No admin. Your data stays in %USERPROFILE%\.kunumy ($env:KNY_DIR)
 # and %USERPROFILE%\.config\kunumy, as on Linux. Every time, it writes the
 # fixed prompts (prompts/*.md) to %LOCALAPPDATA%\kunumy (edits there are
-# overwritten). `kny update` runs the newest release's copy of this with
-# KNY_BIN set to the running kny.exe (and KNY_UPDATER to its pid): a running
-# exe can't be overwritten, only renamed, so the one replaced is left as
+# overwritten). With KNY_BIN set to an installed kny.exe it replaces that
+# one: a running exe can't be overwritten, only renamed, so the one replaced is left as
 # kny.exe.old, or .old-<n> (kny removes those exact names at its next
 # start). The background services kny made (`kny serve -d`, `kny device
 # -d`: the Scheduled Tasks kny-serve and kny-device, their description
@@ -78,8 +77,7 @@
     # path) that no service runs: it would keep the old version, and its
     # data must not change under it. One whose command line Windows doesn't
     # show (CIM failing, another user's, an elevated one) counts as
-    # running; the `kny update` that runs this doesn't, nor a service's
-    # supervisor (`--service`) and what it started, which the restart below
+    # running; a service's supervisor (`--service`) and what it started, which the restart below
     # ends. A service that runs elevated (`sudo kny device -d`) shows no
     # command line to a shell that isn't: its supervisor and kny are known
     # by the pids it wrote (logs\<part>.pid), while its task runs
@@ -99,7 +97,7 @@
         }
       }
       $served = { param($id) for ($k = 0; $k -lt 8 -and $id; $k++) { if ($sups -contains $id) { return $true }; $id = $up[$id] }; return $false }
-      # the supervisor this runs under, if any (`kny update` from a service's shell): its command line
+      # the supervisor this runs under, if any (an install run from a service's shell): its command line
       $id = [string]$PID
       for ($k = 0; $k -lt 16 -and $id; $k++) { if ($sups -contains $id) { $mine = [string]($all | Where-Object { [string]$_.ProcessId -eq $id } | Select-Object -First 1).CommandLine; break }; $id = $up[$id] }
       $procs = @($all | Where-Object { ($names -icontains $_.Name) -or ($_.ExecutablePath -and $_.ExecutablePath -ieq $bin) } | Where-Object { -not (& $served ([string]$_.ProcessId)) } | ForEach-Object { [pscustomobject]@{ Id = [string]$_.ProcessId; Line = [string]$_.CommandLine } })
@@ -107,10 +105,9 @@
       $stems = @($names) + @($names | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_) })
       $procs = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $stems -icontains $_.ProcessName } | ForEach-Object { [pscustomobject]@{ Id = [string]$_.Id; Line = '' } })
     }
-    $procs = @($procs | Where-Object { $_.Id -ne [string]$env:KNY_UPDATER })
     $busy = @($procs | Where-Object { $_.Line -match '\s"?(device|serve)"?(\s|$)' })
     $blind = @($procs | Where-Object { $_.Line -eq '' })
-    $again = "Stop it (taskkill /T /F /PID <pid>; if a Scheduled Task you made runs it, first Disable-ScheduledTask and Stop-ScheduledTask it), run this again (irm $Self | iex), then start it again. Run as kny device -d (or kny serve -d) instead, it's restarted by updates."
+    $again = "Stop it (taskkill /T /F /PID <pid>; if a Scheduled Task you made runs it, first Disable-ScheduledTask and Stop-ScheduledTask it), run this again (irm $Self | iex), then start it again. Run as kny device -d (or kny serve -d) instead, it's restarted by installs."
     if ($busy.Count -gt 0) {
       throw ("a device or server runs (pid " + (($busy | ForEach-Object { $_.Id }) -join ', ') + "). Nothing changed, and Kunumy $Ver was not installed. $again")
     }
@@ -190,7 +187,7 @@
 @PROMPT_FILES_PS1@
 
     # beside $bin first (temp may be another drive), then swapped in: the
-    # old exe renamed (it may run: this may be its `kny update`), the old
+    # old exe renamed (it may run), the old
     # ones that no longer run removed
     $folder = Split-Path -Parent $bin
     $new = "$bin.new"
@@ -240,9 +237,9 @@
     }
     $global:LASTEXITCODE = 0
     # last: kny's tasks that run, restarted on the new exe by Task
-    # Scheduler (run from such a service's shell, `kny update`, this ends
+    # Scheduler (run from such a service's shell, this ends
     # with it: so that one goes last, else the device, whose shells run
-    # such updates)
+    # such installs)
     $made = @()
     try { $made = @('serve', 'device' | ForEach-Object { & $task "kny-$_" } | Where-Object { $_ -and ([string]$_.Description -match 'kny-made') -and ([string]$_.State -eq 'Running') }) } catch {}
     $made = @($made | Sort-Object { $mine -match ('\s"?' + $_.TaskName.Substring(4) + '"?\s') }, { $_.TaskName -eq 'kny-device' })

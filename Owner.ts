@@ -59,6 +59,10 @@ export namespace Owner {
     return new Bun.CryptoHasher("sha256").update(token).digest("hex");
   }
 
+  function cleared(name: string): string {
+    return name + "=; Path=/; Max-Age=0";
+  }
+
   function cookie_of(req: Request, name: string): string {
     const cookie = (req.headers.get("cookie") ?? "").split(/;\s*/).find((c) => c.startsWith(name + "=")) ?? "";
     return decodeURIComponent(cookie.slice(name.length + 1));
@@ -76,7 +80,7 @@ export namespace Owner {
     }
     const out = new Response(res.body, res);
     out.headers.append("set-cookie", COOKIE + "=" + encodeURIComponent(was) + Owner.cookie(req));
-    out.headers.append("set-cookie", COOKIE_WAS + "=; Path=/; Max-Age=0");
+    out.headers.append("set-cookie", cleared(COOKIE_WAS));
     return out;
   }
 
@@ -272,7 +276,7 @@ export namespace Owner {
   }
 
   export function out(): Response {
-    return new Response(null, { status: 204, headers: { "set-cookie": COOKIE + "=; Path=/; Max-Age=0" } });
+    return new Response(null, { status: 204, headers: { "set-cookie": cleared(COOKIE) } });
   }
 
   export async function confirm(req: Request): Promise<Response> {

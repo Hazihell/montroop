@@ -2,12 +2,12 @@
 # Installs Kunumy @VER@ (github.com/Hazihell/kunumy):
 #   curl -fsSL https://github.com/Hazihell/kunumy/releases/latest/download/install.sh | sh
 # (or this release's own: .../releases/download/@VER@/install.sh, the only
-# line for a release candidate, N.rcM: its `kny update` refuses)
+# line for a release candidate, N.rcM)
 #
 # Downloads kny-<ver>-<os>-<arch>.tar.gz from this release, checks its
 # sha256, and moves the executable to $KNY_BIN (default ~/.local/bin/kny).
-# No sudo. `kny update` runs the newest release's copy of this script with
-# KNY_BIN set to the running kny, so it replaces itself in place. The
+# No sudo. With KNY_BIN set to an installed kny, it replaces that one in
+# place. The
 # background services kny made (`kny serve -d`, `kny device -d`: a systemd
 # user unit or LaunchAgent kny-serve / kny-device holding "kny-made") that
 # run are restarted on the new kny once it is in place, last; a service you
@@ -37,7 +37,7 @@ again() {
 }
 # services by name: stopped, started, or restarted (systemd's or
 # launchd's doing, so it works from such a service's own shell, as
-# `kny update` run by an agent there is: one systemctl for all, in their
+# an install an agent runs there is: one systemctl for all, in their
 # order, the one this runs in last)
 svc() {
   w=$1; shift
@@ -176,7 +176,7 @@ share="${XDG_DATA_HOME:-$HOME/.local/share}/kunumy"
 mkdir -p "$share"
 @PROMPT_FILES@
 mkdir -p "$(dirname "$BIN")"
-# copied beside $BIN, then renamed over it: a running kny (kny update)
+# copied beside $BIN, then renamed over it: a running kny
 # keeps its old file, and /tmp may be another file system
 cp "$new_kny" "$BIN.new.$$" && chmod 755 "$BIN.new.$$" && mv -f "$BIN.new.$$" "$BIN" || { rm -f "$BIN.new.$$"; fail "could not write $BIN"; }
 echo
@@ -190,7 +190,7 @@ case ":$PATH:" in
   *":$(dirname "$BIN"):"*) ;;
   *) echo "  $(dirname "$BIN") is not on your PATH; add it to run kny by name.";;
 esac
-# last: run from a kny service's shell (kny update), its restart ends
+# last: run from a kny service's shell (an install an agent runs), its restart ends
 # this, so that one goes last, and the temp dir before
 first="" last=""
 for s in $made; do if inside "$s" "$dir"; then last="$last $s"; else first="$first $s"; fi; done

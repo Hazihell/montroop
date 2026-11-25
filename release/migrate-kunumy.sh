@@ -16,8 +16,8 @@
 # ~/.kunumy-migration for --rollback. The new program (FILE, default the
 # kny built beside this script's folder) goes to ~/.local/bin/kny; the
 # old one stays. ki-serve and ki-device are stopped and disabled, and
-# kny-serve and kny-device made from them (same settings and drop-ins)
-# and started; unii-browser.service likewise becomes
+# kny-serve and kny-device made from them (same settings and drop-ins),
+# enabled and started as the old ones were; unii-browser.service likewise becomes
 # kunumy-browser.service. Holders of running work sessions (ki-hold-*)
 # are left running: the new server links to them.
 #
@@ -75,6 +75,12 @@ renamed() {
     s#unii-browser#kunumy-browser#g' "$1"
 }
 
+# the lines a preview shows, secret values hidden
+masked() {
+  sed -E "s/((token|key|secret|password|auth)[A-Za-z0-9_]*[\"']?[[:space:]]*[=:][[:space:]]*[\"']?)[^\$\"'[:space:],}][^\"'[:space:],}]*/\1…/Ig;
+    s/(bearer[[:space:]]+)[^\$\"'[:space:]][^\"'[:space:]]*/\1…/Ig; s/^/      /"
+}
+
 # file $1 rewritten by renamed(), its original kept as $SAVE/files/$2
 rewrite() {
   local f=$1 keep=$SAVE/files/$2
@@ -82,7 +88,7 @@ rewrite() {
   if [ -n "$DRY" ]; then
     if ! renamed "$f" | diff -q "$f" - > /dev/null; then
       say "  would rewrite $f:"
-      renamed "$f" | diff "$f" - | grep '^[<>]' | sed -E 's/((TOKEN|KEY|SECRET|PASSWORD)[A-Z_]*=).*/\1…/I; s/^/      /' || true
+      renamed "$f" | diff "$f" - | grep '^[<>]' | masked || true
     fi
     return 0
   fi
@@ -122,13 +128,18 @@ forward() {
   fi
 
   say "== moving ki to Kunumy${DRY:+ (dry run: nothing changes)}"
-  say "-- the services"
+  if [ -z "$DRY" ]; then
+    mkdir -p "$SAVE/units" "$SAVE/files"; chmod 700 "$SAVE"
+    trap 'echo "migrate-kunumy: stopped at an error; the steps done are listed above, and $0 --rollback puts them back" >&2' ERR
+  fi
+  say "-- the services (each new one will be enabled and running as its old one was)"
+  local on="" up=""
   for s in "${SERVICES[@]}"; do
     o=${s%|*}
-    if active "$o"; then do_ systemctl --user stop "$o"; fi
+    if enabled "$o"; then on="$on $o"; fi
+    if active "$o"; then up="$up $o"; do_ systemctl --user stop "$o"; fi
   done
-
-  [ -n "$DRY" ] || { mkdir -p "$SAVE/units" "$SAVE/files"; chmod 700 "$SAVE"; }
+  [ -n "$DRY" ] || { printf '%s\n' $on > "$SAVE/enabled"; printf '%s\n' $up > "$SAVE/active"; }
   say "-- the folders (each old path left as a link to the new)"
   for m in "${MOVES[@]}"; do
     o=${m%|*} n=${m#*|}
@@ -165,12 +176,9 @@ forward() {
     src=$UNITS/$o.service
     [ -f "$src" ] || continue
     [ -n "$DRY" ] || cp -p "$UNITS/$o.service" "$SAVE/units/"
-    if enabled "$o"; then
-      [ -n "$DRY" ] || echo "$o" >> "$SAVE/enabled"
-      do_ systemctl --user disable "$o"
-    fi
+    case " $on " in *" $o "*) do_ systemctl --user disable "$o";; esac
     if [ -n "$DRY" ]; then
-      say "  would write $UNITS/$n.service:"; unit_text "$src" | diff "$UNITS/$o.service" - | grep '^[<>]' | sed 's/^/      /' || true
+      say "  would write $UNITS/$n.service:"; unit_text "$src" | diff "$UNITS/$o.service" - | grep '^[<>]' | masked || true
     else
       unit_text "$src" > "$UNITS/$n.service"; say "  wrote $UNITS/$n.service"
     fi
@@ -179,7 +187,7 @@ forward() {
       for f in "$UNITS/$o.service.d"/*; do
         [ -f "$f" ] || continue
         if [ -n "$DRY" ]; then
-          say "  would write $UNITS/$n.service.d/$(basename "$f"):"; unit_text "$f" | diff "$f" - | grep '^[<>]' | sed 's/^/      /' || true
+          say "  would write $UNITS/$n.service.d/$(basename "$f"):"; unit_text "$f" | diff "$f" - | grep '^[<>]' | masked || true
         else
           unit_text "$f" > "$UNITS/$n.service.d/$(basename "$f")"; say "  wrote $UNITS/$n.service.d/$(basename "$f")"
         fi
@@ -189,9 +197,9 @@ forward() {
   do_ systemctl --user daemon-reload
   for s in "${SERVICES[@]}"; do
     o=${s%|*} n=${s#*|}
-    if [ -n "$DRY" ] && [ -f "$UNITS/$o.service" ] || [ -f "$UNITS/$n.service" ]; then
-      do_ systemctl --user enable --now "$n"
-    fi
+    [ -f "$UNITS/$o.service" ] || continue
+    case " $on " in *" $o "*) do_ systemctl --user enable "$n";; esac
+    case " $up " in *" $o "*) do_ systemctl --user start "$n";; esac
   done
   [ -n "$DRY" ] || date -u +%FT%TZ > "$SAVE/done"
   say "== done${DRY:+ (dry run)}. Check: kny version; systemctl --user status kny-serve kny-device; open the web app."
@@ -239,9 +247,10 @@ back() {
     done
   fi
   do_ systemctl --user daemon-reload
-  if [ -f "$SAVE/enabled" ]; then
-    while read -r o; do do_ systemctl --user enable --now "$o"; done < "$SAVE/enabled"
-  fi
+  for f in enabled:enable active:start; do
+    [ -f "$SAVE/${f%:*}" ] || continue
+    while read -r o; do [ -z "$o" ] || do_ systemctl --user "${f#*:}" "$o"; done < "$SAVE/${f%:*}"
+  done
   [ ! -e "$H/.local/bin/kny" ] || do_ rm "$H/.local/bin/kny"
   do_ mv "$SAVE" "$SAVE.rolled-back-$(date -u +%Y%m%dT%H%M%SZ)"
   say "== rolled back${DRY:+ (dry run)}. Check: ki version; systemctl --user status ki-serve ki-device."

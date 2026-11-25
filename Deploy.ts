@@ -284,7 +284,7 @@ function gate(dir: string, src: () => string): number {
     }
     const cli = compiled ? src() + "/Cli.ts" : Bun.main;
     if (!fs.existsSync(path.dirname(cli) + "/Probe.ts")) {
-      throw new Stop(path.dirname(cli) + " has no Probe.ts: merge the update tooling into the clone first");
+      throw new Stop(path.dirname(cli) + " has no Probe.ts: that checkout predates the cache gate");
     }
     return child.spawnSync(bun, [cli, "update", "gate"], { env, stdio: "inherit", timeout: 600e3 }).status ?? 1;
   } finally {
@@ -434,7 +434,7 @@ async function apply(args: string[]): Promise<number> {
   const snap = snapshot();
   console.log("    " + snap);
 
-  let note = "";
+  let note = resumed ? "resumed " + asked.wants.join(" ") + "; " : "";
   if (resumed) {
     if (!fs.existsSync(WORK)) {
       throw new Stop("nothing to resume: no " + WORK);
