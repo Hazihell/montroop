@@ -6,11 +6,11 @@
 // Ask card (Gate), whose answer goes back to it; each call of Kunumy's
 // tools it sends runs here once (Tools), its result kept till the holder
 // took it. On boot the holders still running are adopted, and the
-// sessions whose holder is gone marked as failed, to resume. When a run ends, or waits on the owner or on its
-// agent's answer, the agent gets one message that starts its turn
-// ("[Session name] done: …"), kept in the record till it's in the agent's
-// chat, so a restart neither loses nor repeats it. Agents drive their own
-// sessions with the session tool.
+// sessions whose holder is gone marked as failed, to resume. When a run
+// ends, or waits on the owner or on its agent's answer, the agent gets
+// one message that starts its turn ("[Session name] done: …"), kept in
+// the record till it's in the agent's chat, so a restart neither loses
+// nor repeats it. Agents drive their own sessions with the session tool.
 
 import * as fs from "node:fs";
 import * as path from "node:path";

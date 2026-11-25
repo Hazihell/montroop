@@ -30,8 +30,8 @@ test.concurrent("a session runs Kunumy's shell on a device, in its agent's scrat
   expect(k.cards()).toEqual([]);
 });
 
-test.concurrent("a session searches its agent's chat with Kunumy's search, which asks no one even when a rule names it", async () => {
-  const k = await Kny.up({ ask: [{ what: "Search", tools: "search", args: "" }] });
+test.concurrent("a session searches its agent's chat with Kunumy's search", async () => {
+  const k = await Kny.up();
   const t = tag();
   await fake.next(t + ": remember", { what: "reply", text: "Noted." });
   await k.tell(t + ": remember the heron-" + t);

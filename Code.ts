@@ -46,7 +46,6 @@ const SETTINGS = {
   pluginConfigs             : { "cc-plugin-agents-md@builtin": { options: { instructionFiles: "claude-md-and-agents-md" } } },
 };
 
-
 const HOUR = { type: "ephemeral", ttl: "1h" };
 
 // a failed turn's errors that say the service was busy (ClaudeSub.turn)

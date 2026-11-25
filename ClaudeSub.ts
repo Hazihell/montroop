@@ -13,6 +13,7 @@ import * as config from "./Config.ts";
 import { err_why } from "./Err.ts";
 import { Rules } from "./Rules.ts";
 import { get, rec, text_of } from "./Json.ts";
+import { HELD, MCP } from "./Wire.ts";
 
 export const SUMS = 4;
 
@@ -61,9 +62,6 @@ const OUTLASTS_CLAUDE_CODES_MCP_TIMEOUT = 1e8;
 // seconds a call Claude Code runs itself may wait for the owner's answer
 const OWNER_ANSWERS = 7 * 24 * 3600;
 
-// Kunumy's one MCP server in Claude Code, which names each of its tools for
-// the model mcp__kunumy__<name> (#190)
-const MCP = "kunumy";
 
 const OFF = ["server_error", "overloaded", "billing_error", "account_on_hold", "oauth_org_not_allowed", "verification_required", "model_not_found"];
 
@@ -306,7 +304,7 @@ export namespace ClaudeSub {
   }
 
   export function url(server: string): string {
-    return server + "?prefix=mcp__" + MCP + "__";
+    return server + "?prefix=" + HELD;
   }
 
 
