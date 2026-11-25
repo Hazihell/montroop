@@ -61,7 +61,7 @@ export function fill(text: string, vars: Record<string, string>): string {
 }
 
 // the names a new message's sender goes by (senders.md: "key: name" lines)
-export function sender(key: "user" | "ki" | "timer" | "job" | "agent"): string {
+export function sender(key: "user" | "app" | "timer" | "job" | "agent"): string {
   const line = prompt("senders").split("\n").find((l) => l.startsWith(key + ":"));
   return line === undefined ? key : line.slice(key.length + 1).trim();
 }

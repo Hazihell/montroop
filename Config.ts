@@ -43,7 +43,7 @@ export type McpServer = {
   keep    : string[];
 };
 
-export const DIR = config_path(process.env.KI_DIR ?? "~/.ki");
+export const DIR = config_path(process.env.KNY_DIR ?? "~/.kunumy");
 
 export const FILE_PATH = DIR + "/config.json";
 
@@ -52,7 +52,7 @@ export const LAYOUT     = DIR + "/layout";
 export const LAYOUT_NOW = 47;
 
 // the fixed prompts' files, which the installer writes
-export const SHARE = process.platform === "win32" ? (process.env.LOCALAPPDATA ?? os.homedir() + "\\AppData\\Local") + "\\ki" : (process.env.XDG_DATA_HOME || os.homedir() + "/.local/share") + "/ki";
+export const SHARE = process.platform === "win32" ? (process.env.LOCALAPPDATA ?? os.homedir() + "\\AppData\\Local") + "\\kunumy" : (process.env.XDG_DATA_HOME || os.homedir() + "/.local/share") + "/kunumy";
 export const KEYS_PATH = DIR + "/keys.json";
 
 export const SETTINGS: Setting[] = [
@@ -79,7 +79,7 @@ const DEFAULT_MODEL: Record<Vendor, string> = {
   "openai-api" : "gpt-6.2-sol",
 };
 
-const NONE     = "Not signed in and no API key: sign in with `ki serve claude login` (or `ki serve chatgpt login`) on the server, or set a key in Settings";
+const NONE     = "Not signed in and no API key: sign in with `kny serve claude login` (or `kny serve chatgpt login`) on the server, or set a key in Settings";
 const NONE_WHY = "not signed in, no key";
 
 export const VARS: Record<string, string> = {
@@ -131,12 +131,12 @@ export let   ASK        = MADE.ask;
 
 export const MEDIA_MAX  = (Number(config_get("media_mb", "")) || 1024) * 2 ** 20;
 
-const MCP_VAR = config_env_taken("KI_MCP");
+const MCP_VAR = config_env_taken("KNY_MCP");
 export const MCP_ENV_NOTE: string | null = config_mcp_some(MCP_VAR)
-  ? "KI_MCP is set, but ki serve runs no MCP servers, so they are left out: put them in the mcp of a device's own ~/.ki/config.json (for this computer, run ki device beside the server)."
+  ? "KNY_MCP is set, but kny serve runs no MCP servers, so they are left out: put them in the mcp of a device's own ~/.kunumy/config.json (for this computer, run kny device beside the server)."
   : null;
 export const MCP_FILE_STARTUP_NOTE: string | null = config_mcp_some(FILE.mcp)
-  ? "ki serve runs no MCP servers: the mcp in " + FILE_PATH + " runs only on a ki device that reads this file (ki device beside the server)."
+  ? "kny serve runs no MCP servers: the mcp in " + FILE_PATH + " runs only on a kny device that reads this file (kny device beside the server)."
   : null;
 
 function config_env_taken(name: string): string | undefined {
@@ -180,7 +180,7 @@ function config_named(file: Record<string, unknown>): Vendor[] {
   const set = ["pick", "compactor"].map((key) => config_env_value(key) ?? config_str(file[key]) ?? "");
   let profiles: unknown = file.profiles;
   try {
-    profiles = process.env.KI_PROFILES === undefined ? profiles : JSON.parse(process.env.KI_PROFILES);
+    profiles = process.env.KNY_PROFILES === undefined ? profiles : JSON.parse(process.env.KNY_PROFILES);
   } catch {
     profiles = null;
   }
@@ -198,7 +198,7 @@ export function config_keep(vendors: string[]): void {
   try {
     config_reload();
   } catch (err) {
-    console.error("ki: " + (err instanceof Error ? err.message : String(err)));
+    console.error("kny: " + (err instanceof Error ? err.message : String(err)));
   }
 }
 
@@ -269,13 +269,13 @@ export function config_follow(): boolean {
     config_reload();
     return true;
   } catch (err) {
-    console.error("ki: the sign-ins changed, but " + err_why(err));
+    console.error("kny: the sign-ins changed, but " + err_why(err));
     return false;
   }
 }
 
 function config_env_value(key: string): string | undefined {
-  return process.env["KI_" + key.toUpperCase()];
+  return process.env["KNY_" + key.toUpperCase()];
 }
 
 function config_str(x: unknown): string | undefined {
@@ -331,7 +331,7 @@ function config_json(file: string, text: string): unknown {
   }
 }
 
-// a config an older ki wrote fails here, before ki serve can tell that the
+// a config an older Kunumy wrote fails here, before kny serve can tell that the
 // installer hasn't brought DIR to this version: the failure says so
 function config_start(): Made {
   try {
@@ -342,13 +342,13 @@ function config_start(): Made {
   }
 }
 
-// why ki can't use the data in DIR before the installer runs, if so
+// why Kunumy can't use the data in DIR before the installer runs, if so
 export function config_older(): string | null {
   const old = fs.existsSync(DIR + "/users") || fs.existsSync(DIR + "/chat");
   const agents = fs.existsSync(DIR + "/agents");
   const layout = Number((fs.existsSync(LAYOUT) ? fs.readFileSync(LAYOUT, "utf8") : "").trim()) || 0;
   const due = (old && !agents) || (agents && layout < LAYOUT_NOW) || fs.existsSync(DIR + "/.migrating");
-  return due ? DIR + " holds an older ki's data, not yet (or not all) moved to this version's layout: run the installer (" + install_cmd(process.platform === "win32") + ") with no ki server running, then start again" : null;
+  return due ? DIR + " holds an older Kunumy's data, not yet (or not all) moved to this version's layout: run the installer (" + install_cmd(process.platform === "win32") + ") with no Kunumy server running, then start again" : null;
 }
 
 export function config_make(file: Record<string, unknown>): Made {
@@ -423,7 +423,7 @@ function config_run(key: string, text: string, offer: Offer): Pick {
 }
 
 function config_profiles(file: Record<string, unknown>, offer: Offer): Record<string, Fall[]> {
-  const env = process.env.KI_PROFILES;
+  const env = process.env.KNY_PROFILES;
   const all: unknown = env === undefined ? file.profiles ?? {} : JSON.parse(env);
   if (!rec(all)) {
     throw new Error("config: profiles is no object of names, each a list of models");
@@ -451,12 +451,12 @@ function config_fall(name: string, f: string, offer: Offer): Fall {
   return { vendor, model, effort, speed };
 }
 
-// a model Ki replaced, named where an environment variable or config.json
+// a model Kunumy replaced, named where an environment variable or config.json
 // sets key: refused, with the model to name there instead
 function config_replaced(key: string, label: string, what = key): void {
   const now = Pick.replaced(label);
   if (now !== undefined) {
-    const env = "KI_" + key.toUpperCase();
+    const env = "KNY_" + key.toUpperCase();
     const where = process.env[env] === undefined ? path.basename(FILE_PATH) + "'s " + what : what === key ? env : env + "'s " + what;
     throw new Error("config: " + where + " names " + label + ", which " + now + " replaced: name " + now + " there instead");
   }
@@ -546,7 +546,7 @@ function config_server(name: string, s: unknown, device: string): McpServer {
     }
     return { ...server, url: s.url, headers: map(s.headers, "headers") };
   }
-  throw bad("has type " + JSON.stringify(type) + "; ki runs stdio and http (streamable HTTP) servers");
+  throw bad("has type " + JSON.stringify(type) + "; Kunumy runs stdio and http (streamable HTTP) servers");
 }
 
 function config_key(name: string): string {

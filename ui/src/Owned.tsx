@@ -8,7 +8,7 @@ import { LABELS, Pick, VENDORS } from "../../Pick.ts";
 import { Rules, SCRATCH, type Rule } from "../../Rules.ts";
 import type { Key, Page, Row } from "../../Settings.ts";
 import * as View from "../../View.ts";
-import { holds, note } from "./Ki.ts";
+import { holds, note } from "./Kunumy.ts";
 
 // the server's settings as it last gave them, and over them what was
 // changed here and isn't saved yet; bad: what it refused, by setting
@@ -426,7 +426,7 @@ export function Owned(): ReactNode {
       <h2 className="label">Ask first</h2>
       <Ask />
       {keys.length === 0 ? null : <><h2 className="label">Keys</h2>{keys.map((k) => <Secret key={k.name} k={k} />)}</>}
-      <p className="lede pt-6 text-[0.875rem]">Ki version {page.ki}</p>
+      <p className="lede pt-6 text-[0.875rem]">Kunumy version {page.release}</p>
     </form>
   );
 }

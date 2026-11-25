@@ -226,7 +226,7 @@ export function Outline({ shape, size }: { shape: string; size: number }): React
 // the loop of public/mark.svg, on its 64 grid
 const LOOP = "M32 32c-4.73-7.27-9.47-10.5-14.2-10.5a10.5 10.5 0 0 0 0 21c4.73 0 9.47-3.23 14.2-10.5s9.47-10.5 14.2-10.5a10.5 10.5 0 0 1 0 21c-4.73 0-9.47-3.23-14.2-10.5z";
 
-// the picture "logo": Ki's mark as a launcher shows the app's icon
+// the picture "logo": Kunumy's mark as a launcher shows the app's icon
 function Logo({ size }: { size: number }): ReactNode {
   return (
     <svg className="face" style={{ background: "none" }} width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
@@ -236,7 +236,7 @@ function Logo({ size }: { size: number }): ReactNode {
   );
 }
 
-// an agent's face wherever it shows: its uploaded picture, Ki's mark, else its avatar
+// an agent's face wherever it shows: its uploaded picture, Kunumy's mark, else its avatar
 export function Face({ picture, id, mood, size, lit }: { picture: string; id: string; mood?: Mood; size: number; lit?: boolean }): ReactNode {
   if (picture === "logo") {
     return <Logo size={size} />;

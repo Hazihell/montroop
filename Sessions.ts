@@ -40,7 +40,7 @@ import { Worktree } from "./Worktree.ts";
 type Link = { sock: net.Socket | null; waits: Map<string, AbortController>; tries: number; timer: Timer | null };
 
 // what a new session needs: its agent; a repo on this computer, the ref
-// its branch starts from and the branch ("": ki/<name>); its name; the
+// its branch starts from and the branch ("": kny/<name>); its name; the
 // brief its system prompt adds; the first message; the model ("": the
 // account's default)
 type Begin = { agent: string; repo: string; base: string; branch: string; name: string; brief: string; prompt: string; model: string };
@@ -113,16 +113,17 @@ export namespace Sessions {
 
   // the unit and socket of a session's holder of launch n
   function holder(s: Session, n: number): { unit: string; sock: string } {
-    return { unit: "ki-hold-" + s.id + "-" + n, sock: path.join(s.dir, "hold-" + n + ".sock") };
+    return { unit: "kny-hold-" + s.id + "-" + n, sock: path.join(s.dir, "hold-" + n + ".sock") };
   }
 
   // a session with no unit in the record whose holder of its last launch
   // runs: an older version (run on this record since) launched it and kept
   // none, so it is named in the record, not taken for a run whose holder
   // never launched; unless that holder's run ended and the end is taken
-  // (the server stopped before the next run's launch): it only lingers
+  // (the server stopped before the next run's launch): it only lingers.
+  // Such versions predate the rename, so its unit has the old name
   function adopted(s: Session): Session {
-    const named = holder(s, s.launches);
+    const named = { unit: "ki-hold-" + s.id + "-" + s.launches, sock: holder(s, s.launches).sock };
     if (s.unit !== "" || s.launches === 0 || !alive({ ...s, ...named })) {
       return s;
     }
@@ -195,7 +196,7 @@ export namespace Sessions {
     }
     const id = crypto.randomUUID().slice(0, 8);
     const base = Worktree.named(top.dir, b.base || "HEAD");
-    const branch = b.branch || "ki/" + b.name;
+    const branch = b.branch || "kny/" + b.name;
     const worktree = path.join(Machine.agent_dir(b.agent), "sessions", b.name);
     fs.mkdirSync(path.dirname(worktree), { recursive: true });
     const made = Worktree.make(top.dir, base, branch, worktree);
@@ -224,8 +225,8 @@ export namespace Sessions {
     const first = s.launches > 0 && s.sdk === "" ? Session.runs(s.id)[0]?.prompt ?? prompt : prompt;
     const begin: Start = { prompt: first === prompt ? prompt : first + "\n\n" + prompt, resume: s.sdk, rules: config.ASK, sock };
     fs.writeFileSync(path.join(s.dir, START), JSON.stringify(begin, null, 1) + "\n", { mode: 0o600 });
-    const env = Object.entries({ ...Object.fromEntries(ENV.flatMap((k) => (process.env[k] ? [[k, process.env[k]]] : []))), KI_DIR: config.DIR });
-    const r = run(["systemd-run", "--user", "--collect", "--quiet", "--unit=" + unit, "--description=Ki work session " + s.name, "-p", "TimeoutStopSec=10", ...env.map(([k, v]) => "--setenv=" + k + "=" + v), "--", ...command(), "hold", s.dir]);
+    const env = Object.entries({ ...Object.fromEntries(ENV.flatMap((k) => (process.env[k] ? [[k, process.env[k]]] : []))), KNY_DIR: config.DIR });
+    const r = run(["systemd-run", "--user", "--collect", "--quiet", "--unit=" + unit, "--description=Kunumy work session " + s.name, "-p", "TimeoutStopSec=10", ...env.map(([k, v]) => "--setenv=" + k + "=" + v), "--", ...command(), "hold", s.dir]);
     if (r.code !== 0) {
       const why = "systemd-run failed: " + output(r);
       after(s.id, Session.move(s.id, "failed", why, about === null ? null : { about, text: why }) ?? []);
@@ -254,7 +255,7 @@ export namespace Sessions {
       try {
         got(id, sock, msg);
       } catch (err) {
-        console.error("ki: session " + id + ": " + err_why(err));
+        console.error("kny: session " + id + ": " + err_why(err));
       }
     }));
     sock.on("error", () => {});
@@ -601,7 +602,7 @@ export namespace Sessions {
       }
       const brief = arg("brief");
       const s = start({ agent, repo: Machine.home(arg("repo")), base: arg("base"), branch: arg("branch"), name: arg("name"), brief, prompt: brief, model: arg("model") });
-      const bare = typeof s === "string" || fs.existsSync(Browser.script(s.dir)) ? "" : " It has no browser: agent-browser is neither on this computer's PATH nor set as agent_browser in Ki's config.";
+      const bare = typeof s === "string" || fs.existsSync(Browser.script(s.dir)) ? "" : " It has no browser: agent-browser is neither on this computer's PATH nor set as agent_browser in Kunumy's config.";
       return typeof s === "string" ? no(s) : ok("Started session " + s.name + " on branch " + s.branch + " (from " + s.base + "), in " + s.worktree + "." + bare + " It works on its own: you get one message \"[Session " + s.name + "] …\" when it's done, fails, waits on the user's approval or asks you something. Don't wait for it or read it to check: go on with other work, or end your turn.");
     }
     const s = mine.find((x) => x.name === arg("name"));

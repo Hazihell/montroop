@@ -1,11 +1,11 @@
 // Gate
 // ====
 // Risky tool calls wait for the owner's yes. Every tool call of every agent,
-// subagent and vendor goes through Ki's MCP endpoint (Tools.fetch), so the
+// subagent and vendor goes through Kunumy's MCP endpoint (Tools.fetch), so the
 // gate stands there: a call whose tool name and arguments match a rule
 // (Settings, config.json's `ask`) waits, shown in its agent's chat as a
 // card and pushed to the owner's phones, until a browser approves or
-// denies it. A call waiting is kept in Ki's folder (asks.json), so it is
+// denies it. A call waiting is kept in Kunumy's folder (asks.json), so it is
 // still asked after a restart: the same caller's next same call waits on
 // it again, and one answered while no call waits reaches it as a message.
 

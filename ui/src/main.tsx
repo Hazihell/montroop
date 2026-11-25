@@ -1,9 +1,10 @@
+import "./Renamed.ts";
 import { TOP } from "./Based.ts";
 import { RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { router } from "./App.tsx";
-import { boot } from "./Ki.ts";
+import { boot } from "./Kunumy.ts";
 import "./app.css";
 
 const app = document.getElementById("app");

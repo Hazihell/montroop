@@ -1,4 +1,4 @@
-Hello! This is Ki.
+Hello! This is Kunumy.
 
 I'm like ChatGPT, but there is only **one chat** between us. *Forever.* Each agent you add with **+** gets a lasting chat of its own, too.
 
@@ -16,7 +16,7 @@ I'll remember:
 
 How? No new model. No magic. Just a regular chatbot with a neat memory system.
 
-I can also work on your computers: install ki there and run `ki device`.
+I can also work on your computers: install kny there and run `kny device`.
 
 ```
 {install}

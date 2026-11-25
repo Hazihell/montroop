@@ -9,7 +9,7 @@ import * as Call from "../../Call.ts";
 import * as Md from "../../Md.ts";
 import * as View from "../../View.ts";
 import { Face } from "./Avatar.tsx";
-import { act, answer, useKi } from "./Ki.ts";
+import { act, answer, useKunumy } from "./Kunumy.ts";
 import { Blocks, Copy } from "./Markdown.tsx";
 import { viewer_open } from "./Viewer.tsx";
 
@@ -116,7 +116,7 @@ function BoxHead({ row }: { row: Of<"Box"> }): ReactNode {
 }
 
 function Pics({ names }: { names: string[] }): ReactNode {
-  const agent = useKi((s) => s.agent);
+  const agent = useKunumy((s) => s.agent);
   if (names.length === 0) {
     return null;
   }
@@ -140,7 +140,7 @@ export function CallBody({ call }: { call: Call.Call }): ReactNode {
 }
 
 function Said({ row }: { row: Of<"Msg"> }): ReactNode {
-  const mate = useKi((s) => s.team.find((m) => m.id === row.from));
+  const mate = useKunumy((s) => s.team.find((m) => m.id === row.from));
   const gist = Md.md_flat(Call.report_read(row.text)?.text ?? row.text);
   return (
     <details className="said card gl">
@@ -252,7 +252,7 @@ function Cap({ row }: { row: Of<"Cap"> }): ReactNode {
 
 // who asked: a work session's name opens its page
 function AskedBy({ ask }: { ask: Of<"Ask">["ask"] }): ReactNode {
-  const work = useKi((s) => s.team.find((m) => m.id === ask.agent)?.works?.find((w) => ask.from === "session" && View.SESSION + w.name === ask.who));
+  const work = useKunumy((s) => s.team.find((m) => m.id === ask.agent)?.works?.find((w) => ask.from === "session" && View.SESSION + w.name === ask.who));
   return work === undefined ? ask.who : <Link to="/a/$agent/w/$id" params={{ agent: ask.agent, id: work.id }} className="underline underline-offset-2">{ask.who}</Link>;
 }
 

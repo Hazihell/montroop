@@ -4,7 +4,7 @@ import { text_of } from "../../Json.ts";
 import * as View from "../../View.ts";
 import { Avatar, BODIES, DETAILS, look_of, look_text, Outline, PICKS, type Look as Drawn, type Mood } from "./Avatar.tsx";
 import { Back, useBack } from "./Back.tsx";
-import { MOODS, useKi } from "./Ki.ts";
+import { MOODS, useKunumy } from "./Kunumy.ts";
 
 type Part = keyof typeof PICKS;
 type Swatch = CSSProperties & { "--s": string };
@@ -49,7 +49,7 @@ function Editor({ agent, mate }: { agent: string; mate: View.Mate }): ReactNode 
       if (error === "") {
         back();
       } else {
-        useKi.setState({ note: error });
+        useKunumy.setState({ note: error });
       }
     });
   };
@@ -87,6 +87,6 @@ function Editor({ agent, mate }: { agent: string; mate: View.Mate }): ReactNode 
 }
 
 export function Look({ agent }: { agent: string }): ReactNode {
-  const mate = useKi((s) => s.team.find((m) => m.id === agent));
+  const mate = useKunumy((s) => s.team.find((m) => m.id === agent));
   return mate === undefined ? <section className="page" /> : <Editor key={agent} agent={agent} mate={mate} />;
 }

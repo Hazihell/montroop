@@ -7,8 +7,8 @@ import { err_why } from "./Err.ts";
 import type { Part } from "./Service.ts";
 import * as Update from "./Update.ts";
 
-const SET = /^--env=(KI_DIR|XDG_CONFIG_HOME)=(.+)$/;
-// "--account NAME" reads as NAME, the argument of `ki serve claude login`
+const SET = /^--env=(KNY_DIR|XDG_CONFIG_HOME)=(.+)$/;
+// "--account NAME" reads as NAME, the argument of `kny serve claude login`
 const ARGS = process.argv.slice(2).filter((a) => !SET.test(a) && a !== "--account");
 const SETS = process.argv.slice(2).filter((a) => SET.test(a));
 for (const a of SETS) {
@@ -24,10 +24,10 @@ const HELPS = ["--help", "-h", "help"];
 const REST = ARGS.filter((a) => !WEB.test(a) && !FLAGS.includes(a) && !HELPS.includes(a));
 const FLAG = new Set(ARGS.filter((a) => FLAGS.includes(a)));
 
-const SERVICE = process.env.KI_SERVICE;
-const SUPERVISOR = Number(process.env.KI_SUPERVISOR ?? 0);
-delete process.env.KI_SERVICE;
-delete process.env.KI_SUPERVISOR;
+const SERVICE = process.env.KNY_SERVICE;
+const SUPERVISOR = Number(process.env.KNY_SUPERVISOR ?? 0);
+delete process.env.KNY_SERVICE;
+delete process.env.KNY_SUPERVISOR;
 
 type Cmd = {
   use: string;
@@ -44,16 +44,16 @@ const PORT = /^\d+$/;
 
 async function serve_free(): Promise<void> {
   const Service = await import("./Service.ts");
-  const dir = (process.env.KI_DIR ?? "~/.ki").replace(/^~(?=[\\/]|$)/, os.homedir());
+  const dir = (process.env.KNY_DIR ?? "~/.kunumy").replace(/^~(?=[\\/]|$)/, os.homedir());
   const pid = Number(fs.existsSync(dir + "/server.pid") ? fs.readFileSync(dir + "/server.pid", "utf8") : 0);
   const up = pid > 0 && Service.ours("serve", [pid]).length > 0;
   if (up && Service.running("serve") === null) {
-    fail("a ki server runs here already (pid " + pid + "), not as ki serve -d's service: stop it first.");
+    fail("a Kunumy server runs here already (pid " + pid + "), not as kny serve -d's service: stop it first.");
   }
 }
 
 function fail(why: string): never {
-  console.error("ki: " + why);
+  console.error("kny: " + why);
   process.exit(1);
 }
 
@@ -61,13 +61,13 @@ const WIN  = process.platform === "win32";
 const BUN  = /^bun(\.exe)?$/i.test(path.basename(process.execPath));
 
 function unmark_from_parent_shell(): void {
-  for (const k of ["KI_RUN", "KI_AGENT", "INVOCATION_ID"]) {
+  for (const k of ["KNY_RUN", "KNY_AGENT", "INVOCATION_ID"]) {
     delete process.env[k];
   }
 }
 
-// on Windows a running ki.exe can't be replaced, only renamed: the
-// installer leaves the one it replaced as ki.exe.old (or .old-<n>),
+// on Windows a running kny.exe can't be replaced, only renamed: the
+// installer leaves the one it replaced as kny.exe.old (or .old-<n>),
 // removed here once it no longer runs (one still running stays till a
 // later start). Only those names: any other file beside it is the user's
 if (WIN && !BUN) {
@@ -108,7 +108,7 @@ function service(part: Part, run: (arg?: string) => unknown): Cmd[] {
 function not_by_sudo(cmd: string): void {
   const user = process.env.SUDO_USER;
   if (!WIN && process.getuid?.() === 0 && user !== undefined) {
-    fail("Run `ki " + cmd + "` without sudo. To give the agent admin rights, set up passwordless sudo for " + user + ".");
+    fail("Run `kny " + cmd + "` without sudo. To give the agent admin rights, set up passwordless sudo for " + user + ".");
   }
 }
 
@@ -126,7 +126,7 @@ function plan(name: "claude" | "chatgpt", about: string): Cmd {
   ] };
 }
 
-const TREE: Cmd = { use: "ki", about: "Ki: open your server's address in a browser to chat", kids: [
+const TREE: Cmd = { use: "kny", about: "Kunumy: open your server's address in a browser to chat", kids: [
   { use: "device [url]", about: "this computer as a device of a server", url: true, run: async () => { await run_here("device"); await (await import("./Device.ts")).run(URL_); }, kids: service("device", async () => {
     unmark_from_parent_shell();
     const Service = await import("./Service.ts");
@@ -134,7 +134,7 @@ const TREE: Cmd = { use: "ki", about: "Ki: open your server's address in a brows
     await (await import("./Device.ts")).signin(URL_);
     await Service.start("device", [], admin);
   }) },
-  { use: "serve [port]", about: "your Ki server (port 8788)", arg: PORT, run: async (port) => { await run_here("serve"); await (await import("./Server.ts")).serve(Number(port ?? 8788)); }, kids: [
+  { use: "serve [port]", about: "your Kunumy server (port 8788)", arg: PORT, run: async (port) => { await run_here("serve"); await (await import("./Server.ts")).serve(Number(port ?? 8788)); }, kids: [
     ...service("serve", async (port) => {
       unmark_from_parent_shell();
       await serve_free();
@@ -149,8 +149,8 @@ const TREE: Cmd = { use: "ki", about: "Ki: open your server's address in a brows
     plan("chatgpt", "your ChatGPT plan (openai-sub)"),
   ] },
   { use: "hold <dir>", about: "a work session's holder (the server starts it)", arg: /^[/~]/, need: true, run: async (dir) => (await import("./Hold.ts")).Hold.main(dir ?? "") },
-  { use: "update", about: "check for updates, update safely (`ki update help`)" },
-  { use: "version", about: "this ki's version", run: () => console.log("ki " + Update.VERSION) },
+  { use: "update", about: "check for updates, update safely (`kny update help`)" },
+  { use: "version", about: "this kny's version", run: () => console.log("kny " + Update.VERSION) },
   { use: "help", about: "this" },
 ] };
 
@@ -163,7 +163,7 @@ function rows(c: Cmd, head: string, depth: number): [string, string][] {
 const words = REST[0] === "-v" || REST[0] === "--version" ? ["version", ...REST.slice(1)] : [...REST];
 const help = ARGS.some((a) => HELPS.includes(a)) || ARGS.length === 0;
 let cmd = TREE;
-const trail = ["ki"];
+const trail = ["kny"];
 while (words.length > 0) {
   const next = cmd.kids?.find((k) => key(k) === words[0]);
   if (next === undefined) {
@@ -174,8 +174,8 @@ while (words.length > 0) {
   words.shift();
 }
 const part = trail[1] === "device" || trail[1] === "serve" ? trail[1] : null;
-if (part !== null && !help && process.env.KI_DIR === undefined && !fs.existsSync(path.join(os.homedir(), ".ki")) && fs.existsSync(path.join(os.homedir(), ".unii"))) {
-  fail("~/.unii holds the data of unii, as ki was called before, and ~/.ki doesn't exist: run the installer (" + Update.install_cmd(WIN) + ") to move it, then start again.");
+if (part !== null && !help && process.env.KNY_DIR === undefined && !fs.existsSync(path.join(os.homedir(), ".kunumy")) && fs.existsSync(path.join(os.homedir(), ".ki"))) {
+  fail("~/.ki holds the data of ki, as Kunumy was called before, and ~/.kunumy doesn't exist: move it with release/migrate-kunumy.sh (in Kunumy's source), then start again.");
 }
 const daemon = FLAG.has("-d") ? cmd.kids?.find((k) => key(k) === "-d") : undefined;
 if (daemon !== undefined) {
@@ -198,7 +198,7 @@ const fits =
   (SETS.length === 0 || service_run !== null);
 
 if (REST[0] === "update" && !help) {
-  process.exit(await (await import("./Fork.ts")).update(ARGS.slice(ARGS.indexOf("update") + 1)));
+  process.exit(await (await import("./Deploy.ts")).update(ARGS.slice(ARGS.indexOf("update") + 1)));
 } else if (help || !fits) {
   const head = trail.length === 1 ? TREE.use : [...trail.slice(0, -1), cmd.use].join(" ");
   const all = rows(cmd, head, 0);

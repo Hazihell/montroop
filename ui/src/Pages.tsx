@@ -5,7 +5,7 @@ import type { Pin } from "../../Pins.ts";
 import type * as View from "../../View.ts";
 import { Face } from "./Avatar.tsx";
 import { Back } from "./Back.tsx";
-import { MOODS, mood_of, show, useKi, work_mood, works_said } from "./Ki.ts";
+import { MOODS, mood_of, show, useKunumy, work_mood, works_said } from "./Kunumy.ts";
 import { Minis, type Mini } from "./Minis.tsx";
 import { work_seed } from "./Works.tsx";
 import { Context, RunList } from "./Panel.tsx";
@@ -44,7 +44,7 @@ function minis_of(works: View.SessionRow[]): Mini[] {
 // reader hears said, and the line under its name holds its last words;
 // beside its name, its work sessions'
 function Mate({ m, size }: { m: View.Mate; size: number }): ReactNode {
-  const mood = useKi((s) => mood_of(m, s));
+  const mood = useKunumy((s) => mood_of(m, s));
   const said = m.last === "" ? m.about : m.last;
   const pop = usePop(m.unread);
   const works = m.works ?? [];
@@ -65,13 +65,13 @@ function Mate({ m, size }: { m: View.Mate; size: number }): ReactNode {
 // the home screen: every agent with what it does now, its last words and
 // what waits for the owner; on a wide screen, the list beside the open chat
 export function Agents({ side = false }: { side?: boolean }): ReactNode {
-  const team = useKi((s) => s.team).filter((m) => m.archived === 0);
+  const team = useKunumy((s) => s.team).filter((m) => m.archived === 0);
   return (
     <section className={side ? "list" : "page"}>
       <header className="head">
         <h1>Agents</h1>
         <Link to="/new" className="round gl" aria-label="New agent"><PlusIcon size={22} weight="bold" /></Link>
-        <Link to="/settings" className="round gl" aria-label="Ki's settings"><GearSixIcon size={22} /></Link>
+        <Link to="/settings" className="round gl" aria-label="Kunumy's settings"><GearSixIcon size={22} /></Link>
       </header>
       <div className="scroll px-1.5 pb-4">
         {team.map((m) => <Mate key={m.id} m={m} size={side ? 56 : 68} />)}
@@ -91,7 +91,7 @@ function useHold(agent: string): void {
 // what goes on for one agent without the owner: its work sessions,
 // subagents, background jobs and timers
 export function Running({ agent }: { agent: string }): ReactNode {
-  const name = useKi((s) => s.team.find((m) => m.id === agent)?.name ?? "");
+  const name = useKunumy((s) => s.team.find((m) => m.id === agent)?.name ?? "");
   useHold(agent);
   return (
     <section className="page">
@@ -124,7 +124,7 @@ export function Tabs({ agent }: { agent: string }): ReactNode {
 // what is kept: how full the agent's context is, and the pins every agent
 // follows
 export function Memory({ agent }: { agent: string }): ReactNode {
-  const name = useKi((s) => s.team.find((m) => m.id === agent)?.name ?? "");
+  const name = useKunumy((s) => s.team.find((m) => m.id === agent)?.name ?? "");
   const [pins, setPins] = useState<Pin[] | null | undefined>(undefined);
   useHold(agent);
   const load = (unpin: number | null) => {

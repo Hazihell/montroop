@@ -1,6 +1,6 @@
 // Session
 // =======
-// A work session's record in ki.db: an agent's Claude Code session on a
+// A work session's record in kunumy.db: an agent's Claude Code session on a
 // repo, in its own branch and worktree, kept across server restarts. A
 // session has runs (a message it works on until it's done with it), each
 // tried again (an attempt) when its holder died; the calls it has parked
@@ -16,7 +16,7 @@ export type Status = "running" | "waiting" | "done" | "failed" | "stopped";
 // answered: the last call parked answered; run: a new run or attempt
 type Step = "ask" | "answered" | "ended" | "failed" | "stop" | "run";
 
-// account: its Claude account ("": personal); dir: its folder in Ki's,
+// account: its Claude account ("": personal); dir: its folder in Kunumy's,
 // with its log; sdk: the Claude Code session it resumes; ack: the last of
 // its holder's events taken in; launches: its holders so far; unit, sock:
 // the latest one's systemd unit and socket, as named at its launch; last:

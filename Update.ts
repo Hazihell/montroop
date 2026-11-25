@@ -4,7 +4,7 @@ export const VERSION = "47";
 // installed by hand, with its own release's install line
 const RC = /\.rc[0-9]+$/.test(VERSION);
 
-const BASE = "https://github.com/arteeh/ki/releases/" + (RC ? "download/" + VERSION : "latest/download");
+const BASE = "https://github.com/Hazihell/kunumy/releases/" + (RC ? "download/" + VERSION : "latest/download");
 
 // a release candidate's own install line, else the latest release's
 export function install_cmd(win: boolean): string {

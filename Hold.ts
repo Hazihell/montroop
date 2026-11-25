@@ -1,13 +1,13 @@
 // Hold
 // ====
-// `ki hold <dir>`: a work session's holder, a process of its own (a systemd
+// `kny hold <dir>`: a work session's holder, a process of its own (a systemd
 // user unit the server starts, Sessions) so the session outlives a server
 // restart. It runs one Claude Code session in the session's worktree until
 // it has nothing left to do, tells the server everything it does (Wire),
 // and parks each call a rule names until the server sends the owner's
 // answer. What it tells is also kept in the session's log, which the
 // server reads what it missed from once the holder is gone. It gives the
-// session two tools of Ki's: ask_owner, a question for its agent that
+// session two tools of Kunumy's: ask_owner, a question for its agent that
 // waits for the answer (a message the server sends as one), and report,
 // its result.
 
@@ -66,7 +66,7 @@ const READ = new Map<string, { at: number; told: Told[] }>();
 const LINGER = 60e3;
 
 const ENV = {
-  CLAUDE_AGENT_SDK_CLIENT_APP              : "ki",
+  CLAUDE_AGENT_SDK_CLIENT_APP              : "kunumy",
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC : "1",
 };
 
@@ -172,7 +172,7 @@ export namespace Hold {
 
   function tools(h: Held, sdk: Awaited<ReturnType<typeof ClaudeSub.sdk>>): McpSdkServerConfigWithInstance {
     const said = (text: string) => ({ content: [{ type: "text" as const, text }] });
-    return sdk.createSdkMcpServer({ name: "ki", alwaysLoad: true, tools: [
+    return sdk.createSdkMcpServer({ name: "kunumy", alwaysLoad: true, tools: [
       sdk.tool("ask_owner", "Ask the agent that started this session a question, when you can't go on without its answer (a decision, missing information). The call waits for the answer, which can take a while; it comes back as this call's result.", { question: z.string() }, async ({ question }) => {
         const id = crypto.randomUUID();
         const answer = await new Promise<string>((done) => {
@@ -298,7 +298,7 @@ export namespace Hold {
         permissionMode             : "default",
         disallowedTools            : DISALLOWED,
         settings                   : SETTINGS,
-        mcpServers                 : { ki: tools(h, sdk_mod) },
+        mcpServers                 : { kunumy: tools(h, sdk_mod) },
         resume                     : sdk === "" ? undefined : sdk,
         canUseTool                 : can,
         hooks                      : {

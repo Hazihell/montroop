@@ -2,7 +2,7 @@ import { ArrowUpIcon, CaretDownIcon, CheckIcon, FileIcon, MicrophoneIcon, PlusIc
 import { useEffect, useId, useRef, useState, type ClipboardEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import * as View from "../../View.ts";
 import { useStep } from "./Back.tsx";
-import { act, holds, note, useKi, voice } from "./Ki.ts";
+import { act, holds, note, useKunumy, voice } from "./Kunumy.ts";
 import { useLeaving } from "./Pages.tsx";
 import { viewer_open } from "./Viewer.tsx";
 
@@ -65,7 +65,7 @@ function answer_of(xhr: XMLHttpRequest): { url: string } | { error: string } {
   if (typeof out === "object" && out !== null && "url" in out && typeof out.url === "string") {
     return { url: out.url };
   }
-  const why = typeof out === "object" && out !== null && "error" in out && typeof out.error === "string" ? out.error : xhr.status === 0 ? "Can't reach Ki." : "HTTP " + xhr.status;
+  const why = typeof out === "object" && out !== null && "error" in out && typeof out.error === "string" ? out.error : xhr.status === 0 ? "Can't reach Kunumy." : "HTTP " + xhr.status;
   return { error: "Could not upload: " + why };
 }
 
@@ -124,8 +124,8 @@ function Meter({ stream }: { stream: MediaStream }): ReactNode {
 // Escape closes it; closed, it stays drawn until it has slid away, and a
 // focus in it goes back to the pill
 function Knobs({ opener, shut, leaving, gone }: { opener: React.RefObject<HTMLButtonElement | null>; shut: () => void; leaving: boolean; gone: () => void }): ReactNode {
-  const knobs = useKi((s) => s.knobs);
-  const talk = useKi((s) => s.talk);
+  const knobs = useKunumy((s) => s.knobs);
+  const talk = useKunumy((s) => s.talk);
   const used = talk === null ? 0 : View.talk_percent(talk);
   const sheet = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -180,11 +180,11 @@ function Knobs({ opener, shut, leaving, gone }: { opener: React.RefObject<HTMLBu
 }
 
 export function Composer({ agent, name }: { agent: string; name: string }): ReactNode {
-  const stoppable = useKi((s) => s.stoppable);
-  const knobs = useKi((s) => s.knobs);
-  const page = useKi((s) => s.page);
-  const hearing = useKi((s) => s.hearing);
-  const draft = "ki.draft." + agent;
+  const stoppable = useKunumy((s) => s.stoppable);
+  const knobs = useKunumy((s) => s.knobs);
+  const page = useKunumy((s) => s.page);
+  const hearing = useKunumy((s) => s.hearing);
+  const draft = "kunumy.draft." + agent;
   const [text, setText] = useState(() => sessionStorage.getItem(draft) ?? "");
   const [items, setItems] = useState<Item[]>([]);
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -297,7 +297,7 @@ export function Composer({ agent, name }: { agent: string; name: string }): Reac
     }
     const got = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
     if (got === null) {
-      note("Ki can't use the microphone.");
+      note("Kunumy can't use the microphone.");
       return;
     }
     const made = new MediaRecorder(got, { mimeType: ["audio/webm", "audio/mp4"].find((t) => MediaRecorder.isTypeSupported(t)) });

@@ -41,7 +41,7 @@ int main(void) {
     ioctl(fd, UI_ABS_SETUP, &a);
   }
   struct uinput_setup s = { .id = { BUS_VIRTUAL, 0x18d1, 0x4ee7, 1 } };
-  strcpy(s.name, "ki finger");
+  strcpy(s.name, "kny finger");
   if (ioctl(fd, UI_DEV_SETUP, &s) < 0 || ioctl(fd, UI_DEV_CREATE) < 0) return perror("touch: uinput"), 1;
   // (Android opens a new device in a moment: events before are lost)
   usleep(300000);

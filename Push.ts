@@ -232,7 +232,7 @@ export namespace Push {
   // a fixed sender every push service takes (Apple's refuses one at
   // localhost or with no scheme, RFC 8292 asks for https: or mailto:)
   export function subject(): string {
-    return "https://github.com/arteeh/ki";
+    return "https://github.com/Hazihell/kunumy";
   }
 
   // a message to a browser. The answer's body is never read: the status

@@ -7,7 +7,7 @@ import { Team } from "./Team.ts";
 import { MEDIA } from "./View.ts";
 import files from "./ui/dist/files.ts";
 
-export const FULL = "Ki's disk is full; try again soon.";
+export const FULL = "Kunumy's disk is full; try again soon.";
 const SPARE      = 2 ** 30;
 
 const PAGE_CSP   = "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; media-src 'self'; font-src data:; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; sandbox allow-same-origin allow-popups";

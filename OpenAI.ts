@@ -57,7 +57,7 @@ export namespace OpenAI {
   }
 
   export function session(ask: Ask): string {
-    return "ki-" + Bun.hash(JSON.stringify([OpenAI.sharer(ask), ask.model, OpenAI.system(ask)])).toString(36);
+    return "kny-" + Bun.hash(JSON.stringify([OpenAI.sharer(ask), ask.model, OpenAI.system(ask)])).toString(36);
   }
 
   export function sharer(ask: Ask): string {

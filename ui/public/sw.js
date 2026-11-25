@@ -1,4 +1,4 @@
-const CACHE = "ki-shell-{build}";
+const CACHE = "kunumy-shell-{build}";
 // the files a page needs to open offline, as the server names this build's
 const SHELL = "{shell}".split(" ");
 const PAGES = ["/", "/settings", "/tree", "/new", "/running", "/memory", "/team"];
@@ -40,7 +40,7 @@ async function kept(req, key) {
 }
 
 // a reply of an agent: its name and chat; no picture, which Android would
-// show on the right, not where a messaging app has it (#152), but Ki's mark
+// show on the right, not where a messaging app has it (#152), but Kunumy's mark
 // in the status bar
 self.addEventListener("push", (ev) => {
   let msg = {};
@@ -64,11 +64,11 @@ function notify(msg) {
 // a push sent again (its first answer timed out) shows its line once
 async function show(msg) {
   const url = typeof msg.url === "string" ? msg.url : "/";
-  const tag = String(msg.tag ?? "ki");
+  const tag = String(msg.tag ?? "kunumy");
   const text = String(msg.text ?? "");
   const had = (await self.registration.getNotifications({ tag })).flatMap((n) => n.body.split("\n")).filter((line) => line !== text);
   const body = [text, ...had].slice(0, SHOWN).join("\n");
-  await self.registration.showNotification(String(msg.title ?? "Ki"), { body, tag, renotify: true, requireInteraction: tag.startsWith("ask-"), badge: "/badge.png?v=4", data: { url } });
+  await self.registration.showNotification(String(msg.title ?? "Kunumy"), { body, tag, renotify: true, requireInteraction: tag.startsWith("ask-"), badge: "/badge.png?v=4", data: { url } });
 }
 
 // the push service renewed the subscription: the server gets the new one

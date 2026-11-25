@@ -103,7 +103,7 @@ const OWN: Spec[] = [
   spec("date", "The date and time of message id.", { id: INT }, ["id"]),
 ];
 // built at each listing: spawn names the models offered now, which
-// Settings change while Ki runs
+// Settings change while Kunumy runs
 const boss = (): Spec[] => [
   spec("schedule", "Schedule a message to yourself: at its time it reaches you as a new message from the timer, starting \"[Timer id]\", and starts a turn as a report does, whether or not the user is online. Give `at` to send it once, or `cron` to send it again and again, and the time zone both are read in (the user's). Write the message as the task to do then, whole: by then this turn is far back in the view.", {
     message : STR,
@@ -131,7 +131,7 @@ const boss = (): Spec[] => [
     id     : INT,
     ids    : { type: "array", items: INT },
   }, ["action"]),
-  spec("session", "Work sessions: a Claude Code session of your own on a git repo of this server's computer, in its own new branch and worktree, that runs on its own for as long as the task takes, through server restarts. start: repo, base (the ref its branch starts from; default the repo's HEAD), branch (its new branch's name, one the repo doesn't have yet; default ki/<name>), name, brief (its whole task: it knows only that, the repo and its instructions), model. It never waits on you while it runs: you get one message \"[Session name] done|failed|stopped|waiting|question: …\" when its run ends, it waits on the user's approval of a call (only the user can give it, in the app), or it asks you something; that message starts your turn, so don't wait for it, read it to check, or schedule a check. send: a message (text) to it, by name: mode steer (default: into its work now; to a session that asked you something, the answer) or queue (for its next run, once this one ends); to a session done or stopped it starts a new run; request: an id of yours for this message, the same on a retry, so it's sent once. read: its state, what it waits on, its report and its latest lines; after (a line's number) and n for its log from there. stop: stop it at once (its worktree stays). list: your sessions. archive: remove its worktree and branch once its work is merged or not wanted (force: even with commits or changes found nowhere else).", {
+  spec("session", "Work sessions: a Claude Code session of your own on a git repo of this server's computer, in its own new branch and worktree, that runs on its own for as long as the task takes, through server restarts. start: repo, base (the ref its branch starts from; default the repo's HEAD), branch (its new branch's name, one the repo doesn't have yet; default kny/<name>), name, brief (its whole task: it knows only that, the repo and its instructions), model. It never waits on you while it runs: you get one message \"[Session name] done|failed|stopped|waiting|question: …\" when its run ends, it waits on the user's approval of a call (only the user can give it, in the app), or it asks you something; that message starts your turn, so don't wait for it, read it to check, or schedule a check. send: a message (text) to it, by name: mode steer (default: into its work now; to a session that asked you something, the answer) or queue (for its next run, once this one ends); to a session done or stopped it starts a new run; request: an id of yours for this message, the same on a retry, so it's sent once. read: its state, what it waits on, its report and its latest lines; after (a line's number) and n for its log from there. stop: stop it at once (its worktree stays). list: your sessions. archive: remove its worktree and branch once its work is merged or not wanted (force: even with commits or changes found nowhere else).", {
     action  : { type: "string", enum: ["start", "send", "read", "stop", "list", "archive"] },
     name    : { type: "string", description: "The session's name: 1 to 40 lowercase letters, digits and dashes." },
     repo    : { type: "string", description: "Start: the repo's folder (~ is the home folder)." },
@@ -287,7 +287,7 @@ export namespace Tools {
     switch (method) {
       case "initialize": {
         const protocolVersion = params.protocolVersion ?? "2025-06-18";
-        return { protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "ki", version: "1" } };
+        return { protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "kunumy", version: "1" } };
       }
       // notes only for a caller that puts them in the model's request
       // (Agent.notes), heard only then: Claude Code drops them (#190)
@@ -295,7 +295,7 @@ export namespace Tools {
         const bare = tools.seats.get(who)?.mcp === false;
         const all = bare ? [] : await Mcp.list(tools.mcp, Tools.held(tools, who));
         const theirs = all.filter((t) => t.name.length <= NAME_MOST - prefix.length);
-        // a deferred tool overrides alwaysLoad on Ki's server, tested 20 Nov 2026
+        // a deferred tool overrides alwaysLoad on Kunumy's server, tested 20 Nov 2026
         const list = [...Tools.listed(tools, who), ...theirs].map((t) => ({ name: t.name, description: t.info, inputSchema: t.schema, ...(t.defer === true ? { _meta: { "anthropic/alwaysLoad": false } } : {}) }));
         if (params.notes !== true || bare) {
           return { tools: list };
@@ -683,7 +683,7 @@ export namespace Tools {
     if (why !== d.why) {
       d.why = why;
       if (why !== "") {
-        console.error("ki: device " + device + ": " + why);
+        console.error("kny: device " + device + ": " + why);
         tools.hub.note("The device " + device + "'s MCP servers: " + why + ".");
       }
     }
@@ -691,7 +691,7 @@ export namespace Tools {
   }
 
   export function same_prefix_note(name: string, prefix: string, other: string): string {
-    return "The device " + name + "'s MCP servers are left out: their tools would be named " + prefix + "_…, as the device " + other + "'s are. Rename one of the two (name in its ~/.config/ki/device.json).";
+    return "The device " + name + "'s MCP servers are left out: their tools would be named " + prefix + "_…, as the device " + other + "'s are. Rename one of the two (name in its ~/.config/kunumy/device.json).";
   }
 
   export function plug(tools: Tools): void {
@@ -704,7 +704,7 @@ export namespace Tools {
       if (clash !== d.clash) {
         d.clash = clash;
         if (clash !== "") {
-          console.error("ki: " + clash);
+          console.error("kny: " + clash);
           tools.hub.note(clash);
         }
       }
@@ -763,7 +763,7 @@ export namespace Tools {
     const d = tools.devices.get(device);
     const open = Tools.opened(tools).map(([name]) => name).join(", ") || "none";
     if (d === undefined || d.terms.size === 0) {
-      return "No device " + device + " is open (its ki device isn't running). Open: " + open + ". Only the user starts it, so don't retry or wait: end your turn, saying what is left.";
+      return "No device " + device + " is open (its kny device isn't running). Open: " + open + ". Only the user starts it, so don't retry or wait: end your turn, saying what is left.";
     }
     return d;
   }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import * as Import from "../../Import.ts";
 import * as View from "../../View.ts";
-import { import_flow, import_send, useKi } from "./Ki.ts";
+import { import_flow, import_send, useKunumy } from "./Kunumy.ts";
 
 type Read = { sessions: Import.Session[]; moved: number };
 
@@ -27,7 +27,7 @@ function day(at: string | number): string {
 // past Claude and ChatGPT chats, read in this browser, picked, then sent
 // into the agent's memory, whose tree the server builds meanwhile
 export default function Importer({ agent, shut }: { agent: string; shut: () => void }): ReactNode {
-  const run = useKi((s) => s.importing);
+  const run = useKunumy((s) => s.importing);
   const box = useRef<HTMLDialogElement>(null);
   const dir = useRef<HTMLInputElement>(null);
   const zip = useRef<HTMLInputElement>(null);

@@ -10,7 +10,7 @@ import { push_clear, push_keep } from "./Push.ts";
 // what the screen draws: taken from the view at most once a frame, so a
 // reply streaming in costs one render a frame however many pieces come;
 // rows are the chat's, tail what streams in and waits after them
-type Ki = {
+type Kunumy = {
   signed    : boolean | null;
   agent     : string;
   loaded    : boolean;
@@ -41,20 +41,20 @@ type Ki = {
 };
 
 const AGENT = /^\/a\/([a-z0-9]{1,16})/;
-const LAST  = "ki.agent";
+const LAST  = "kunumy.agent";
 // this browser's own: that it is signed in, the team, and each chat's last
 // screens, drawn before the link is up
-const SIGNED = "ki.signed";
-const TEAM   = "ki.team";
-const COPY   = "ki.copy.";
+const SIGNED = "kunumy.signed";
+const TEAM   = "kunumy.team";
+const COPY   = "kunumy.copy.";
 const COPY_MOST  = 2 ** 19;
 const COPY_PARTS = 120;
 const COPY_AFTER = 2000;
 // the build a reload was made for, and how many
-const BUILD = "ki.build";
+const BUILD = "kunumy.build";
 const RELOADS = 2;
-const INTRO = "ki.intro";
-const WELCOMED = "ki.welcomed";
+const INTRO = "kunumy.intro";
+const WELCOMED = "kunumy.welcomed";
 const OLDER = "This page is older than the server: reload it.";
 const DESK = matchMedia("(hover: hover)");
 
@@ -65,7 +65,7 @@ const v = View.view_new(AGENT.exec(location.pathname)?.[1] ?? localStorage.getIt
 // the chat on screen, counted read by the server while the window has focus
 const SEEN = { agent: null as string | null, at: 0, on: false, ws: null as WebSocket | null };
 
-export const useKi = create<Ki>(() => ({ signed: null, agent: v.agent, loaded: false, greeted: false, offline: false, team: [], rows: [], tail: [], stoppable: false, mood: "idle", asks: [], timers: [], jobs: [], talk: null, meter: null, knobs: [], plugs: [], page: null, sub: null, hearing: false, importing: null, note: "", stale: false, intro: localStorage.getItem(INTRO) === null && !new URLSearchParams(location.search).has("skip"), welcome: false }));
+export const useKunumy = create<Kunumy>(() => ({ signed: null, agent: v.agent, loaded: false, greeted: false, offline: false, team: [], rows: [], tail: [], stoppable: false, mood: "idle", asks: [], timers: [], jobs: [], talk: null, meter: null, knobs: [], plugs: [], page: null, sub: null, hearing: false, importing: null, note: "", stale: false, intro: localStorage.getItem(INTRO) === null && !new URLSearchParams(location.search).has("skip"), welcome: false }));
 
 let due = false;
 // a piece of a reply streaming in changes only the tail: the chat's rows
@@ -149,9 +149,9 @@ function draw(rows = true): void {
   requestAnimationFrame(() => {
     due = false;
     const note = v.notes.shift();
-    const body = rows_due ? View.view_body(v) : useKi.getState().rows;
+    const body = rows_due ? View.view_body(v) : useKunumy.getState().rows;
     rows_due = false;
-    useKi.setState({
+    useKunumy.setState({
       agent     : v.agent,
       loaded    : v.held === v.agent,
       greeted   : v.held === v.agent && v.on === v.agent && v.greeted,
@@ -196,13 +196,13 @@ function hear(msg: View.Server): void {
       renew_due(msg.build);
     }
     if (!RENEW.due || !renew_free()) {
-      useKi.setState({ note: old ? OLDER : msg.text, stale: old });
+      useKunumy.setState({ note: old ? OLDER : msg.text, stale: old });
     }
     draw();
     return;
   }
   if (msg.$ === "view" && v.refused !== null) {
-    useKi.setState({ note: "", stale: false });
+    useKunumy.setState({ note: "", stale: false });
   }
   if (msg.$ === "error") {
     v.notes.push(msg.text);
@@ -240,27 +240,27 @@ function lost(up: boolean): void {
     void fetch("/api/me").then((res) => {
       if (res.status === 401) {
         copies_drop();
-        useKi.setState({ signed: false });
+        useKunumy.setState({ signed: false });
       }
     }, () => {});
   }
 }
 
 // whether the server knows this browser, asked till it answers: "Can't
-// reach Ki" once it has failed for the grace offline has
+// reach Kunumy" once it has failed for the grace offline has
 async function me(): Promise<boolean> {
   const from = Date.now();
   for (let told = false; ;) {
     const res = await fetch("/api/me").catch(() => null);
     if (res?.status === 200 || res?.status === 401) {
       if (told) {
-        useKi.setState({ note: "" });
+        useKunumy.setState({ note: "" });
       }
       return res.status === 200;
     }
     if (!told && Date.now() - from >= View.GRACE) {
       told = true;
-      useKi.setState({ note: "Can't reach Ki. Reconnecting…" });
+      useKunumy.setState({ note: "Can't reach Kunumy. Reconnecting…" });
     }
     await new Promise((ok) => setTimeout(ok, View.RETRY));
   }
@@ -409,7 +409,7 @@ async function renew(): Promise<void> {
   const tries = was === RENEW.due ? Number(n) : 0;
   const store = isSecureContext && "caches" in window ? window.caches : null;
   const keys = (await store?.keys().catch(() => [])) ?? [];
-  await Promise.all(store === null ? [] : keys.filter((k) => k.startsWith("ki-shell")).map((k) => store.delete(k)));
+  await Promise.all(store === null ? [] : keys.filter((k) => k.startsWith("kunumy-shell")).map((k) => store.delete(k)));
   if (tries > 0) {
     await fetch("/", { cache: "reload" }).catch(() => null);
   }
@@ -425,20 +425,20 @@ async function renew(): Promise<void> {
 // the importer, offered once on a computer to a chat that has only its
 // opening message, after the intro
 function welcome(): void {
-  if (localStorage.getItem(WELCOMED) === null && !useKi.getState().intro && DESK.matches && v.pick !== null && v.held === v.agent && v.page === null && v.parts.length === View.OPENING && v.importing === null) {
+  if (localStorage.getItem(WELCOMED) === null && !useKunumy.getState().intro && DESK.matches && v.pick !== null && v.held === v.agent && v.page === null && v.parts.length === View.OPENING && v.importing === null) {
     localStorage.setItem(WELCOMED, "1");
-    useKi.setState({ welcome: true });
+    useKunumy.setState({ welcome: true });
   }
 }
 
 export function welcomed(): void {
-  useKi.setState({ welcome: false });
+  useKunumy.setState({ welcome: false });
 }
 
 // the intro played, or was skipped: once per browser
 export function intro_end(): void {
   localStorage.setItem(INTRO, "1");
-  useKi.setState({ intro: false });
+  useKunumy.setState({ intro: false });
   welcome();
 }
 
@@ -457,12 +457,12 @@ export async function boot(go: (url: string) => void): Promise<void> {
   // signed in as the page or this browser knows, else as /api/me says
   if (PAGE.signed === "out" || (PAGE.signed === undefined && localStorage.getItem(SIGNED) === null && !(await me()))) {
     copies_drop();
-    useKi.setState({ signed: false });
+    useKunumy.setState({ signed: false });
     return;
   }
   localStorage.setItem(SIGNED, "1");
   copy_draw();
-  useKi.setState({ signed: true });
+  useKunumy.setState({ signed: true });
   draw();
   void push_keep();
   push_clear();
@@ -528,7 +528,7 @@ export function act(a: View.Act, failed?: () => void): void {
   const said = a.$ === "Send" ? a.text.trim() : "";
   const back = (answer: View.Answer) => {
     if (answer.error !== undefined) {
-      useKi.setState({ note: answer.error });
+      useKunumy.setState({ note: answer.error });
       failed?.();
     }
   };
@@ -564,27 +564,27 @@ export function import_send(agent: string, body: () => Promise<Blob>): Promise<V
 
 // an import paused goes on, one going pauses
 export function import_flow(): void {
-  View.link_send(v, { $: "go", on: Boolean(v.importing?.why) }, (out) => out.error !== undefined && useKi.setState({ note: out.error }));
+  View.link_send(v, { $: "go", on: Boolean(v.importing?.why) }, (out) => out.error !== undefined && useKunumy.setState({ note: out.error }));
 }
 
 // signed out: nothing of the session stays in this browser
 export function signed_out(): void {
-  Object.keys(localStorage).filter((k) => k.startsWith("ki.") && k !== "ki.look" && k !== "ki.notify" && k !== INTRO).forEach((k) => localStorage.removeItem(k));
+  Object.keys(localStorage).filter((k) => k.startsWith("kunumy.") && k !== "kunumy.look" && k !== "kunumy.notify" && k !== INTRO).forEach((k) => localStorage.removeItem(k));
   location.assign("/");
 }
 
 export function note(text: string): void {
-  useKi.setState({ note: text });
+  useKunumy.setState({ note: text });
 }
 
 export async function answer(id: string, ok: boolean, note: string): Promise<boolean> {
   const out = await View.post("/api/approve", { id, ok, note });
   if (out.ok !== true) {
-    useKi.setState({ note: text_of(out.error, "Could not send the answer.") });
+    useKunumy.setState({ note: text_of(out.error, "Could not send the answer.") });
   }
   return out.ok === true;
 }
 
 export function noted(): void {
-  useKi.setState({ note: "", stale: false });
+  useKunumy.setState({ note: "", stale: false });
 }

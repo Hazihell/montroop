@@ -29,7 +29,7 @@ const LEGACY: Record<string, string[]> = {
     "ChatGPT.unmark", "ChatGPT.headers", "ChatGPT.read", "ChatGPT.refusal", "ChatGPT.reset",
   ],
   "ClaudeSub.ts": [
-    "SUMS", "ClaudeSub.carried", "ClaudeSub.platform", "ClaudeSub.extract_under_ki_dir",
+    "SUMS", "ClaudeSub.carried", "ClaudeSub.platform", "ClaudeSub.extract_under_data_dir",
     "ClaudeSub.with_tmpdir", "ClaudeSub.claim", "ClaudeSub.prune", "ClaudeSub.used",
     "ClaudeSub.account", "ClaudeSub.limit_key", "ClaudeSub.sign_in", "ClaudeSub.env", "ClaudeSub.cli",
     "ClaudeSub.options", "ClaudeSub.mcp", "ClaudeSub.url", "ClaudeSub.slot", "ClaudeSub.grant",

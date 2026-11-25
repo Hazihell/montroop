@@ -17,7 +17,7 @@ export const MEDIA = "media";
 
 const PROFILE = "browser";
 const SETTINGS = "browser.json";
-const NAMESPACE = "ki";
+const NAMESPACE = "kunumy";
 const IDLE = "30m";
 const CLOSE_MS = 10e3;
 

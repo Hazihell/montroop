@@ -14,7 +14,7 @@ ln -s /deps/node_modules /app/node_modules
 
 if [ ! -f $R/certs/server.pem ]; then
   mkdir -p $R/certs && cd $R/certs
-  openssl req -x509 -newkey rsa:2048 -nodes -keyout ca.key -out ca.pem -days 365 -subj "/CN=Ki test rig" 2> /dev/null
+  openssl req -x509 -newkey rsa:2048 -nodes -keyout ca.key -out ca.pem -days 365 -subj "/CN=Kunumy test rig" 2> /dev/null
   openssl req -newkey rsa:2048 -nodes -keyout server.key -out server.csr -subj "/CN=fake" 2> /dev/null
   echo "subjectAltName=DNS:${HOSTS// /,DNS:}" > san.ext
   openssl x509 -req -in server.csr -CA ca.pem -CAkey ca.key -CAcreateserial -days 365 -extfile san.ext -out server.pem 2> /dev/null
@@ -25,28 +25,28 @@ grep -q "api.anthropic.com" /etc/hosts || echo "127.0.0.1 $HOSTS" >> /etc/hosts
 setsid bun /app/testing/fake/server.ts $R/certs > $R/logs/fake.log 2>&1 &
 up fake.log "fake up"
 
-if [ ! -f ~/.ki/config.json ]; then
-  mkdir -p ~/.ki/claude-sub
-  echo '{ "owner": "tester@example.com", "vendors": "claude-sub,claude-api,openai-sub,openai-api", "pick": "claude-sub:sonnet-5.5:low:slow", "compactor": "claude-sub:haiku-5.5:low:slow", "agents": "claude-sub:sonnet-5.5:low:slow" }' > ~/.ki/config.json
-  echo '{ "anthropic": "sk-ant-api03-rig-fake-key", "openai": "sk-proj-rig-fake-key" }' > ~/.ki/keys.json
-  echo '{"claudeAiOauth":{"accessToken":"sk-ant-oat01-rig-fake","refreshToken":"sk-ant-ort01-rig-fake","expiresAt":4102444800000,"scopes":["user:inference","user:profile","user:sessions:claude_code"],"subscriptionType":"max"}}' > ~/.ki/claude-sub/.credentials.json
-  ki serve chatgpt login > $R/logs/chatgpt-login.log
+if [ ! -f ~/.kunumy/config.json ]; then
+  mkdir -p ~/.kunumy/claude-sub
+  echo '{ "owner": "tester@example.com", "vendors": "claude-sub,claude-api,openai-sub,openai-api", "pick": "claude-sub:sonnet-5.5:low:slow", "compactor": "claude-sub:haiku-5.5:low:slow", "agents": "claude-sub:sonnet-5.5:low:slow" }' > ~/.kunumy/config.json
+  echo '{ "anthropic": "sk-ant-api03-rig-fake-key", "openai": "sk-proj-rig-fake-key" }' > ~/.kunumy/keys.json
+  echo '{"claudeAiOauth":{"accessToken":"sk-ant-oat01-rig-fake","refreshToken":"sk-ant-ort01-rig-fake","expiresAt":4102444800000,"scopes":["user:inference","user:profile","user:sessions:claude_code"],"subscriptionType":"max"}}' > ~/.kunumy/claude-sub/.credentials.json
+  kny serve chatgpt login > $R/logs/chatgpt-login.log
 fi
 
-setsid ki serve 8788 > $R/logs/serve.log 2>&1 &
-up serve.log "^ki: serving"
+setsid kny serve 8788 > $R/logs/serve.log 2>&1 &
+up serve.log "^kny: serving"
 
-mkdir -p $R/box/.config/ki $R/box/work
-[ -f $R/box/.config/ki/device.json ] || echo '{ "name": "box", "work": "/rig/box/work" }' > $R/box/.config/ki/device.json
-HOME=$R/box KI_DIR=$R/box/.ki setsid ki device $B > $R/logs/device.log 2>&1 &
-up device.log "type this code\|^ki device"
+mkdir -p $R/box/.config/kunumy $R/box/work
+[ -f $R/box/.config/kunumy/device.json ] || echo '{ "name": "box", "work": "/rig/box/work" }' > $R/box/.config/kunumy/device.json
+HOME=$R/box KNY_DIR=$R/box/.kunumy setsid kny device $B > $R/logs/device.log 2>&1 &
+up device.log "type this code\|^kny device"
 if grep -q "type this code" $R/logs/device.log; then
-  code=$(ki serve login | grep -o '[0-9]\{6\}' | head -1)
+  code=$(kny serve login | grep -o '[0-9]\{6\}' | head -1)
   curl -s -o /dev/null -c $R/jar --data-urlencode "code=$code" $B/auth
   dt=$(grep -o 'auth?t=[^ ]*' $R/logs/device.log | cut -d= -f2)
   code=$(grep -o 'type this code: [0-9]*' $R/logs/device.log | grep -o '[0-9]*$')
   curl -s -o /dev/null -b $R/jar --data-urlencode "t=$dt" --data-urlencode "code=$code" $B/auth
-  up device.log "^ki device"
+  up device.log "^kny device"
 fi
 
 echo "rig up: server $B, device box, fake models; logs in $R/logs"

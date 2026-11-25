@@ -9,11 +9,11 @@ type Prefs = { accent: string; theme: Theme; panel: boolean; list: boolean };
 
 export const ACCENTS = ["6e56f8", "2f6fed", "13a3b8", "1fa971", "d9a116", "d9683f", "e0457b", "8b8b96"];
 
-const KEY = "ki.look";
+const KEY = "kunumy.look";
 // the agent's column beside its chat on a wide screen, shown or hidden
-const PANEL = "ki.panel";
+const PANEL = "kunumy.panel";
 // the agents' column on a wide screen, shown or hidden
-const LIST = "ki.list";
+const LIST = "kunumy.list";
 // app.css's --ground
 const GROUND = { light: "#f4f3ef", dark: "#08080a" };
 const HEX = /^[0-9a-f]{6}$/;
