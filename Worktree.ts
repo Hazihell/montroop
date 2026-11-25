@@ -36,7 +36,7 @@ export namespace Worktree {
 
   // why branch can't be a session's new branch: no valid name, or one
   // the repo has already, locally or on a remote; null: it can
-  function taken(repo: string, branch: string): string | null {
+  export function taken(repo: string, branch: string): string | null {
     const name = git(repo, ["check-ref-format", "--branch", branch]);
     if (!name.ok || name.out !== branch) {
       return branch + " is no valid branch name (see git check-ref-format): pick another, or leave branch out for the default";

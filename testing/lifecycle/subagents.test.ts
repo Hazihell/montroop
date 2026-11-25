@@ -85,6 +85,48 @@ test.concurrent("a review with write false works on a worktree on no branch, its
   await until("the done wake", async () => await said(k, s.woke("done:")) === 1);
 });
 
+test.concurrent("one given a branch works on that new branch, its start says so, and archive removes it", async () => {
+  const k = await Troop.up();
+  const t = tag();
+  const r = repo();
+  const branch = "feat/" + t + "-named";
+  const [s] = await k.subagents({ task: t + ": work", name: "nb", repo: r, base: "main", branch });
+
+  await s.status("done");
+  expect(git(s.worktree, "symbolic-ref", "--short", "HEAD")).toBe(branch);
+  expect(git(r, "branch", "--list", "troop/nb")).toBe("");
+  expect(await fake.seen("branch " + branch + " in " + r + ")")).not.toEqual([]);
+  await fake.next(t + ": archive", { what: "tool", calls: [["subagent", { action: "archive", name: "nb" }]] });
+  await k.tell(t + ": archive");
+  await until("its branch removed", () => git(r, "branch", "--list", branch) === "");
+  expect(fs.existsSync(s.worktree)).toBe(false);
+});
+
+test.concurrent("a start with a task whose branch can't be made starts none of its tasks, and says why", async () => {
+  const k = await Troop.up();
+  await k.api("POST", "/api/agents/" + k.agent, { subagents: true });
+  const t = tag();
+  const r = repo();
+  git(r, "branch", "fix/" + t, "main");
+  const fine = { task: t + ": fine", name: "fine", repo: r, base: "main" };
+  const starts: Array<[Array<Record<string, unknown>>, string]> = [
+    [[fine, { task: t + ": taken", repo: r, branch: "fix/" + t }], "Task 2 (\"" + t + ": taken\"): The repo has a branch fix/" + t + " already: a session works on a new branch, so pick another name. Nothing started."],
+    [[fine, { task: t + ": invalid", repo: r, branch: "bad.." + t }], "Task 2 (\"" + t + ": invalid\"): bad.." + t + " is no valid branch name (see git check-ref-format): pick another, or leave branch out for the default. Nothing started."],
+    [[fine, { task: t + ": twice", repo: r, branch: "troop/fine" }], "Task 2 (\"" + t + ": twice\"): another of these tasks works on branch troop/fine in " + r + " already: give each its own. Nothing started."],
+    [[{ task: t + ": review", repo: r, write: false, branch: "feat/" + t }], "Task 1 (\"" + t + ": review\"): branch needs write true: with write false it works on no branch. Nothing started."],
+    [[{ task: t + ": folder", branch: "feat/" + t }], "Task 1 (\"" + t + ": folder\"): branch needs a repo: without one it works in a folder of its own. Nothing started."],
+  ];
+  await fake.next(t + ": start", { what: "tool", calls: starts.map(([tasks]) => ["subagent", { action: "start", tasks: tasks.map((x) => ({ model: "haiku-5.5", ...x })) }]) });
+  await k.tell(t + ": start");
+
+  const told = await until("the starts' answers", async () => (await fake.last("(\"" + t + ": ")).map((m) => m.text).join("\n") || null);
+  for (const [, why] of starts) {
+    expect(told).toContain(why);
+  }
+  expect((await k.api("GET", "/api/sessions?agent=" + k.agent)).json as unknown).toEqual([]);
+  expect(git(r, "branch", "--format=%(refname:short)").split("\n")).toEqual(["fix/" + t, "main"]);
+});
+
 test.concurrent("a review stopped mid-run has its worktree removed once its holder has ended", async () => {
   const k = await Troop.up();
   const t = tag();

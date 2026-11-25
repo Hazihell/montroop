@@ -5,10 +5,10 @@
 // A task's options make its job: its model and effort (by default its
 // agent's) pick its provider and account; memory gives it its agent's
 // view and the memory tools on its agent's chat; repo, a worktree of its
-// own on a new branch, or (write false) on none, its edit tools denied;
-// without one, a folder of its own. Every task is checked before any
-// starts, and none past the computer's room for them (Room); the rest of
-// what the tool does is Sessions'.
+// own on a new branch (troop/<name> unless named), or (write false) on
+// none, its edit tools denied; without one, a folder of its own. Every
+// task is checked before any starts, and none past the computer's room
+// for them (Room); the rest of what the tool does is Sessions'.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -34,8 +34,9 @@ import { SEARCHES, type Tools } from "./Tools.ts";
 import { Worktree } from "./Worktree.ts";
 
 // a task checked: its name, model and effort as its agent's pick makes
-// them, its account, the repo's top folder ("": none) and its base
-type Task = { task: string; name: string; role: Role; pick: Pick; account: Job["account"]; memory: boolean; repo: string; base: string; write: boolean; mcp: boolean; browser: boolean };
+// them, its account, the repo's top folder ("": none), its base and its
+// new branch ("": none)
+type Task = { task: string; name: string; role: Role; pick: Pick; account: Job["account"]; memory: boolean; repo: string; base: string; branch: string; write: boolean; mcp: boolean; browser: boolean };
 
 // each vendor's account for an agent whose Claude account is claude
 const ACCOUNTS: Record<Vendor, (claude: string) => Job["account"]> = {
@@ -90,7 +91,7 @@ export namespace Subagents {
     const said = made.map((m, k) => {
       const t = tasks[k];
       const s = typeof m === "string" ? null : Session.get(m.id);
-      const knobs = [t.pick.model, t.pick.effort === "" ? null : "effort " + t.pick.effort, t.memory ? "your view" : null, t.repo === "" ? null : (t.write ? "branch troop/" + t.name : "read-only") + " in " + t.repo].filter((x) => x !== null);
+      const knobs = [t.pick.model, t.pick.effort === "" ? null : "effort " + t.pick.effort, t.memory ? "your view" : null, t.repo === "" ? null : (t.branch === "" ? "read-only" : "branch " + t.branch) + " in " + t.repo].filter((x) => x !== null);
       return typeof m === "string" ? t.name + " not started: " + m : s?.status === "failed" ? t.name + " didn't start: " + (Session.run(m.id)?.why ?? "") : t.name + " (" + knobs.join(", ") + ")";
     });
     const any = ids.some((id) => Session.get(id)?.status !== "failed");
@@ -115,6 +116,8 @@ export namespace Subagents {
       return "Subagents run as systemd user units, and systemd-run isn't here. Nothing started.";
     }
     const taken = new Set(Session.list(agent).map((s) => s.name));
+    // each task's repo and branch, so two don't take the same
+    const branches = new Set<string>();
     const offered = new Set(Pick.models(config.OFFER.vendors, config.OFFER.models).map(([, m]) => m.label));
     const out: Task[] = [];
     for (const [k, x] of all.entries()) {
@@ -134,9 +137,19 @@ export namespace Subagents {
       if (bad !== null || pick === null || "why" in top) {
         return Sub.refused(k, task, bad ?? "");
       }
-      taken.add(name);
       const write = t.write !== false;
-      out.push({ task, name, role, pick, account: ACCOUNTS[pick.vendor](a.claude), memory: typeof t.memory === "boolean" ? t.memory : top.dir === "", repo: top.dir, base: top.dir === "" ? "" : Worktree.named(top.dir, text_of(t.base ?? "", "").trim() || "HEAD"), write, mcp: t.mcp !== false, browser: t.browser !== false });
+      const given = text_of(t.branch, "").trim();
+      const branch = top.dir !== "" && write ? given || "troop/" + name : "";
+      const no_branch = given !== "" && branch === "" ? (top.dir === "" ? "branch needs a repo: without one it works in a folder of its own" : "branch needs write true: with write false it works on no branch") :
+        branch === "" ? null :
+        branches.has(top.dir + "\0" + branch) ? "another of these tasks works on branch " + branch + " in " + top.dir + " already: give each its own" :
+        Worktree.taken(top.dir, branch);
+      if (no_branch !== null) {
+        return Sub.refused(k, task, no_branch);
+      }
+      taken.add(name);
+      branches.add(top.dir + "\0" + branch);
+      out.push({ task, name, role, pick, account: ACCOUNTS[pick.vendor](a.claude), memory: typeof t.memory === "boolean" ? t.memory : top.dir === "", repo: top.dir, base: top.dir === "" ? "" : Worktree.named(top.dir, text_of(t.base ?? "", "").trim() || "HEAD"), branch, write, mcp: t.mcp !== false, browser: t.browser !== false });
     }
     return out;
   }
@@ -170,9 +183,8 @@ export namespace Subagents {
       return "No agent " + agent + ".";
     }
     const folder = path.join(Machine.agent_dir(agent), "sessions", t.name);
-    const branch = t.repo !== "" && t.write ? "troop/" + t.name : "";
     fs.mkdirSync(path.dirname(folder), { recursive: true });
-    const why = t.repo === "" ? (fs.existsSync(folder) ? folder + " exists already" : null) : branch === "" ? Worktree.detach(t.repo, t.base, folder) : Worktree.make(t.repo, t.base, branch, folder);
+    const why = t.repo === "" ? (fs.existsSync(folder) ? folder + " exists already" : null) : t.branch === "" ? Worktree.detach(t.repo, t.base, folder) : Worktree.make(t.repo, t.base, t.branch, folder);
     if (why !== null) {
       return why;
     }
@@ -184,11 +196,11 @@ export namespace Subagents {
       Setup.arm(agent, t.repo, folder, dir);
     }
     const media = t.browser && Browser.make(dir, id) ? Prompts.prompt("session-browser", { media: path.join(dir, MEDIA) }) : "";
-    const own = "Your folder on this server's computer, where your own tools work: " + folder + (t.repo === "" ? "" : ", a worktree of " + t.repo + (branch === "" ? " at " + t.base + " on no branch; your edit tools are denied" : " on your branch " + branch + " from " + t.base)) + "." + (media === "" ? "" : "\n" + media);
+    const own = "Your folder on this server's computer, where your own tools work: " + folder + (t.repo === "" ? "" : ", a worktree of " + t.repo + (t.branch === "" ? " at " + t.base + " on no branch; your edit tools are denied" : " on your branch " + t.branch + " from " + t.base)) + "." + (media === "" ? "" : "\n" + media);
     const { system, first } = Brief.subagent(a, view, t.repo !== "", own, HOOKS.tools);
     const model = Pick.model(t.pick.vendor, t.pick.model)?.id ?? t.pick.model;
     const job: Omit<Job, "dir" | "tools"> = { account: t.account, model, effort: t.pick.effort, speed: t.pick.speed, system, own: "", context: { kind: "native", resume: "", first, brief: t.task }, cwd: folder, write: t.write, web: SEARCHES };
-    return Sessions.subagent({ id, name: t.name, agent, repo: t.repo, base: t.base, branch, worktree: folder, provider: t.account.provider, account: t.account.id, model, effort: t.pick.effort, memory: t.memory ? 1 : 0, write: t.write ? 1 : 0, device: "", dir }, { job, mcp: t.mcp }, t.task);
+    return Sessions.subagent({ id, name: t.name, agent, repo: t.repo, base: t.base, branch: t.branch, worktree: folder, provider: t.account.provider, account: t.account.id, model, effort: t.pick.effort, memory: t.memory ? 1 : 0, write: t.write ? 1 : 0, device: "", dir }, { job, mcp: t.mcp }, t.task);
   }
 
 }
