@@ -60,7 +60,11 @@ export namespace Owner {
     const auth = (req.headers.get("authorization") ?? "").replace(/^Bearer /, "");
     const cookies = (req.headers.get("cookie") ?? "").split(/;\s*/);
     const cookie = cookies.find((c) => c.startsWith(COOKIE + "=")) ?? "";
-    return auth || decodeURIComponent(cookie.slice(cookie.indexOf("=") + 1));
+    try {
+      return auth || decodeURIComponent(cookie.slice(cookie.indexOf("=") + 1));
+    } catch {
+      return "";
+    }
   }
 
   export function is(req: Request): boolean {
