@@ -159,9 +159,9 @@ export class Kny {
   }
 
   // the calls waiting on the owner's approval, and those answered
-  cards(): Array<{ id: string; tool: string; input: string; ok: boolean | null }> {
+  cards(): Array<{ id: string; tool: string; input: string }> {
     try {
-      return JSON.parse(fs.readFileSync(path.join(this.dir, "asks.json"), "utf8")) as Array<{ id: string; tool: string; input: string; ok: boolean | null }>;
+      return JSON.parse(fs.readFileSync(path.join(this.dir, "asks.json"), "utf8")) as Array<{ id: string; tool: string; input: string }>;
     } catch {
       return [];
     }
