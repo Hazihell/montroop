@@ -9,7 +9,8 @@
 // ignored (an event still acked), and a message's fields are only ever
 // added, never renamed or removed. v: the sender's VERSION, raised with
 // each change, so a side can tell what the other knows (2: the holder's
-// start names its driver).
+// start names its driver; 3: a start may give a whole job to the driver
+// its provider picks).
 
 import type * as net from "node:net";
 import { rec } from "./Json.ts";
@@ -46,7 +47,7 @@ export type Ev =
 
 export type Told = { seq: number; at: number; ev: Ev };
 
-export const VERSION = 2;
+export const VERSION = 3;
 
 const CLIP = 2000;
 

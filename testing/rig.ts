@@ -52,15 +52,20 @@ export const fake = {
   // the requests whose newest message (a connector's: its tool call) has
   // match, with the first 120 characters of it and the tools offered;
   // model "" for a connector's
-  async seen(match: string): Promise<Array<{ model: string; latest: string; tools: string[] }>> {
+  async seen(match: string): Promise<Array<{ at: string; model: string; latest: string; tools: string[] }>> {
     const res = await fetch(CONTROL + "/log?match=" + encodeURIComponent(match));
-    return ((await res.json()) as { log: Array<{ model: string; latest: string; tools: string[] }> }).log;
+    return ((await res.json()) as { log: Array<{ at: string; model: string; latest: string; tools: string[] }> }).log;
   },
   // what the latest model call whose newest message has match was sent,
   // message by message
   async last(match: string): Promise<Array<{ role: string; text: string }>> {
     const r = (await (await fetch(CONTROL + "/last?match=" + encodeURIComponent(match))).json()) as { log: Array<{ said: Array<{ role: string; text: string }> }> };
     return r.log[0]?.said ?? [];
+  },
+  // the whole body of the latest model call whose newest message has match
+  async body(match: string): Promise<unknown> {
+    const r = (await (await fetch(CONTROL + "/last?match=" + encodeURIComponent(match))).json()) as { log: Array<{ body: unknown }> };
+    return r.log[0]?.body ?? null;
   },
 };
 
