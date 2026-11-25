@@ -2,10 +2,10 @@
 // ====
 // The Claude Code driver: one Claude Code session in the job's folder, with
 // its own tools, settings and compaction, resumed by its session id. Every
-// tool call it makes passes the holder's gate first. It has two tools of
-// Kunumy's: ask_owner, a question for the agent that waits for the answer,
-// and report, the run's result. It runs until it has nothing left to do:
-// no message waiting, no task in the background, no call parked.
+// tool call it makes passes the holder's gate first. Kunumy's tools
+// (job.tools) are an in-process MCP server whose calls go to io.call. It
+// runs until it has nothing left to do: no message waiting, no task in the
+// background, no call parked.
 
 import * as path from "node:path";
 import type { CanUseTool, HookCallback, McpSdkServerConfigWithInstance, SDKMessage, SDKResultMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
@@ -13,7 +13,8 @@ import { z } from "zod";
 import { Anthropic } from "./Anthropic.ts";
 import { BIN } from "./Browser.ts";
 import { ClaudeSub } from "./ClaudeSub.ts";
-import type { Call, Driver, End, Io } from "./Driver.ts";
+import type { Out } from "./Agent.ts";
+import type { Call, Driver, End, Io, Job } from "./Driver.ts";
 import { get, list, rec, str } from "./Json.ts";
 import { Wire, type Ev } from "./Wire.ts";
 
@@ -24,6 +25,10 @@ const ENV = {
 
 // it asks no one in it: the owner's answers come through the gate
 const DISALLOWED = ["AskUserQuestion"];
+
+// what its MCP server's tools are named, for the model, before their own
+// names; io.call gates them on the holder's side
+const KUNUMY = "mcp__kunumy__";
 
 // claude.ai's connectors left out; a project's AGENTS.md loaded beside any
 // CLAUDE.md (by default it's skipped when one is found further up, as the
@@ -48,7 +53,7 @@ export namespace Code {
     // a call a rule names goes on to the gate (canUseTool), even one
     // Claude Code would let run by itself; the rest as Claude Code's own
     // settings say
-    const pre: HookCallback = (input) => Promise.resolve(input.hook_event_name !== "PreToolUse" || !io.parks(call_of(input.tool_name, rec(input.tool_input) ? input.tool_input : {}, input.tool_use_id)) ? {} : { hookSpecificOutput: { hookEventName: "PreToolUse" as const, permissionDecision: "ask" as const } });
+    const pre: HookCallback = (input) => Promise.resolve(input.hook_event_name !== "PreToolUse" || input.tool_name.startsWith(KUNUMY) || !io.parks(call_of(input.tool_name, rec(input.tool_input) ? input.tool_input : {}, input.tool_use_id)) ? {} : { hookSpecificOutput: { hookEventName: "PreToolUse" as const, permissionDecision: "ask" as const } });
     const post: HookCallback = (input) => {
       const note = input.hook_event_name === "PostToolUse" ? notes.get(input.tool_use_id) : undefined;
       if (input.hook_event_name !== "PostToolUse" || note === undefined) {
@@ -58,6 +63,9 @@ export namespace Code {
       return Promise.resolve({ hookSpecificOutput: { hookEventName: "PostToolUse" as const, additionalContext: note } });
     };
     const can: CanUseTool = async (tool, input, { signal, toolUseID }) => {
+      if (tool.startsWith(KUNUMY)) {
+        return { behavior: "allow", updatedInput: input };
+      }
       gating += 1;
       try {
         const said = await io.gate(call_of(tool, input, toolUseID), signal);
@@ -86,7 +94,7 @@ export namespace Code {
       permissionMode             : "default",
       disallowedTools            : DISALLOWED,
       settings                   : SETTINGS,
-      mcpServers                 : { kunumy: tools(io, sdk) },
+      mcpServers                 : { kunumy: tools(job, io, sdk) },
       resume                     : id === "" ? undefined : id,
       canUseTool                 : can,
       hooks                      : {
@@ -113,15 +121,28 @@ export namespace Code {
     return end;
   };
 
-  function tools(io: Io, sdk: Awaited<ReturnType<typeof ClaudeSub.sdk>>): McpSdkServerConfigWithInstance {
-    const said = (text: string) => ({ content: [{ type: "text" as const, text }] });
-    return sdk.createSdkMcpServer({ name: "kunumy", alwaysLoad: true, tools: [
-      sdk.tool("ask_owner", "Ask the agent that started this session a question, when you can't go on without its answer (a decision, missing information). The call waits for the answer, which can take a while; it comes back as this call's result.", { question: z.string() }, async ({ question }) => said("The answer: " + await io.ask(question))),
-      sdk.tool("report", "Give your result to the agent that started this session, once, when you're done: what you did, where (branch, commits, files), how you checked it, what is left. Then end your turn.", { result: z.string() }, ({ result }) => {
-        io.emit({ k: "report", text: result });
-        return Promise.resolve(said("Reported. End your turn now."));
-      }),
-    ] });
+  // interim: item 4 of the one-engine plan replaces this file's Kunumy
+  // server with its own Code.ts
+  function tools(job: Job, io: Io, sdk: Awaited<ReturnType<typeof ClaudeSub.sdk>>): McpSdkServerConfigWithInstance {
+    // a tool whose schema zod can't read is left out
+    return sdk.createSdkMcpServer({ name: "kunumy", alwaysLoad: true, tools: job.tools.flatMap((t) => {
+      let shape: z.ZodRawShape;
+      try {
+        shape = (z.fromJSONSchema(t.schema as Parameters<typeof z.fromJSONSchema>[0]) as z.ZodObject).shape;
+      } catch {
+        return [];
+      }
+      return [sdk.tool(t.name, t.info, shape, async (args: Record<string, unknown>, extra) => result(await io.call({ id: use_of(extra), tool: t.name, args, native: KUNUMY + t.name, input: args })))];
+    }) });
+  }
+
+  // the tool use a call of its MCP server's answers
+  function use_of(extra: unknown): string {
+    return str(get(get(extra, "_meta"), "claudecode/toolUseId")) ?? crypto.randomUUID();
+  }
+
+  function result(out: Out) {
+    return { content: [{ type: "text" as const, text: out.text }, ...(out.imgs ?? []).map((img) => ({ type: "image" as const, data: img.data, mimeType: img.type }))], isError: out.fail };
   }
 
   // a call as the rules name it: Bash is shell, with its command
