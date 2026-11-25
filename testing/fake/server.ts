@@ -117,9 +117,11 @@ function cache(segs: string[], marks: number[], lookback = Infinity): Used {
   return { input: Math.max(1, total - read - write), read, write };
 }
 
-// the compactor's calls take only what's matched to their task, "Compaction:"
+// the compactor's calls take only what's matched to their task,
+// "Compaction:" and, if any, a text the task has
 function pick(latest: string, compaction: boolean): Order {
-  const k = QUEUE.findIndex((o) => (compaction ? o.match.startsWith("Compaction:") && latest.includes(o.match) : o.match === "" || latest.includes(o.match)));
+  const task = (match: string) => match.startsWith("Compaction:") && latest.includes(match.slice("Compaction:".length).trim());
+  const k = QUEUE.findIndex((o) => (compaction ? task(o.match) : o.match === "" || latest.includes(o.match)));
   if (k >= 0) {
     return QUEUE.splice(k, 1)[0];
   }
@@ -351,17 +353,18 @@ function connectors(): Response {
   return json(200, { data: [{ type: "mcp_server", id: CONNECTOR.id, display_name: CONNECTOR.name, url: "https://gmail.example.com/mcp", created_at: "2026-01-01T00:00:00Z" }], has_more: false, next_page: null });
 }
 
-// the connector over MCP, as Claude Code reaches it through claude.ai's proxy
-async function gmail(req: Request): Promise<Response> {
+// the connector over MCP, as Claude Code reaches it through claude.ai's
+// proxy; called: a tool call's name and arguments, for the log
+async function gmail(req: Request): Promise<{ answer: Response; called: string }> {
   if (req.method !== "POST") {
-    return new Response(null, { status: 405 });
+    return { answer: new Response(null, { status: 405 }), called: "" };
   }
   const msg: unknown = await req.json().catch(() => ({}));
   const [rpc, method, params] = [get(msg, "id"), str(get(msg, "method")), get(msg, "params")];
   if (rpc === undefined) {
-    return new Response(null, { status: 202 });
+    return { answer: new Response(null, { status: 202 }), called: "" };
   }
-  const answer = (result: object) => json(200, { jsonrpc: "2.0", id: rpc, result });
+  const answer = (result: object, called = "") => ({ answer: json(200, { jsonrpc: "2.0", id: rpc, result }), called });
   switch (method) {
     case "initialize":
       return answer({ protocolVersion: str(get(params, "protocolVersion")) ?? "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "fake-gmail", version: "1" } });
@@ -370,7 +373,7 @@ async function gmail(req: Request): Promise<Response> {
     case "tools/call": {
       const name = str(get(params, "name")) ?? "";
       const text = name === "send_message" ? "Sent to " + (str(get(get(params, "arguments"), "to")) ?? "") + "." : "No new messages.";
-      return answer({ content: [{ type: "text", text }], isError: false });
+      return answer({ content: [{ type: "text", text }], isError: false }, name + " " + JSON.stringify(get(params, "arguments") ?? {}));
     }
     default:
       return answer({});
@@ -447,8 +450,8 @@ if (import.meta.main) {
       if (url.pathname === "/v1/messages/count_tokens") {
         return json(200, { input_tokens: tokens(await req.text()) });
       }
-      const answer = url.pathname === "/v1/mcp_servers" ? connectors() : url.hostname === "mcp-proxy.anthropic.com" ? await gmail(req) : await sign_in(url, req);
-      LOG.push({ n: LOG.length + 1, at: new Date().toISOString(), vendor: url.hostname, path: url.pathname, model: "", answer: answer === null ? "{}" : String(answer.status), system: "", tools: [], said: [], latest: "", headers: Object.fromEntries(req.headers), body: null });
+      const { answer, called } = url.pathname === "/v1/mcp_servers" ? { answer: connectors(), called: "" } : url.hostname === "mcp-proxy.anthropic.com" ? await gmail(req) : { answer: await sign_in(url, req), called: "" };
+      LOG.push({ n: LOG.length + 1, at: new Date().toISOString(), vendor: url.hostname, path: url.pathname, model: "", answer: answer === null ? "{}" : String(answer.status), system: "", tools: [], said: [], latest: called, headers: Object.fromEntries(req.headers), body: null });
       return answer ?? json(200, {});
     },
   });

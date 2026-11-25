@@ -39,7 +39,7 @@ fake stall 60s | fake cut                # the stream hangs, or drops halfway
 fake log | fake last [--json] | fake clear
 ```
 
-`--match TEXT` limits a command to the call whose latest message has TEXT. Use it whenever calls run at once: the chat, the compactor (`--match Compaction:`) and subagents.
+`--match TEXT` limits a command to the call whose latest message has TEXT. Use it whenever calls run at once: the chat, the compactor (`--match Compaction:`; `--match "Compaction: TEXT"` for the one whose task has TEXT) and subagents.
 
 The fake claude-sub account has one claude.ai connector, Gmail, which Claude Code runs itself: `fake tool mcp__claude_ai_Gmail__list_messages '{}'` (asks no one) or `mcp__claude_ai_Gmail__send_message '{"to":"a@example.com","body":"hi"}'` (an `ask` rule's card).
 

@@ -49,6 +49,13 @@ export const fake = {
   async next(match: string, order: Order): Promise<void> {
     await fetch(CONTROL + "/queue", { method: "POST", body: JSON.stringify({ ...order, match }) });
   },
+  // the requests whose newest message (a connector's: its tool call) has
+  // match, with the first 120 characters of it and the tools offered;
+  // model "" for a connector's
+  async seen(match: string): Promise<Array<{ model: string; latest: string; tools: string[] }>> {
+    const res = await fetch(CONTROL + "/log?match=" + encodeURIComponent(match));
+    return ((await res.json()) as { log: Array<{ model: string; latest: string; tools: string[] }> }).log;
+  },
 };
 
 // a port no other test server takes (claimed with a folder in the suite's
@@ -79,14 +86,15 @@ export class Kny {
     this.home = path.dirname(dir);
   }
 
-  static async up(): Promise<Kny> {
+  // more: config.json's settings beyond the suite's own
+  static async up(more: Json = {}): Promise<Kny> {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "kny-"));
     const k = new Kny(path.join(home, ".kunumy"), port());
     UP.push(k);
     fs.mkdirSync(path.join(k.dir, "claude-sub"), { recursive: true });
     const model = "claude-sub:haiku-5.5:low:slow";
-    fs.writeFileSync(path.join(k.dir, "config.json"), JSON.stringify({ owner: "tester@example.com", vendors: "claude-sub", pick: model, compactor: model, agents: model }));
-    fs.writeFileSync(path.join(k.dir, "claude-sub", ".credentials.json"), JSON.stringify({ claudeAiOauth: { accessToken: "sk-ant-oat01-test-fake", refreshToken: "sk-ant-ort01-test-fake", expiresAt: 4102444800000, scopes: ["user:inference", "user:profile", "user:sessions:claude_code"], subscriptionType: "max" } }));
+    fs.writeFileSync(path.join(k.dir, "config.json"), JSON.stringify({ owner: "tester@example.com", vendors: "claude-sub", pick: model, compactor: model, agents: model, ...more }));
+    fs.writeFileSync(path.join(k.dir, "claude-sub", ".credentials.json"), JSON.stringify({ claudeAiOauth: { accessToken: "sk-ant-oat01-test-fake", refreshToken: "sk-ant-ort01-test-fake", expiresAt: 4102444800000, scopes: ["user:inference", "user:profile", "user:sessions:claude_code", "user:mcp_servers"], subscriptionType: "max" } }));
     await k.start();
     await k.login();
     const agents = (await k.api("GET", "/api/agents")).json as { agents: Array<{ id: string }> };
