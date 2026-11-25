@@ -13,8 +13,8 @@ import { z } from "zod";
 import { Anthropic } from "./Anthropic.ts";
 import { BIN } from "./Browser.ts";
 import { ClaudeSub } from "./ClaudeSub.ts";
-import type { Driver, End, Io } from "./Driver.ts";
-import { get, list, str } from "./Json.ts";
+import type { Call, Driver, End, Io } from "./Driver.ts";
+import { get, list, rec, str } from "./Json.ts";
 import { Wire, type Ev } from "./Wire.ts";
 
 const ENV = {
@@ -45,9 +45,10 @@ export namespace Code {
     let gating = 0;
     let end: End = { ok: false, text: "Claude Code ended before its turn did." };
 
-    // every call goes on to the gate (canUseTool), even one Claude Code
-    // would let run by itself
-    const pre: HookCallback = (input) => Promise.resolve(input.hook_event_name !== "PreToolUse" ? {} : { hookSpecificOutput: { hookEventName: "PreToolUse" as const, permissionDecision: "ask" as const } });
+    // a call a rule names goes on to the gate (canUseTool), even one
+    // Claude Code would let run by itself; the rest as Claude Code's own
+    // settings say
+    const pre: HookCallback = (input) => Promise.resolve(input.hook_event_name !== "PreToolUse" || !io.parks(call_of(input.tool_name, rec(input.tool_input) ? input.tool_input : {}, input.tool_use_id)) ? {} : { hookSpecificOutput: { hookEventName: "PreToolUse" as const, permissionDecision: "ask" as const } });
     const post: HookCallback = (input) => {
       const note = input.hook_event_name === "PostToolUse" ? notes.get(input.tool_use_id) : undefined;
       if (input.hook_event_name !== "PostToolUse" || note === undefined) {
@@ -59,8 +60,7 @@ export namespace Code {
     const can: CanUseTool = async (tool, input, { signal, toolUseID }) => {
       gating += 1;
       try {
-        const args = tool === "Bash" ? { command: input.command } : input;
-        const said = await io.gate({ id: toolUseID, tool: tool === "Bash" ? "shell" : tool, args, native: tool, input }, signal);
+        const said = await io.gate(call_of(tool, input, toolUseID), signal);
         if (said.ok && said.note !== "") {
           notes.set(toolUseID, said.note);
         }
@@ -122,6 +122,11 @@ export namespace Code {
         return Promise.resolve(said("Reported. End your turn now."));
       }),
     ] });
+  }
+
+  // a call as the rules name it: Bash is shell, with its command
+  function call_of(tool: string, input: Record<string, unknown>, id: string): Call {
+    return { id, tool: tool === "Bash" ? "shell" : tool, args: tool === "Bash" ? { command: input.command } : input, native: tool, input };
   }
 
   function outcome(msg: SDKResultMessage): End {

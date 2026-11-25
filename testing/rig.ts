@@ -49,6 +49,12 @@ export const fake = {
   async next(match: string, order: Order): Promise<void> {
     await fetch(CONTROL + "/queue", { method: "POST", body: JSON.stringify({ ...order, match }) });
   },
+  // what the latest model call whose newest message has match was sent,
+  // message by message
+  async last(match: string): Promise<Array<{ role: string; text: string }>> {
+    const r = (await (await fetch(CONTROL + "/last?match=" + encodeURIComponent(match))).json()) as { log: Array<{ said: Array<{ role: string; text: string }> }> };
+    return r.log[0]?.said ?? [];
+  },
 };
 
 // a port no other test server takes (claimed with a folder in the suite's

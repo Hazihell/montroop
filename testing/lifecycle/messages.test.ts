@@ -85,3 +85,21 @@ test.concurrent("a call that asks first waits across a server restart, runs once
   await until("the done wake", async () => await said(k, wake_text("session", "ap", "done:")) === 1);
   expect(await said(k, wake_text("session", "ap", "waiting:"))).toBe(2);
 });
+
+test.concurrent("the owner's note to an approved call, and to a denied one, reaches the session with the call's result", async () => {
+  const k = await Kny.up();
+  const t = tag();
+  await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: "git push -q --force origin HEAD:" + t + " && echo " + t + "-pushed" }]] });
+  await fake.next(t + "-pushed", { what: "tool", calls: [["Bash", { command: "git push -q --force origin HEAD:" + t + "-2" }]] });
+  await fake.next("“not that one " + t + "”. Don't do it another way", { what: "reply", text: t + " left it" });
+  const s = await k.session("nt", t + ": work", repo());
+  const card = async (ref: string) => await until("the card of " + ref, () => {
+    const all = JSON.parse(fs.readFileSync(path.join(k.dir, "asks.json"), "utf8")) as Array<{ id: string; input: string }>;
+    return all.find((c) => c.input.includes("HEAD:" + ref + " ") || c.input.includes("HEAD:" + ref + "\"")) ?? null;
+  });
+  expect((await k.api("POST", "/api/approve", { id: (await card(t)).id, ok: true, note: "quietly " + t })).status).toBe(200);
+  expect((await k.api("POST", "/api/approve", { id: (await card(t + "-2")).id, ok: false, note: "not that one " + t })).status).toBe(200);
+
+  expect((await s.status("done")).log.filter((x) => x.ev.k === "text").map((x) => x.ev.text)).toEqual([t + " left it"]);
+  expect((await fake.last(t + "-pushed")).filter((m) => m.role === "system").map((m) => m.text)).toContain("PostToolUse:Bash hook additional context: The user approved this with a note: “quietly " + t + "”");
+});

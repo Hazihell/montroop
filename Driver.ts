@@ -26,12 +26,14 @@ export type Gated = { ok: boolean; note: string };
 // close, the run takes no more, so a message sent after goes to the next
 export type Inbox = { pending: () => boolean; next: () => Promise<string | null>; close: () => void };
 
-// emit: an event told to the server and logged; gate: before a tool runs,
-// parked if a rule asks the owner first (stop: dropped); ask: a question to
-// the agent that started the run, waiting for its answer
+// emit: an event told to the server and logged; parks: whether a rule has
+// the owner answer the call first; gate: before a tool runs, parked if a
+// rule says so (stop: dropped); ask: a question to the agent that started
+// the run, waiting for its answer
 export type Io = {
   emit  : (ev: Ev) => void;
   inbox : Inbox;
+  parks : (call: Call) => boolean;
   gate  : (call: Call, stop: AbortSignal) => Promise<Gated>;
   ask   : (text: string) => Promise<string>;
 };
