@@ -1,4 +1,5 @@
 import { useId, type CSSProperties, type ReactNode } from "react";
+import { BODIES, DETAILS, LOOKS } from "../../Looks.ts";
 
 // An agent's avatar: a character drawn as one SVG from four picks and two
 // colors. avatar.css moves it from the mood class on its root, so the
@@ -67,7 +68,7 @@ const SHAPES: Record<string, Shape> = {
   clover   : { d: polar((t) => 31 - 6.5 * cos(4 * t)), ey: 66, ex: 12.5, top: 44, bot: 92, hw: 26 },
   heart    : { d: heart(), ey: 58, ex: 14, top: 44, bot: 96, hw: 35 },
   ghost    : { d: "M24 72A36 38 0 0 1 96 72V98q-6 7-12 0t-12 0t-12 0t-12 0t-12 0t-12 0Z", ey: 64, ex: 13.5, top: 34, bot: 97, hw: 36 },
-};
+} satisfies Record<(typeof LOOKS.shape)[number], Shape>;
 
 function glint(x: number, y: number, r: number): string {
   return `<circle cx="${x}" cy="${y}" r="${r}" fill="#fff"/>`;
@@ -83,7 +84,7 @@ const EYES: Record<string, string> = {
   ring  : `<circle r="7.6" fill="#fff"/><g class="av-p"><circle r="4.9" fill="${INK}"/>${glint(0, 0, 1.9)}</g>`,
   lid   : `<path d="M-8.6 0a8.6 8.6 0 0 0 17.2 0Z" fill="#fff"/><g class="av-p"><path d="M-4.3 0a4.3 4.3 0 0 0 8.6 0Z" fill="${INK}"/></g><path d="M-10.4 0h20.8" stroke="${INK}" stroke-width="2.8" stroke-linecap="round"/>`,
   wide  : `<g class="av-p"><circle r="2.9" fill="${INK}"/></g>`,
-};
+} satisfies Record<(typeof LOOKS.eyes)[number], string>;
 
 const LINE = `fill="none" stroke="${INK}" stroke-width="2.8" stroke-linecap="round"`;
 
@@ -118,7 +119,7 @@ const GLASSES: Record<string, (s: Shape) => string> = {
     const [l, y] = [60 - s.ex - 13, s.ey - 9.5];
     return `<rect x="${f(l)}" y="${y}" width="${f(2 * s.ex + 26)}" height="19" rx="9.5" fill="color-mix(in oklab,var(--c2) 42%,transparent)" stroke="#ffffffb0" stroke-width="1.6"/><path d="M${f(l + 8)} ${y + 5}h9" stroke="#fff" stroke-opacity=".7" stroke-width="1.8" stroke-linecap="round"/>`;
   },
-};
+} satisfies Record<(typeof LOOKS.glasses)[number], (s: Shape) => string>;
 
 // av-sway swings from the top of the head, behind the body's own motion
 const EXTRAS: Record<string, (s: Shape) => string> = {
@@ -138,7 +139,7 @@ const EXTRAS: Record<string, (s: Shape) => string> = {
   crown   : (s) => `<path d="M46 ${s.top + 6}l-3-17 9 8 8-12 8 12 9-8-3 17Z" fill="#ffc93c" stroke="#ffc93c" stroke-width="2.4" stroke-linejoin="round"/>`,
   sprout  : (s) => `<g class="av-sway"><path d="M60 ${s.top + 3}v-10" stroke="#49c774" stroke-width="2.8" stroke-linecap="round"/><path d="M60 ${s.top - 6}q-13-10-17 2q11 6 17-2ZM60 ${s.top - 6}q13-10 17 2q-11 6-17-2Z" fill="#49c774"/></g>`,
   halo    : (s) => `<ellipse cx="60" cy="${s.top - 9}" rx="17" ry="5" fill="none" stroke="#ffe08a" stroke-width="3.4"/>`,
-};
+} satisfies Record<(typeof LOOKS.extra)[number], (s: Shape) => string>;
 
 function star(x: number, y: number, k: number): string {
   return `<g transform="translate(${x} ${y}) scale(${k})"><path d="M0-7l1.8 5.2 5.2 1.8-5.2 1.8L0 7l-1.8-5.2L-7 0l5.2-1.8Z" fill="var(--av-fx)"/></g>`;
@@ -156,16 +157,6 @@ const FX =
   `<g class="fx-error"><path d="M94 40q5 7 5 10a5 5 0 0 1-10 0q0-3 5-10Z" fill="#7cc4ff"/></g>` +
   `<g class="fx-listen" fill="none" stroke="var(--av-act)" stroke-width="3" stroke-linecap="round"><path d="M14 54q-7 12 0 24"/><path d="M5 47q-11 19 0 38"/><path d="M106 54q7 12 0 24"/><path d="M115 47q11 19 0 38"/></g>`;
 
-export const PICKS = {
-  shape   : Object.keys(SHAPES),
-  eyes    : Object.keys(EYES),
-  glasses : Object.keys(GLASSES),
-  extra   : Object.keys(EXTRAS),
-};
-
-export const BODIES  = ["ff5fa2", "c95cf0", "a25bff", "3f6bff", "2bb3ff", "19c2a0", "7ed957", "ffc531", "ff7d3b", "ecebf5"];
-export const DETAILS = ["ff5fa2", "c95cf0", "a25bff", "3f6bff", "2bb3ff", "35d6c2", "7ed957", "ffc93c", "ff5a5f", "f4efe4"];
-
 const DRAWN = /^av:([a-z]+)\.([a-z]+)\.([a-z]+)\.([a-z]+)\.([0-9a-f]{6})\.([0-9a-f]{6})$/;
 
 // the look an agent has before its owner draws one: picked by its id, so it
@@ -175,11 +166,11 @@ function look_first(id: string): Look {
   for (const ch of id) {
     h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
   }
-  const pick = (list: string[]) => {
+  const pick = (list: readonly string[]) => {
     h = Math.imul(h ^ (h >>> 13), 2654435761) >>> 0;
     return list[h % list.length];
   };
-  return { shape: pick(PICKS.shape), eyes: pick(PICKS.eyes), glasses: pick(["none", "none", ...PICKS.glasses]), extra: pick(PICKS.extra), c: pick(BODIES.slice(0, 9)), c2: pick(DETAILS) };
+  return { shape: pick(LOOKS.shape), eyes: pick(LOOKS.eyes), glasses: pick(["none", "none", ...LOOKS.glasses]), extra: pick(LOOKS.extra), c: pick(BODIES.slice(0, 9)), c2: pick(DETAILS) };
 }
 
 // an agent's picture as a look: a drawn one's own, else its first look

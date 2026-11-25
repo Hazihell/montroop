@@ -34,6 +34,7 @@ import SUBAGENT from "./prompts/subagent.md" with { type: "text" };
 import SUBS from "./prompts/subs.md" with { type: "text" };
 import SUBAGENTS_OFF from "./prompts/subagents-off.md" with { type: "text" };
 import SUBAGENTS_ON from "./prompts/subagents-on.md" with { type: "text" };
+import SUBAGENTS_SETUP from "./prompts/subagents-setup.md" with { type: "text" };
 import TALKING from "./prompts/talking.md" with { type: "text" };
 import TEAM from "./prompts/team.md" with { type: "text" };
 import TURN from "./prompts/turn.md" with { type: "text" };
@@ -47,7 +48,7 @@ import YOU from "./prompts/you.md" with { type: "text" };
 // one prompt for both, a turn sometimes came back a summary), the parts
 // the system prompt is laid out with, an agent's default prompt, the goal
 // check's, and the fixed text of each turn's and each compaction's request
-const BUILT = { agent: AGENT, compact: COMPACT, "compact-agent": COMPACT_AGENT, continue: CONTINUE, device: DEVICE, "device-shell": DEVICE_SHELL, devices: DEVICES, "devices-none": DEVICES_NONE, "go-on": GO_ON, goal: GOAL, "goal-ask": GOAL_ASK, "goal-no": GOAL_NO, jobs: JOBS, leaf: LEAF, merge: MERGE, message: MESSAGE, "message-working": MESSAGE_WORKING, "not-summarized": NOT_SUMMARIZED, over: OVER, prompt: PROMPT, restarted: RESTARTED, room: ROOM, senders: SENDERS, session: SESSION, "session-browser": SESSION_BROWSER, skills: SKILLS, steer: STEER, sub: SUB, "sub-folder": SUB_FOLDER, "sub-prompt": SUB_PROMPT, subagent: SUBAGENT, "subagents-off": SUBAGENTS_OFF, "subagents-on": SUBAGENTS_ON, subs: SUBS, talking: TALKING, team: TEAM, turn: TURN, leader: LEADER, you: YOU };
+const BUILT = { agent: AGENT, compact: COMPACT, "compact-agent": COMPACT_AGENT, continue: CONTINUE, device: DEVICE, "device-shell": DEVICE_SHELL, devices: DEVICES, "devices-none": DEVICES_NONE, "go-on": GO_ON, goal: GOAL, "goal-ask": GOAL_ASK, "goal-no": GOAL_NO, jobs: JOBS, leaf: LEAF, merge: MERGE, message: MESSAGE, "message-working": MESSAGE_WORKING, "not-summarized": NOT_SUMMARIZED, over: OVER, prompt: PROMPT, restarted: RESTARTED, room: ROOM, senders: SENDERS, session: SESSION, "session-browser": SESSION_BROWSER, skills: SKILLS, steer: STEER, sub: SUB, "sub-folder": SUB_FOLDER, "sub-prompt": SUB_PROMPT, subagent: SUBAGENT, "subagents-off": SUBAGENTS_OFF, "subagents-on": SUBAGENTS_ON, "subagents-setup": SUBAGENTS_SETUP, subs: SUBS, talking: TALKING, team: TEAM, turn: TURN, leader: LEADER, you: YOU };
 
 type Which = keyof typeof BUILT;
 

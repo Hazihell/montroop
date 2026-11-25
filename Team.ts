@@ -1,6 +1,7 @@
 import * as config from "./Config.ts";
 import { Owner } from "./Owner.ts";
 import { get as field, rec } from "./Json.ts";
+import { look_wrong } from "./Looks.ts";
 import * as Prompts from "./Prompts.ts";
 
 // prompt null: the default, which follows renames until it's edited;
@@ -103,6 +104,11 @@ export namespace Team {
     }
     if (!picture_ok(picture)) {
       return "No picture " + picture + ".";
+    }
+    // a look saved before is kept, though the app no longer draws one of its parts
+    const wrong = id !== null && Team.get(id)?.picture === picture ? null : look_wrong(picture);
+    if (wrong !== null) {
+      return wrong;
     }
     if (own === "") {
       return "A system prompt is needed.";

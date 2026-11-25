@@ -25,6 +25,7 @@ import * as Prompts from "./Prompts.ts";
 import { install_cmd } from "./Update.ts";
 import { move_over } from "./Write.ts";
 import { LIMIT, Limit } from "./Limit.ts";
+import { looks_said } from "./Looks.ts";
 import * as Lock from "./Lock.ts";
 import { Run, type Heard } from "./Run.ts";
 import * as Service from "./Service.ts";
@@ -188,7 +189,7 @@ export namespace Chat {
       id, who: id, mem, tools, pick, socks: new Set(), acts: new Map(), main, model: "", check: null, asked: false,
       eye: { parts: [], from: 0 }, after: Promise.resolve(), batch: null, writes: Promise.resolve(), held: null, sums: null, resume: null, limits: null, bell: undefined, fresh: true, told: false, gist: -1, stopped: false, subs: new Map(), gone: new Map(), leader: null,
     };
-    const seat: Seat = { mem, note: (text) => Chat.note(chat, text), report: (text) => Chat.report(chat, text, true), timed: () => Chat.timed(chat), message: (to, text) => Chat.message(chat, to, text), subs: Chat.subs_of(chat), agents: { on: () => Main.manages(chat), run: (args) => Main.agents_tool(chat, args) }, subagents: () => chat.mem.subagents };
+    const seat: Seat = { mem, note: (text) => Chat.note(chat, text), report: (text) => Chat.report(chat, text, true), timed: () => Chat.timed(chat), message: (to, text) => Chat.message(chat, to, text), subs: Chat.subs_of(chat), agents: { on: () => Main.manages(chat), run: (args) => Main.agents_tool(chat, args) }, settings: (args) => own_settings(chat, args), subagents: () => chat.mem.subagents };
     tools.seats.set(id, seat);
     Main.chats.set(id, chat);
     Main.keep_picks();
@@ -2182,6 +2183,9 @@ export namespace Main {
     }
     chat.mem.subagents = get(x, "subagents") === true;
     Memory.save(chat.mem);
+    if (chat.mem.subagents) {
+      submons_on(chat);
+    }
     const agent = Team.set(made.id, { ...fields, picture: Main.own_picture(chat, fields.picture) }, null) ?? made;
     Main.team_soon();
     return { agent };
@@ -2250,28 +2254,8 @@ export namespace Main {
     if (what === "prompts") {
       return out(Main.revert(agent, get(x, "id")));
     }
-    const fields = Team.edit(agent, x);
-    const knobs = Main.knobs(x, chat.mem);
-    if (typeof fields === "string") {
-      return out({ error: fields });
-    }
-    if (typeof knobs === "string") {
-      return out({ error: knobs });
-    }
-    Team.set(id, { ...fields, picture: Main.own_picture(chat, fields.picture) }, null);
-    Main.lead_set(chat, knobs);
-    const manage = get(x, "manage");
-    if (typeof manage === "boolean" && manage !== Main.manages(chat)) {
-      chat.mem.manage = manage;
-      Memory.save(chat.mem);
-    }
-    const subagents = get(x, "subagents");
-    if (typeof subagents === "boolean" && subagents !== chat.mem.subagents) {
-      chat.mem.subagents = subagents;
-      Memory.save(chat.mem);
-    }
-    Main.chats.forEach((c) => Chat.change(c));
-    return out({});
+    const edited = edit(chat, x, null);
+    return out(typeof edited === "string" ? { error: edited } : {});
   }
 
   // whether an agent may use the agents tool: by its own setting, else
@@ -2305,7 +2289,8 @@ export namespace Main {
       return { text: Main.shown(them, there), fail: false };
     }
     if (action === "edit") {
-      return Main.edited(chat, them, there, args);
+      const sent = Object.fromEntries(["rename", "about", "picture", "prompt", "claude", "model", "effort", "mcp"].filter((k) => args[k] !== undefined).map((k) => [k === "rename" ? "name" : k, args[k]]));
+      return told(edit(there, sent, chat), false);
     }
     if (action === "archive") {
       if (them.archived !== 0) {
@@ -2324,10 +2309,12 @@ export namespace Main {
     return out.error === undefined ? { text: (action === "archive" ? "Archived " : "Restored ") + them.name + ".", fail: false } : { text: out.error, fail: true };
   }
 
-  // what the agents tool shows of an agent and compares when it edits one
+  // what the agents and settings tools show of an agent and compare when
+  // they edit one
   export function settings_of(a: Agent, chat: Chat): Array<[string, string]> {
     const off = Tools.off(chat.tools);
     const pick = chat.pick;
+    const on = (yes: boolean) => (yes ? "on" : "off");
     return [
       ["name", a.name],
       ["about", a.about],
@@ -2335,67 +2322,34 @@ export namespace Main {
       ["claude", a.claude || config.PERSONAL],
       ["model", pick.profile ?? pick.vendor + ":" + pick.model],
       ["effort", pick.effort || "none"],
+      ["leader", on(chat.mem.leader)],
+      ["lines", String(chat.mem.lines)],
+      ["subagents", on(chat.mem.subagents)],
+      ["manage", on(Main.manages(chat))],
       ...[...chat.tools.mcp.all.keys()].map((n): [string, string] => ["mcp " + n, off.includes(n) ? "off" : "on"]),
     ];
   }
 
-  export function shown(a: Agent, chat: Chat): string {
+  // an agent's settings as the agents tool shows them, or (own) as the
+  // settings tool shows its own: what only the owner changes marked, and
+  // its worktree setups in place of the MCP servers every agent shares
+  export function shown(a: Agent, chat: Chat, own = false): string {
     const pick = chat.pick;
     const parts = (move: "model" | "effort") => Pick.parts(pick, move, config.OFFER).join(", ") || "none";
+    const owners = "the user's to change, in the app";
     const more: Record<string, string> = {
-      claude : "signed in: " + config.claude_accounts().join(", "),
-      model  : "offered: " + parts("model"),
+      claude : own ? owners : "signed in: " + config.claude_accounts().join(", "),
+      model  : "offered: " + parts("model") + "; vendors: " + config.OFFER.vendors.join(", "),
       effort : pick.model + "'s: " + parts("effort"),
+      lines  : "1 to " + LINES_MOST,
+      ...(own ? { picture: looks_said() } : {}),
+      ...(own ? { manage: owners } : {}),
     };
-    const lines = Main.settings_of(a, chat).map(([k, v]) => k + ": " + v + (Object.hasOwn(more, k) ? " (" + more[k] + ")" : ""));
-    const plugs = chat.tools.mcp.all.size === 0 ? ["mcp: none set up"] : [];
-    return [...lines, ...plugs, "manage agents: " + (Main.manages(chat) ? "on" : "off"), "archived: " + (a.archived === 0 ? "no" : "yes"), "prompt (" + (a.prompt === null ? "the default" : "its own") + "):", Team.prompt(a)].join("\n");
-  }
-
-  // the agents tool's edit: what isn't given stays; every value is checked
-  // before any is saved
-  export function edited(chat: Chat, a: Agent, there: Chat, args: Record<string, unknown>): Done {
-    const given = (k: string) => args[k] !== undefined;
-    const sent = Object.fromEntries(["rename", "about", "picture", "prompt", "claude"].filter(given).map((k) => [k === "rename" ? "name" : k, args[k]]));
-    const fields = Team.edit(a, sent);
-    if (typeof fields === "string") {
-      return { text: fields, fail: true };
-    }
-    let pick = there.pick;
-    for (const move of ["model", "effort"] as const) {
-      const to = given(move) ? Pick.moved(pick, move, config.OFFER, text_of(args[move]).trim()) : pick;
-      if (typeof to === "string") {
-        return { text: to, fail: true };
-      }
-      pick = to;
-    }
-    if (given("mcp") && (!rec(args.mcp) || Object.values(args.mcp).some((on) => typeof on !== "boolean"))) {
-      return { text: "mcp maps MCP servers' names to true (on) or false (off).", fail: true };
-    }
-    const plugs = Object.entries(rec(args.mcp) ? args.mcp : {});
-    const no = plugs.map(([n]) => Chat.no_plug(there, n)).find((why) => why !== null);
-    if (no !== undefined) {
-      return { text: no, fail: true };
-    }
-    const before = Main.settings_of(a, there);
-    for (const [k, [n, on]] of plugs.entries()) {
-      const out = Chat.plug(there, n, on === true);
-      if (out.error !== undefined) {
-        const saved = plugs.slice(0, k).map(([m, to]) => m + (to === true ? " on" : " off"));
-        return { text: out.error + (saved.length === 0 ? "" : " Saved before it: " + saved.join(", ") + "."), fail: true };
-      }
-    }
-    const was = Team.prompt(a);
-    const now = Team.set(a.id, { ...fields, picture: Main.own_picture(there, fields.picture) }, Chat.name(chat)) ?? a;
-    if (Pick.label(pick) !== Pick.label(there.pick) || pick.profile !== there.pick.profile) {
-      Chat.pick_to(there, pick);
-    }
-    Main.chats.forEach((c) => Chat.change(c));
-    const after = new Map(Main.settings_of(now, there));
-    const changes = before.flatMap(([k, v]) => (after.get(k) === v ? [] : [k + ": " + v + " → " + (after.get(k) ?? "")]));
-    const prompt = Team.prompt(now);
-    const all = [...changes, ...(was === prompt ? [] : ["prompt:", Diff.unified(was, prompt, DIFF_LINES)])];
-    return { text: all.length === 0 ? "Nothing changed: " + now.name + " has these settings already." : "Edited " + now.name + ":\n" + all.join("\n"), fail: false };
+    const lines = Main.settings_of(a, chat).filter(([k]) => !own || !k.startsWith("mcp ")).map(([k, v]) => k + ": " + v + (Object.hasOwn(more, k) ? " (" + more[k] + ")" : ""));
+    const plugs = own ? [] : chat.tools.mcp.all.size === 0 ? ["mcp: none set up"] : [];
+    const setups = Setup.listed(chat.id);
+    const after = own ? [setups.length === 0 ? "Worktree setups: none." : setups.join("\n")] : ["archived: " + (a.archived === 0 ? "no" : "yes")];
+    return [...lines, ...plugs, ...after, "prompt (" + (a.prompt === null ? "the default" : own ? "your own" : "its own") + "):", Team.prompt(a)].join("\n");
   }
 
   // back to a version of an agent's prompt, as the owner's change
@@ -2791,6 +2745,153 @@ export namespace Main {
     console.error("troop: a failure no one owned: " + err_stack(err));
   }
 
+}
+
+// an edit of an agent's settings, done: each setting it changed, as
+// "key: before → after", its prompt before and after, if that changed, and
+// whether the one before went into its history (a default prompt only
+// follows a new name)
+type Edited = { agent: Agent; changes: string[]; prompt: [string, string] | null; kept: boolean };
+
+// what only the owner changes of an agent, in the app, and why the
+// settings tool takes none of it
+const OWNERS: Record<string, string> = {
+  manage : "Manage mons, which gives power over the other mons, is the user's to turn on or off, in your settings in the app.",
+  claude : "Your Claude account is the user's to pick, in your settings in the app.",
+  mcp    : "The MCP servers are switched for every mon at once, by the user in the app.",
+};
+
+// what the settings tool sets
+const OWN_SETTINGS = ["name", "about", "picture", "prompt", "model", "effort", "leader", "lines", "subagents"];
+
+// an edit of there's settings, whoever makes it: the owner in the app (by
+// null), an agent with the agents tool, or there itself with the settings
+// tool. What x doesn't give (or gives as null) stays; every value is
+// checked before any is saved
+function edit(there: Chat, x: unknown, by: Chat | null): Edited | string {
+  const a = Team.get(there.id);
+  if (a === null) {
+    return "No agent " + there.id + ".";
+  }
+  if (!rec(x)) {
+    return "An edit is a JSON object.";
+  }
+  const sent = Object.fromEntries(Object.entries(x).filter(([, v]) => v !== null && v !== undefined));
+  const fields = Team.edit(a, sent);
+  if (typeof fields === "string") {
+    return fields;
+  }
+  const knobs = Main.knobs(sent, there.mem);
+  if (typeof knobs === "string") {
+    return knobs;
+  }
+  let pick = there.pick;
+  for (const move of ["model", "effort"] as const) {
+    const to = sent[move] === undefined ? pick : Pick.moved(pick, move, config.OFFER, text_of(sent[move]).trim());
+    if (typeof to === "string") {
+      return to;
+    }
+    pick = to;
+  }
+  const flag = ["manage", "subagents"].find((k) => sent[k] !== undefined && typeof sent[k] !== "boolean");
+  if (flag !== undefined) {
+    return flag + " is true or false.";
+  }
+  if (sent.mcp !== undefined && (!rec(sent.mcp) || Object.values(sent.mcp).some((on) => typeof on !== "boolean"))) {
+    return "mcp maps MCP servers' names to true (on) or false (off).";
+  }
+  const plugs = Object.entries(rec(sent.mcp) ? sent.mcp : {});
+  const no = plugs.map(([n]) => Chat.no_plug(there, n)).find((why) => why !== null);
+  if (no !== undefined) {
+    return no;
+  }
+  const before = Main.settings_of(a, there);
+  for (const [k, [n, on]] of plugs.entries()) {
+    const out = Chat.plug(there, n, on === true);
+    if (out.error !== undefined) {
+      const saved = plugs.slice(0, k).map(([m, to]) => m + (to === true ? " on" : " off"));
+      return out.error + (saved.length === 0 ? "" : " Saved before it: " + saved.join(", ") + ".");
+    }
+  }
+  const was = Team.prompt(a);
+  const now = Team.set(a.id, { ...fields, picture: Main.own_picture(there, fields.picture) }, by === null ? null : Chat.name(by)) ?? a;
+  Main.lead_set(there, knobs);
+  if (typeof sent.manage === "boolean" && sent.manage !== Main.manages(there)) {
+    there.mem.manage = sent.manage;
+    Memory.save(there.mem);
+  }
+  if (typeof sent.subagents === "boolean" && sent.subagents !== there.mem.subagents) {
+    there.mem.subagents = sent.subagents;
+    Memory.save(there.mem);
+    if (sent.subagents) {
+      submons_on(there);
+    }
+  }
+  if (Pick.label(pick) !== Pick.label(there.pick) || pick.profile !== there.pick.profile) {
+    Chat.pick_to(there, pick);
+  }
+  Main.chats.forEach((c) => Chat.change(c));
+  const after = new Map(Main.settings_of(now, there));
+  const changes = before.flatMap(([k, v]) => (after.get(k) === v ? [] : [k + ": " + v + " → " + (after.get(k) ?? "")]));
+  const prompt = Team.prompt(now);
+  return { agent: now, changes, prompt: was === prompt ? null : [was, prompt], kept: a.prompt !== now.prompt };
+}
+
+// an edit's answer to the agents tool, or (own) to the settings tool
+function told(out: Edited | string, own: boolean): Done {
+  if (typeof out === "string") {
+    return { text: out, fail: true };
+  }
+  const name = out.agent.name;
+  const all = [...out.changes, ...(out.prompt === null ? [] : ["prompt:", Diff.unified(out.prompt[0], out.prompt[1], DIFF_LINES)])];
+  if (all.length === 0) {
+    return { text: "Nothing changed: " + (own ? "you have" : name + " has") + " these settings already.", fail: false };
+  }
+  if (!own) {
+    return { text: "Edited " + name + ":\n" + all.join("\n"), fail: false };
+  }
+  const kept = !out.kept ? "" : " Your system prompt before is kept in your prompt history: the user can revert to it in your settings in the app, or you can set it back with prompt.";
+  return { text: "Changed your settings:\n" + all.join("\n") + "\nThey apply from your next turn." + kept, fail: false };
+}
+
+// the settings tool (Tools.ts SETTINGS): an agent's own settings, none
+// that only the owner changes
+function own_settings(chat: Chat, args: Record<string, unknown>): Done {
+  const a = Team.get(chat.id);
+  const action = text_of(args.action, "");
+  if (a === null) {
+    return { text: "No agent " + chat.id + ".", fail: true };
+  }
+  if (action === "show") {
+    return { text: Main.shown(a, chat, true), fail: false };
+  }
+  if (action !== "set") {
+    return { text: "action is show or set.", fail: true };
+  }
+  const given = Object.keys(args).filter((k) => k !== "action" && args[k] !== null && args[k] !== undefined);
+  const owners = given.find((k) => Object.hasOwn(OWNERS, k));
+  if (owners !== undefined) {
+    return { text: OWNERS[owners] + " Nothing was changed.", fail: true };
+  }
+  const odd = given.find((k) => !OWN_SETTINGS.includes(k));
+  if (odd !== undefined) {
+    return { text: "No setting " + odd + ": set takes " + OWN_SETTINGS.join(", ") + ".", fail: true };
+  }
+  if (given.includes("lines") && !(given.includes("leader") ? args.leader === true : chat.mem.leader)) {
+    return { text: "lines is Leader mode's: set it with leader true, or once Leader mode is on.", fail: true };
+  }
+  return told(edit(chat, Object.fromEntries(given.map((k) => [k, args[k]])), chat), true);
+}
+
+// an agent's Lasting submons turned on: one message from the app, which
+// starts its turn (an archived one's waits for its restore)
+function submons_on(chat: Chat): void {
+  const post: Pending = { kind: "note", text: Prompts.prompt("subagents-setup"), images: [] };
+  if (Chat.archived(chat)) {
+    Chat.held(chat, post);
+    return;
+  }
+  void Run.take(chat.main, post);
 }
 
 export async function serve(port: number): Promise<void> {
