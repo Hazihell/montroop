@@ -3,13 +3,15 @@
 // How many more subagents and work sessions this computer has room for
 // now: what its free memory and its idle cores leave, and at most PER_CORE
 // running per core across all agents. How busy the cores are is measured
-// (/proc/stat, sampled every SAMPLE over the last WINDOW), not read from the
-// load average, which counts tasks waiting on anything (WSL's runs far above
-// what the CPU does); where /proc/stat is missing, the load average stands
-// in. One started lately counts against the room as if it used its share
-// already, since the CPU and the free memory show it only later. Montroop's config can set the most that
-// run at once instead (submons). Each turn of an agent whose subagents run
-// on the engine tells it, and its subagent tool starts no more than that.
+// (/proc/stat, sampled every SAMPLE from the server's start, averaged over
+// the last WINDOW), not read from the load average, which counts tasks
+// waiting on anything (WSL's runs far above what the CPU does); where
+// /proc/stat is missing, the load average stands in. One started lately
+// counts against the room as if it used its share already, since the CPU
+// and the free memory show it only later. Montroop's config can set the
+// most that run at once instead (submons). Each turn of an agent whose
+// subagents run on the engine tells it, and its subagent tool starts no
+// more than that.
 
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -17,9 +19,9 @@ import * as config from "./Config.ts";
 import { LIVE, Session } from "./Session.ts";
 
 // the computer now: its cores, how many of them are busy (the last
-// WINDOW's average), its memory free and in all, in bytes; the subagents and work sessions
-// running, and those of them started within FRESH; the most that may run
-// at once (0: as the computer allows)
+// WINDOW's average), its memory free and in all, in bytes; the subagents
+// and work sessions running, and those of them started within FRESH; the
+// most that may run at once (0: as the computer allows)
 type State = { cores: number; busy: number; free: number; total: number; running: number; fresh: number; most: number };
 
 const GB = 2 ** 30;
@@ -58,7 +60,7 @@ export namespace Room {
   export function now(): State {
     const live = Session.list(null).filter((s) => LIVE.includes(s.status));
     const fresh = live.filter((s) => Date.now() - (Session.run(s.id)?.started ?? s.made) < FRESH).length;
-    sample();
+    Room.sample();
     const cores = os.availableParallelism();
     const busy = Room.busy(TICKS.length > 1 ? TICKS[0].line : null, TICKS.at(-1)?.line ?? null, os.loadavg()[0], cores);
     return { cores, busy, free: available(), total: os.totalmem(), running: live.length, fresh, most: config.WORKERS };
@@ -90,7 +92,7 @@ export namespace Room {
     }
     const a = then === null ? null : counted(then);
     const total = b.total - (a?.total ?? 0);
-    return total > 0 ? (cores * (b.busy - (a?.busy ?? 0))) / total : 0;
+    return total > 0 ? Math.min(cores, Math.max(0, (cores * (b.busy - (a?.busy ?? 0))) / total)) : 0;
   }
 
   // a cpu line's busy and whole time: user, nice, system, idle, iowait,
@@ -104,9 +106,9 @@ export namespace Room {
     return { busy: total - f[3] - f[4], total };
   }
 
-  // the CPU's counters read now, and every SAMPLE from the first time on;
-  // none where /proc/stat isn't
-  function sample(): void {
+  // the CPU's counters read now, and every SAMPLE from the first time on
+  // (the server's start); none where /proc/stat isn't
+  export function sample(): void {
     if (SAMPLED) {
       return;
     }

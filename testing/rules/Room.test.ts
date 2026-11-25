@@ -47,6 +47,13 @@ test("the cores busy are the share of the CPU's time between two readings spent 
   expect(Room.busy(THEN, "cpu  1000 0 500 8500 1500 0 0 0 0 0", 0, 16)).toBe(0);
 });
 
+test("counters that went back keep the cores busy between none and all", () => {
+  // user 100 less, idle 200 more: less busy than nothing
+  expect(Room.busy(THEN, "cpu  900 0 500 8200 500 0 0 0 0 0", 0, 16)).toBe(0);
+  // iowait 200 less: 300 busy in 200 ticks
+  expect(Room.busy(THEN, "cpu  1300 0 500 8100 300 0 0 0 0 0", 0, 16)).toBe(16);
+});
+
 test("with one reading, the cores busy are its share since the computer started; with none, the load average, at most every core", () => {
   expect(Room.busy(null, THEN, 99, 16)).toBe(2.4);
   expect(Room.busy(null, null, 3.5, 16)).toBe(3.5);

@@ -163,6 +163,7 @@ export namespace Sessions {
     HOOKS.asked = asked;
     HOOKS.wake = wake;
     HOOKS.change = change;
+    Room.sample();
     Holders.boot({ held, told: (id, t) => {
       const fx = take(id, t);
       return () => {
