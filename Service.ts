@@ -701,7 +701,8 @@ function read(file: string): string | null {
 type Unit = { name: string; dir: string };
 
 // a detached unit's own variable: its name, which it and all it starts
-// carry, as a systemd unit's processes are in its cgroup
+// carry, as a systemd unit's processes are in its cgroup. Its name is the
+// one holders already running were started with, so they're found again
 const UNIT_MARK = "KNY_HOLD";
 
 // the variables a systemd unit has from the user's manager, which a

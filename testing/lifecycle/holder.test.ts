@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Hold } from "../../Hold.ts";
-import { down, fake, gate, Kny, repo, said, tag, until, waiting } from "../rig.ts";
+import { down, fake, gate, git, Kny, repo, said, tag, until, waiting } from "../rig.ts";
 
 afterAll(down);
 
@@ -69,4 +69,20 @@ test.concurrent("a command left running in the background keeps the session at w
 
   const done = await s.status("done");
   expect(fs.readFileSync(path.join(done.worktree, "bg.txt"), "utf8")).toBe(t + "-done\n");
+});
+
+test.concurrent("a project's own deny rule still stops a session's call", async () => {
+  const k = await Kny.up();
+  const t = tag();
+  const r = repo();
+  fs.mkdirSync(path.join(r, ".claude"));
+  fs.writeFileSync(path.join(r, ".claude", "settings.json"), JSON.stringify({ permissions: { deny: ["Bash(touch:*)"] } }));
+  git(r, "add", ".");
+  git(r, "commit", "-qm", "deny touch");
+  await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: "touch denied-" + t }]] });
+  const s = await k.session("dn", t + ": work", r);
+
+  const done = await s.status("done");
+  expect(done.log.find((x) => x.ev.k === "result")?.ev).toMatchObject({ error: true });
+  expect(fs.existsSync(path.join(s.worktree, "denied-" + t))).toBe(false);
 });

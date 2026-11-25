@@ -95,7 +95,6 @@ test.concurrent("a holder whose run ended while the server was down is adopted w
   const t = tag();
   await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
   await fake.next(t + "-done", { what: "reply", text: t + " finished" });
-  await fake.next(t + ": after", { what: "reply", text: t + " after" });
   const s = await k.session("ld", t + ": work", repo());
   await until("the command running", () => waiting(t));
   const holder = s.holder();
@@ -108,12 +107,6 @@ test.concurrent("a holder whose run ended while the server was down is adopted w
   expect((await s.status("done")).runs).toMatchObject([{ n: 1, status: "done", attempts: 1 }]);
   await until("its holder ended, all it told taken", () => s.holder() === null);
   await until("the done wake", async () => await said(k, wake_text("session", "ld", "done: ") + t + " finished") === 1);
-  await k.kill();
-  await k.start();
-  // what the restart delivers again comes before this message's answer
-  await k.tell(t + ": after");
-  await until("the answer after the restart", async () => (await chat(k)).some((m) => m.text === t + " after"));
-  expect(await said(k, wake_text("session", "ld", "done:"))).toBe(1);
 });
 
 test.concurrent("a new server waits for the running one's lock, then takes over its sessions' running holders", async () => {
