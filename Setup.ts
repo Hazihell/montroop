@@ -1,17 +1,17 @@
 // Setup
 // =====
-// A mon's setup for the new worktrees of a repo, so its submons don't start
-// in a bare checkout (no dependencies, no gitignored env files). Each mon
-// keeps one shell command per repo (its top folder) in montroop.db, set
-// with its session or subagent tool. When one of its submons gets a new
-// worktree of that repo, the setup is armed in the submon's folder; its
-// holder, before the first turn, copies the repo's gitignored files that
-// the repo's .worktreeinclude names (as Claude Code does), then runs the
-// command in the worktree with TROOP_REPO (the repo's main checkout) and
-// TROOP_WORKTREE set, for at most MINUTES. The output's last lines go into
-// the submon's log; a setup that failed is told to the submon in its first
-// message (again by the next holder, if one dies before its run began), so
-// it can fix what it needs.
+// An agent's setup for the new worktrees of a repo, so its subagents and
+// work sessions don't start in a bare checkout (no dependencies, no
+// gitignored env files). Each agent keeps one shell command per repo (its
+// top folder) in montroop.db, set with its session or subagent tool. When
+// one of its workers gets a new worktree of that repo, the setup is armed
+// in the worker's folder; its holder, before the first turn, copies the
+// repo's gitignored files that the repo's .worktreeinclude names (as Claude
+// Code does), then runs the command in the worktree with TROOP_REPO (the
+// repo's main checkout) and TROOP_WORKTREE set, for at most MINUTES. The
+// output's last lines go into the worker's log; a setup that failed is told
+// in its first message (again by the next holder, if one ends before the
+// provider has that message), so it can fix what it needs.
 
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
@@ -100,7 +100,7 @@ export namespace Setup {
       return { text: "Cleared the worktree setup for " + repo + "." + include, fail: false };
     }
     opened().query("insert into setups (agent, repo, command) values (?, ?, ?) on conflict (agent, repo) do update set command = excluded.command").run(agent, repo, next);
-    return { text: "Set: each new worktree of " + repo + " that a submon of yours gets runs this in it before the submon's first turn, with TROOP_REPO=" + repo + " and TROOP_WORKTREE its path, for at most " + MINUTES + " minutes: " + next + include, fail: false };
+    return { text: "Set: each new worktree of " + repo + " that a subagent or work session of yours gets runs this in it before its first turn, with TROOP_REPO=" + repo + " and TROOP_WORKTREE its path, for at most " + MINUTES + " minutes: " + next + include, fail: false };
   }
 
   // an agent gone: its setups with it
@@ -108,8 +108,8 @@ export namespace Setup {
     opened().query("delete from setups where agent = ?").run(agent);
   }
 
-  // a new worktree of repo, made for a submon of agent's whose folder is
-  // dir: its setup armed for the submon's holder, if it has any
+  // a new worktree of repo, made for a subagent or session of agent's
+  // whose folder is dir: its setup armed for its holder, if it has any
   export function arm(agent: string, repo: string, worktree: string, dir: string): void {
     const armed: Armed = { repo, worktree, command: command(agent, repo) };
     if (armed.command !== "" || fs.existsSync(path.join(repo, INCLUDE))) {
@@ -121,8 +121,8 @@ export namespace Setup {
   // folder dir done, and disarmed, each step told; what the first message
   // starts with, "" for nothing (none armed, or it went well). A holder
   // that dies midway leaves it armed, so the next one runs it again; one
-  // that dies after it failed, before its run began, leaves the failure to
-  // tell again
+  // that dies after it failed, before the provider had its first message,
+  // leaves the failure to tell again
   export async function run(dir: string, emit: (ev: Ev) => void): Promise<string> {
     let armed: Armed;
     try {
@@ -130,6 +130,7 @@ export namespace Setup {
     } catch {
       return told(dir);
     }
+    fs.rmSync(path.join(dir, FAILED), { force: true });
     emit({ k: "setup", ok: null, text: armed.command });
     const copy = included(armed.repo, armed.worktree);
     const ran = armed.command === "" ? { why: null, out: "" } : await shell(armed);
@@ -144,8 +145,8 @@ export namespace Setup {
     return note;
   }
 
-  // the run in dir began: its first message, with a failure told, is the
-  // provider's now
+  // the run in dir began, or its model answered: its first message, with a
+  // failure told, is the provider's now
   export function began(dir: string): void {
     fs.rmSync(path.join(dir, FAILED), { force: true });
   }

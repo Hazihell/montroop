@@ -23,7 +23,7 @@ import { Providers } from "./Providers.ts";
 import { Rules, type Rule } from "./Rules.ts";
 import { reap } from "./Service.ts";
 import { Setup } from "./Setup.ts";
-import { TOOLS, VERSION, Wire, type Ask, type Asking, type Calling, type Kit, type Outbox, type Scratch, type Told } from "./Wire.ts";
+import { TOOLS, VERSION, Wire, type Ask, type Ev, type Asking, type Calling, type Kit, type Outbox, type Scratch, type Told } from "./Wire.ts";
 
 // what a session keeps for its life: its worktree, its Claude account's
 // folder, its model ("": the account's default) and what its system
@@ -90,6 +90,10 @@ const OLD = { text: "The server runs an older Montroop, which runs no tools for 
 // a gate's wait no one ends: a call of Montroop's waits for its answer
 // while the run does
 const NEVER = new AbortController().signal;
+
+// what a run tells once its first message is the provider's: a new
+// session began, or the model answered
+const TAKEN = new Set<Ev["k"]>(["began", "text", "tool", "turn"]);
 
 export const SPEC = "spec.json";
 export const START = "start.json";
@@ -335,7 +339,7 @@ export namespace Hold {
     }
     const h: Held = { out: Wire.outbox(Hold.told(dir).at(-1)?.seq ?? 0), asks: new Map(), calls: new Map(), waits: new Map(), says: new Set(), box: { queue: [start.prompt], wake: () => {}, shut: false }, rules: start.rules, scratch: start.scratch ?? {}, older: false, conn: null, emit: () => {} };
     h.emit = (ev) => {
-      if (ev.k === "began") {
+      if (TAKEN.has(ev.k)) {
         Setup.began(dir);
       }
       const told = Wire.push(h.out, ev, Date.now());

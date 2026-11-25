@@ -9,10 +9,11 @@ import type { Job } from "../../Driver.ts";
 import { Hold, HOLDS } from "../../Hold.ts";
 import type { Spec } from "../../Machine.ts";
 import { Rules, type Rule } from "../../Rules.ts";
+import { Setup } from "../../Setup.ts";
 import { Tools } from "../../Tools.ts";
 import type { Ev, Told } from "../../Wire.ts";
 import { EMAIL } from "../fake/server.ts";
-import { claude_signed, fake, ROOT, tag, until } from "../rig.ts";
+import { claude_signed, fake, repo, ROOT, tag, until } from "../rig.ts";
 
 const jwt = (claims: object) => [{ alg: "none" }, { exp: Math.floor(Date.now() / 1e3) + 10 * 86400, ...claims }].map((x) => Buffer.from(JSON.stringify(x)).toString("base64url")).join(".") + ".fake";
 
@@ -235,6 +236,28 @@ test.concurrent("anthropic api: a later holder resumes the conversation from its
   const told = evs(await hold(home, { ...job, context: { kind: "native", resume: String(began?.sdk), first: [], brief: "" } }, t + ": two", undefined, dir));
   expect(told.at(-1)).toEqual({ k: "end", ok: true, text: t + " second answer" });
   expect((await fake.last(t + ": two")).map((m) => [m.role, m.text])).toEqual([["user", t + ": one"], ["assistant", t + " first answer"], ["user", t + ": two"]]);
+});
+
+test.concurrent("anthropic api: a failed worktree setup is told in the first message of a resumed run, and not again to the holder after", async () => {
+  const t = tag();
+  const home = signed(fs.mkdtempSync(path.join(os.tmpdir(), "home-")));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hold-"));
+  const job = DRIVERS["anthropic api"](home, "");
+  await fake.next(t + ": one", { what: "reply", text: t + " first answer" });
+  const began = evs(await hold(home, job, t + ": one", undefined, dir)).find((e) => e.k === "began");
+  const resumed = { ...job, context: { kind: "native" as const, resume: String(began?.sdk), first: [], brief: "" } };
+  const r = repo();
+  Setup.tool("setup-" + t, { action: "setup", repo: r, command: "echo broken-" + t + "; exit 4" });
+  Setup.arm("setup-" + t, r, fs.mkdtempSync(path.join(os.tmpdir(), "worktree-")), dir);
+  await fake.next(t + ": two", { what: "reply", text: t + " second answer" });
+  await hold(home, resumed, t + ": two", undefined, dir);
+  await fake.next(t + ": three", { what: "reply", text: t + " third answer" });
+  await hold(home, resumed, t + ": three", undefined, dir);
+
+  const said = (await fake.last(t + ": three")).filter((m) => m.role === "user").map((m) => m.text);
+  expect(said[1]).toStartWith("The setup of your worktree failed (it exited with 4).");
+  expect(said[1]).toContain("broken-" + t);
+  expect(said[2]).toBe(t + ": three");
 });
 
 test.concurrent("claude-code, native: a job that may not write has its edit tools denied", async () => {
