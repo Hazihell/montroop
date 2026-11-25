@@ -6,7 +6,7 @@
 // waiting, no task in the background, no call parked. Given: one turn on
 // the job's blocks, made as the server's own path makes it (ClaudeSub):
 // no tools of its own but web search, nothing kept once it ends. Either
-// way Kunumy's tools (Job.tools) are an MCP server in it, each call run by
+// way Montroop's tools (Job.tools) are an MCP server in it, each call run by
 // the holder (io.call), which gates them; every other call it makes passes
 // the holder's gate first. A usage limit is waited out (Limit), then the
 // turn it cut goes on. Both read the owner's own instructions for Claude
@@ -31,7 +31,7 @@ import * as Prompts from "./Prompts.ts";
 import { HELD, MCP, Wire, type Ev } from "./Wire.ts";
 
 const ENV = {
-  CLAUDE_AGENT_SDK_CLIENT_APP              : "kunumy",
+  CLAUDE_AGENT_SDK_CLIENT_APP              : "montroop",
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC : "1",
 };
 
@@ -113,7 +113,7 @@ export namespace Code {
       allowedTools               : ["mcp__" + MCP],
       disallowedTools            : [...DISALLOWED, ...(job.write ? [] : EDITS)],
       settings                   : SETTINGS,
-      mcpServers                 : { [MCP]: kunumy(io, job.tools) },
+      mcpServers                 : { [MCP]: montroop(io, job.tools) },
       resume                     : id === "" ? undefined : id,
       canUseTool                 : gates.can,
       hooks                      : {
@@ -182,7 +182,7 @@ export namespace Code {
       settings        : { ...(typeof base.settings === "object" ? base.settings : {}), disableAllHooks: true },
       permissionMode  : "default",
       allowedTools    : [...own, "mcp__" + MCP],
-      mcpServers      : { [MCP]: kunumy(io, job.tools) },
+      mcpServers      : { [MCP]: montroop(io, job.tools) },
       canUseTool      : gates.can,
       hooks           : {
         PreToolUse    : [{ hooks: [gates.pre], onFailure: "block" }],
@@ -338,7 +338,7 @@ export namespace Code {
     };
   }
 
-  // the holder's gate on the calls Claude Code makes, but Kunumy's own
+  // the holder's gate on the calls Claude Code makes, but Montroop's own
   // (io.call gates those): pre has one a rule names asked (canUseTool),
   // even one Claude Code would let run by itself, the rest as its own
   // settings say; post tells the model the owner's note to a call it
@@ -376,12 +376,12 @@ export namespace Code {
     return { pre, post, can, parked: () => gating };
   }
 
-  // Kunumy's tools as an MCP server of the job's own, listed as given:
+  // Montroop's tools as an MCP server of the job's own, listed as given:
   // their JSON schemas whole (the SDK's tool() would turn them into
   // others), each loaded up front unless deferred, so the request is the
   // one the server's own path sends (ClaudeSub.mcp, Tools.answer). Each
   // call is run by the holder, under the provider's tool use id
-  function kunumy(io: Io, tools: Spec[]): McpSdkServerConfigWithInstance {
+  function montroop(io: Io, tools: Spec[]): McpSdkServerConfigWithInstance {
     const listed = tools.map((t) => ({ name: t.name, description: t.info, inputSchema: t.schema, _meta: { "anthropic/alwaysLoad": t.defer !== true } }));
     const answer = async (method: unknown, params: unknown): Promise<object> => {
       if (method === "initialize") {

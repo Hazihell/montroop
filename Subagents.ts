@@ -79,7 +79,7 @@ export namespace Subagents {
     const said = made.map((m, k) => {
       const t = tasks[k];
       const s = typeof m === "string" ? null : Session.get(m.id);
-      const knobs = [t.pick.model, t.pick.effort === "" ? null : "effort " + t.pick.effort, t.memory ? "your view" : null, t.repo === "" ? null : (t.write ? "branch kny/" + t.name : "read-only") + " in " + t.repo].filter((x) => x !== null);
+      const knobs = [t.pick.model, t.pick.effort === "" ? null : "effort " + t.pick.effort, t.memory ? "your view" : null, t.repo === "" ? null : (t.write ? "branch troop/" + t.name : "read-only") + " in " + t.repo].filter((x) => x !== null);
       return typeof m === "string" ? t.name + " not started: " + m : s?.status === "failed" ? t.name + " didn't start: " + (Session.run(m.id)?.why ?? "") : t.name + " (" + knobs.join(", ") + ")";
     });
     const any = ids.some((id) => Session.get(id)?.status !== "failed");
@@ -159,7 +159,7 @@ export namespace Subagents {
       return "No agent " + agent + ".";
     }
     const folder = path.join(Machine.agent_dir(agent), "sessions", t.name);
-    const branch = t.repo !== "" && t.write ? "kny/" + t.name : "";
+    const branch = t.repo !== "" && t.write ? "troop/" + t.name : "";
     fs.mkdirSync(path.dirname(folder), { recursive: true });
     const why = t.repo === "" ? (fs.existsSync(folder) ? folder + " exists already" : null) : branch === "" ? Worktree.detach(t.repo, t.base, folder) : Worktree.make(t.repo, t.base, branch, folder);
     if (why !== null) {

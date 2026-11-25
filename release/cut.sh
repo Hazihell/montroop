@@ -1,25 +1,25 @@
 #!/bin/bash
 # cut.sh [--publish]: builds the release named by Update.ts's VERSION
-# (the one source of the version: `kny version`, the tag and release
+# (the one source of the version: `troop version`, the tag and release
 # title, the archive names, install.sh and install.ps1 all come from it)
 # from the checkout this script is in ($REL; REL=<worktree> builds another,
 # never published). VERSION decides what it cuts:
 #   N (18, 19, ...): a release, from origin/main as checked out in
-#     ~/Projects/kunumy-wt/release, published as Latest;
+#     ~/Projects/montroop-wt/release, published as Latest;
 #   N.rcM (40.rc1, ...): a release candidate, from origin/rc as checked out
-#     in ~/Projects/kunumy-wt/rc, published as a pre-release, never Latest,
+#     in ~/Projects/montroop-wt/rc, published as a pre-release, never Latest,
 #     so nothing installs it but its own install line.
 #   1. checks: worktree clean; to publish, = origin/main (origin/rc) and tag $VER unused
 #   2. `bun install --frozen-lockfile` then `bun run lint` (tsc, eslint, knip) in the dev container and
 #      `bun run test` here (its namespaces need this host) if package.json has them; else `bun run check`
 #      if it has that; else strict tsc (no errors beyond base's)
 #   3. builds 6 targets into work-release/a$N/b$N, checks the linux-x64
-#      binary says "kny $VER", writes dist/: archives (tar.gz; zip for
+#      binary says "troop $VER", writes dist/: archives (tar.gz; zip for
 #      Windows), SHA256SUMS, install.sh (from install.sh.in, sums and the
 #      built-in prompt filled in), install.ps1 (from install.ps1.in, the
 #      Windows sums filled in; ASCII only, for Windows PowerShell 5.1),
 #      and the commit it built (dist/../commit), then signs SHA256SUMS,
-#      install.sh and install.ps1 (sign.sh, the key of release/kunumy.pub)
+#      install.sh and install.ps1 (sign.sh, the key of release/montroop.pub)
 #   4. --publish (reuses a finished build of this version and commit; refuses
 #      unless every signature checks): tags $VER, pushes the tag, creates the
 #      GitHub release (Latest, or a pre-release) with notes reviews/release/notes-$N.md
@@ -29,16 +29,16 @@ set -euo pipefail
 export PATH=$PATH:/home/linuxbrew/.linuxbrew/bin
 GH=/home/linuxbrew/.linuxbrew/bin/gh
 PODMAN=/usr/bin/podman
-DEV=~/Projects/kunumy-dev
+DEV=~/Projects/montroop-dev
 REL=${REL:-$(cd "$(dirname "$0")/.." && pwd)}
 HERE=$REL/release
 cd "$REL"
 
 VER=$(sed -n 's/^export const VERSION = "\([^"]*\)";$/\1/p' Update.ts)
 if [[ "$VER" =~ ^[1-9][0-9]*$ ]]; then
-  RC="" MAIN=~/Projects/kunumy-wt/release BRANCH=main
+  RC="" MAIN=~/Projects/montroop-wt/release BRANCH=main
 elif [[ "$VER" =~ ^[1-9][0-9]*\.rc[1-9][0-9]*$ ]]; then
-  RC=1 MAIN=~/Projects/kunumy-wt/rc BRANCH=rc
+  RC=1 MAIN=~/Projects/montroop-wt/rc BRANCH=rc
 else
   echo "Update.ts VERSION '$VER' is neither a release number (18, 19, ...) nor a release candidate (40.rc1, 40.rc2, ...)"; exit 1
 fi
@@ -47,7 +47,7 @@ MAINS=""; [ "$(pwd -P)" != "$(cd "$MAIN" 2>/dev/null && pwd -P)" ] || MAINS=1
 N=$VER
 TAG=$VER
 NOTES=$DEV/reviews/release/notes-$N.md
-PUB=$REL/release/kunumy.pub
+PUB=$REL/release/montroop.pub
 grep -q '^ssh-ed25519 AAAA' "$PUB" || { echo "$PUB holds no release key: make it (see $HERE/sign.sh) and commit it first"; exit 1; }
 echo "== $VER (tag $TAG)"
 
@@ -62,12 +62,12 @@ HEAD=$(git rev-parse HEAD)
 
 script() { python3 -I -c 'import json, sys; sys.exit(0 if sys.argv[2] in json.load(open(sys.argv[1])).get("scripts", {}) else 1)' "$REL/package.json" "$1"; }
 if script check; then
-  flock $DEV/heavy.lock $PODMAN run --rm --memory 3g -v "$REL:/src:z" -w /src localhost/kunumy-dev:latest bash -lc 'bun install --frozen-lockfile' || { echo "check: bun install --frozen-lockfile failed"; exit 1; }
+  flock $DEV/heavy.lock $PODMAN run --rm --memory 3g -v "$REL:/src:z" -w /src localhost/montroop-dev:latest bash -lc 'bun install --frozen-lockfile' || { echo "check: bun install --frozen-lockfile failed"; exit 1; }
   if script lint && script test; then
-    flock $DEV/heavy.lock $PODMAN run --rm --memory 3g -v "$REL:/src:ro,z" -w /src localhost/kunumy-dev:latest bash -lc 'bun run lint' || { echo "check: bun run lint failed"; exit 1; }
+    flock $DEV/heavy.lock $PODMAN run --rm --memory 3g -v "$REL:/src:ro,z" -w /src localhost/montroop-dev:latest bash -lc 'bun run lint' || { echo "check: bun run lint failed"; exit 1; }
     flock $DEV/heavy.lock bun run test || { echo "check: bun run test failed"; exit 1; }
   else
-    flock $DEV/heavy.lock $PODMAN run --rm --memory 3g -v "$REL:/src:ro,z" -w /src localhost/kunumy-dev:latest bash -lc 'bun run check' || { echo "check: bun run check failed"; exit 1; }
+    flock $DEV/heavy.lock $PODMAN run --rm --memory 3g -v "$REL:/src:ro,z" -w /src localhost/montroop-dev:latest bash -lc 'bun run check' || { echo "check: bun run check failed"; exit 1; }
   fi
   echo "check: passed"
 else
@@ -81,44 +81,44 @@ B=$DEV/work-release/a$N/b$N
 if [ "${1:-}" = "--publish" ] && [ -f "$B/dist/install.sh" ]; then
   echo "== publishing the existing build in $B"
   [ "$(cat "$B/commit")" = "$HEAD" ] || { echo "$B is a build of another commit"; exit 1; }
-  SAYS=$($PODMAN run --rm -v "$B:/out:ro,z" localhost/kunumy-dev:latest /out/linux-x64/kny version)
-  [ "$SAYS" = "kny $VER" ] || { echo "the build says '$SAYS', not 'kny $VER'"; exit 1; }
+  SAYS=$($PODMAN run --rm -v "$B:/out:ro,z" localhost/montroop-dev:latest /out/linux-x64/troop version)
+  [ "$SAYS" = "troop $VER" ] || { echo "the build says '$SAYS', not 'troop $VER'"; exit 1; }
   [ -f "$B/dist/install.ps1" ] || { echo "$B has no install.ps1"; exit 1; }
   cd "$B/dist"; $HERE/sign.sh verify "$B/dist" "$PUB"; sha256sum -c --quiet SHA256SUMS
 else
 echo "== build"
 [ ! -e "$B" ] || { echo "$B exists: remove it first"; exit 1; }
 mkdir -p "$B/dist"
-R=(flock $DEV/heavy.lock $PODMAN run --rm --memory 8g -e BUN_INSTALL_CACHE_DIR=/out/cache -e npm_config_cache=/out/npmcache -v "$REL:/src:z" -v "$B:/out:z" -w /src localhost/kunumy-dev:latest bash -lc)
+R=(flock $DEV/heavy.lock $PODMAN run --rm --memory 8g -e BUN_INSTALL_CACHE_DIR=/out/cache -e npm_config_cache=/out/npmcache -v "$REL:/src:z" -v "$B:/out:z" -w /src localhost/montroop-dev:latest bash -lc)
 for t in linux-x64 linux-arm64 darwin-arm64 darwin-x64; do
-  "${R[@]}" "bun Build.ts bun-$t /out/$t/kny 2>&1 | tail -1 && tar -czf /out/dist/kny-$VER-$t.tar.gz -C /out/$t kny"
+  "${R[@]}" "bun Build.ts bun-$t /out/$t/troop 2>&1 | tail -1 && tar -czf /out/dist/troop-$VER-$t.tar.gz -C /out/$t troop"
 done
 for a in x64 arm64; do
-  "${R[@]}" "bun Build.ts bun-windows-$a /out/windows-$a/kny.exe 2>&1 | tail -1"
+  "${R[@]}" "bun Build.ts bun-windows-$a /out/windows-$a/troop.exe 2>&1 | tail -1"
 done
-SAYS=$("${R[@]}" "/out/linux-x64/kny version")
+SAYS=$("${R[@]}" "/out/linux-x64/troop version")
 $PODMAN unshare rm -rf "$B/cache" "$B/npmcache"; $PODMAN unshare chown -R 0:0 "$B"
-[ "$SAYS" = "kny $VER" ] || { echo "the build says '$SAYS', not 'kny $VER'"; exit 1; }
+[ "$SAYS" = "troop $VER" ] || { echo "the build says '$SAYS', not 'troop $VER'"; exit 1; }
 echo "built: $SAYS"
 for a in x64 arm64; do
-  (cd "$B/windows-$a" && python3 -I -c "import zipfile,sys;z=zipfile.ZipFile(sys.argv[1],'w',zipfile.ZIP_DEFLATED);z.write('kny.exe');z.close()" "../dist/kny-$VER-windows-$a.zip")
+  (cd "$B/windows-$a" && python3 -I -c "import zipfile,sys;z=zipfile.ZipFile(sys.argv[1],'w',zipfile.ZIP_DEFLATED);z.write('troop.exe');z.close()" "../dist/troop-$VER-windows-$a.zip")
 done
 cd "$B/dist"
-sha256sum kny-* > SHA256SUMS
+sha256sum troop-* > SHA256SUMS
 python3 -I - "$HERE" "$VER" SHA256SUMS "$REL/prompts" <<'EOF'
 import base64, os, sys
 here, ver, sums, prompts = sys.argv[1:]
 texts = {f: open(os.path.join(prompts, f)).read().strip() for f in sorted(os.listdir(prompts)) if f.endswith(".md")}
-assert all("KNY_PROMPT_EOF" not in t for t in texts.values())
+assert all("TROOP_PROMPT_EOF" not in t for t in texts.values())
 upgrade = open(here + "/upgrade.js").read().strip()
-assert "KNY_UPGRADE_JS" not in upgrade and upgrade.isascii()
-sh = "\n".join("cat > \"$share/%s\" <<'KNY_PROMPT_EOF'\n%s\nKNY_PROMPT_EOF" % (f, t) for f, t in texts.items())
+assert "TROOP_UPGRADE_JS" not in upgrade and upgrade.isascii()
+sh = "\n".join("cat > \"$share/%s\" <<'TROOP_PROMPT_EOF'\n%s\nTROOP_PROMPT_EOF" % (f, t) for f, t in texts.items())
 ps1 = "\n".join("    [IO.File]::WriteAllText((Join-Path $share '%s'), ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('%s')) + \"`n\"))" % (f, base64.b64encode(t.encode()).decode()) for f, t in texts.items())
 sum = {}
 for line in open(sums):
     h, name = line.split()
     for t in ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "windows-x64", "windows-arm64"]:
-        if name == "kny-%s-%s.%s" % (ver, t, "zip" if t.startswith("windows") else "tar.gz"):
+        if name == "troop-%s-%s.%s" % (ver, t, "zip" if t.startswith("windows") else "tar.gz"):
             sum[t] = h
 for src, out in [("install.sh.in", "install.sh"), ("install.ps1.in", "install.ps1")]:
     s = open(here + "/" + src).read().replace("@VER@", ver)
@@ -143,19 +143,19 @@ $HERE/sign.sh verify "$B/dist" "$PUB"
 KEYLINE=$(cut -d' ' -f1-2 "$PUB")
 { cat "$NOTES"; printf '\n## Checking the download\n\n'
   printf 'install.sh, install.ps1 and SHA256SUMS are signed with our release key (`%s`). To check by hand, next to the downloaded files, with ssh-keygen (OpenSSH 8.1 or newer, built into Linux, macOS and Windows 10/11).\n\nLinux or macOS:\n\n' "$KEYLINE"
-  printf '    echo "kunumy %s" > kunumy.signers\n    ssh-keygen -Y verify -f kunumy.signers -I kunumy -n kunumy-install.sh -s install.sh.sig < install.sh\n\n' "$KEYLINE"
+  printf '    echo "montroop %s" > montroop.signers\n    ssh-keygen -Y verify -f montroop.signers -I montroop -n montroop-install.sh -s install.sh.sig < install.sh\n\n' "$KEYLINE"
   printf 'Windows (PowerShell):\n\n'
-  printf '    Set-Content kunumy.signers "kunumy %s" -Encoding ascii\n    cmd /c "ssh-keygen -Y verify -f kunumy.signers -I kunumy -n kunumy-install.ps1 -s install.ps1.sig < install.ps1"\n\n' "$KEYLINE"
+  printf '    Set-Content montroop.signers "montroop %s" -Encoding ascii\n    cmd /c "ssh-keygen -Y verify -f montroop.signers -I montroop -n montroop-install.ps1 -s install.ps1.sig < install.ps1"\n\n' "$KEYLINE"
   printf 'The sha256 of each file (the archives are in the signed SHA256SUMS too, and the install scripts check the one they download):\n\n'
   sha256sum install.sh install.ps1 SHA256SUMS install.sh.sig install.ps1.sig SHA256SUMS.sig | cat - SHA256SUMS | sed 's/^/    /'; } > "$B/notes.md"
 echo "== publish"
-git -C "$REL" tag -a "$TAG" -m "kny $VER" HEAD
+git -C "$REL" tag -a "$TAG" -m "troop $VER" HEAD
 git -C "$REL" push origin "$TAG" 2>&1 | tail -1
 LATEST=(--latest); [ -z "$RC" ] || LATEST=(--prerelease --latest=false)
-timeout 1800 $GH release create "$TAG" -R Hazihell/kunumy --verify-tag "${LATEST[@]}" --title "$VER" --notes-file "$B/notes.md" \
-  install.sh install.ps1 SHA256SUMS install.sh.sig install.ps1.sig SHA256SUMS.sig kny-$VER-*.tar.gz kny-$VER-windows-*.zip 2>&1 | tail -1
+timeout 1800 $GH release create "$TAG" -R Hazihell/montroop --verify-tag "${LATEST[@]}" --title "$VER" --notes-file "$B/notes.md" \
+  install.sh install.ps1 SHA256SUMS install.sh.sig install.ps1.sig SHA256SUMS.sig troop-$VER-*.tar.gz troop-$VER-windows-*.zip 2>&1 | tail -1
 if [ -z "$RC" ]; then
-  curl -sI https://github.com/Hazihell/kunumy/releases/latest | grep -i '^location'
+  curl -sI https://github.com/Hazihell/montroop/releases/latest | grep -i '^location'
 else
-  echo "install line: curl -fsSL https://github.com/Hazihell/kunumy/releases/download/$TAG/install.sh | sh"
+  echo "install line: curl -fsSL https://github.com/Hazihell/montroop/releases/download/$TAG/install.sh | sh"
 fi

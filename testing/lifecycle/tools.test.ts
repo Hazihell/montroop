@@ -2,7 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { TOOLS } from "../../Wire.ts";
-import { chat, down, fake, gate, Kny, older, procs, repo, tag, until, VIAS, waiting } from "../rig.ts";
+import { chat, down, fake, gate, Troop, older, procs, repo, tag, until, VIAS, waiting } from "../rig.ts";
 
 afterAll(down);
 
@@ -14,8 +14,8 @@ function results(log: Log, text: string): Log {
 }
 
 for (const via of VIAS) {
-  test.concurrent(via + ": Kunumy's shell runs on a device, in its agent's scratch folder there, a delete inside it asking no one", async () => {
-    const k = await Kny.up();
+  test.concurrent(via + ": Montroop's shell runs on a device, in its agent's scratch folder there, a delete inside it asking no one", async () => {
+    const k = await Troop.up();
     const t = tag();
     const box = await k.device("box");
     const mine = path.join(box.scratch, k.agent);
@@ -31,8 +31,8 @@ for (const via of VIAS) {
     expect(k.cards()).toEqual([]);
   });
 
-  test.concurrent(via + ": Kunumy's search finds its agent's chat", async () => {
-    const k = await Kny.up();
+  test.concurrent(via + ": Montroop's search finds its agent's chat", async () => {
+    const k = await Troop.up();
     const t = tag();
     await fake.next(t + ": remember", { what: "reply", text: "Noted." });
     await k.tell(t + ": remember the heron-" + t);
@@ -47,7 +47,7 @@ for (const via of VIAS) {
   });
 
   test.concurrent(via + ": a server killed in the middle of its shell call on a device gives it the result once it's back, the command run once", async () => {
-    const k = await Kny.up();
+    const k = await Troop.up();
     const t = tag();
     const box = await k.device("box");
     const go = path.join(box.home, "go-" + t);
@@ -70,7 +70,7 @@ for (const via of VIAS) {
   });
 
   test.concurrent(via + ": its shell call on a device that an ask rule names waits in its holder across a server restart, and runs once approved", async () => {
-    const k = await Kny.up({ ask: [{ what: "Count something", tools: "shell", args: "count-" }] });
+    const k = await Troop.up({ ask: [{ what: "Count something", tools: "shell", args: "count-" }] });
     const t = tag();
     const box = await k.device("box");
     const count = path.join(box.home, "count-" + t);
@@ -92,8 +92,8 @@ for (const via of VIAS) {
   });
 }
 
-test.concurrent("a session's call of Kunumy's tools while a server from before they ran in sessions owns its holder is told that server runs none", async () => {
-  const k = await Kny.up();
+test.concurrent("a session's call of Montroop's tools while a server from before they ran in sessions owns its holder is told that server runs none", async () => {
+  const k = await Troop.up();
   const t = tag();
   await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
   await fake.next(t + "-done", { what: "tool", calls: [["search", { query: "heron-" + t }]] });
@@ -108,8 +108,8 @@ test.concurrent("a session's call of Kunumy's tools while a server from before t
   expect(results(done.log, "runs no tools for work sessions")).toHaveLength(1);
 });
 
-test.concurrent("a session's call of Kunumy's tools approved under a server from before they ran in sessions is told that server runs none", async () => {
-  const k = await Kny.up({ ask: [{ what: "Zoom", tools: "zoom", args: "" }] });
+test.concurrent("a session's call of Montroop's tools approved under a server from before they ran in sessions is told that server runs none", async () => {
+  const k = await Troop.up({ ask: [{ what: "Zoom", tools: "zoom", args: "" }] });
   const t = tag();
   await fake.next(t + ": work", { what: "tool", calls: [["zoom", { id: 1 }]] });
   const s = await k.session("oa", t + ": work", repo());

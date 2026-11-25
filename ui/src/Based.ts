@@ -7,7 +7,7 @@ export const TOP = /^\/(team)?$/;
 // opened straight on a chat (a notification's tap, a link), the list sits
 // under it, so back lands there instead of leaving the app; once per tab
 function based(): void {
-  const KEY = "kunumy.based";
+  const KEY = "montroop.based";
   if (sessionStorage.getItem(KEY) !== null) {
     return;
   }

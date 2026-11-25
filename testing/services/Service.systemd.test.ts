@@ -22,13 +22,13 @@ function calls(): string[] {
 
 test("where the user's systemd answers, a unit runs as a transient systemd user unit, found and stopped through it", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unit-"));
-  const unit = { name: "kny-hold-ab12cd34-1", dir };
+  const unit = { name: "troop-hold-ab12cd34-1", dir };
 
-  expect(transient(unit, "Kunumy work session fix", ["/usr/bin/kny", "hold", dir], { KNY_DIR: "/data", LANG: "C.UTF-8" })).toBeNull();
+  expect(transient(unit, "Montroop work session fix", ["/usr/bin/troop", "hold", dir], { TROOP_DIR: "/data", LANG: "C.UTF-8" })).toBeNull();
   expect(calls()).toContain(
-    "systemd-run --user --collect --quiet --unit=kny-hold-ab12cd34-1 --description=Kunumy work session fix -p TimeoutStopSec=10 --setenv=KNY_DIR=/data --setenv=LANG=C.UTF-8 -- /usr/bin/kny hold " + dir,
+    "systemd-run --user --collect --quiet --unit=troop-hold-ab12cd34-1 --description=Montroop work session fix -p TimeoutStopSec=10 --setenv=TROOP_DIR=/data --setenv=LANG=C.UTF-8 -- /usr/bin/troop hold " + dir,
   );
   expect(active(unit)).toBe(true);
   halt(unit);
-  expect(calls()).toEqual(["systemctl --user is-active kny-hold-ab12cd34-1", "systemctl --user stop --no-block kny-hold-ab12cd34-1"]);
+  expect(calls()).toEqual(["systemctl --user is-active troop-hold-ab12cd34-1", "systemctl --user stop --no-block troop-hold-ab12cd34-1"]);
 });

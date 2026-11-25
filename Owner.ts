@@ -8,12 +8,12 @@ import { Push } from "./Push.ts";
 import { SIGN_IN, sign_in_form } from "./View.ts";
 
 // a device's sign-in (session: the hash of its key), or the browser
-// sign-in code of `kny serve login` (tries: its wrong ones so far)
+// sign-in code of `troop serve login` (tries: its wrong ones so far)
 type Ticket = { session: string | null; what: string; tries?: number };
 
-export const FILE = config.DIR + "/kunumy.db";
+export const FILE = config.DIR + "/montroop.db";
 
-const COOKIE = "kunumy";
+const COOKIE = "montroop";
 
 const KEEP = "; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000";
 
@@ -113,7 +113,7 @@ export namespace Owner {
     if (revoke !== undefined) {
       const row = rows[Number(revoke) - 1];
       if (!/^\d+$/.test(revoke) || row === undefined) {
-        throw new Error("no session " + revoke + (rows.length === 0 ? ": there are none" : ": `kny serve sessions` numbers them 1 to " + rows.length));
+        throw new Error("no session " + revoke + (rows.length === 0 ? ": there are none" : ": `troop serve sessions` numbers them 1 to " + rows.length));
       }
       db.query("delete from sessions where hash = ?").run(row.hash);
       return console.log("Signed out " + revoke + " (" + (row.what || "a session") + ").");
@@ -123,11 +123,11 @@ export namespace Owner {
     const kind = (what: string) => (what.startsWith("the device ") ? "device" : what === "a browser" ? "browser" : "-");
     const when = (at: number) => (at > 0 ? new Date(at).toISOString().slice(0, 16).replace("T", " ") + " UTC" : "(not kept then)");
     rows.forEach((r, i) => console.log(String(i + 1).padStart(3) + ". " + kind(r.what).padEnd(9) + (r.what || "-").padEnd(32) + " signed in " + when(r.at) + (mine.has(r.hash) ? "  (" + mine.get(r.hash) + ")" : "")));
-    console.log(rows.length === 0 ? "No sessions." : "Last use isn't tracked. `kny serve sessions revoke <n>` signs one out; `--all`, all.");
+    console.log(rows.length === 0 ? "No sessions." : "Last use isn't tracked. `troop serve sessions revoke <n>` signs one out; `--all`, all.");
   }
 
   // one code at a time: a new one replaces the one before, in one write
-  // that another `kny serve login` waits for
+  // that another `troop serve login` waits for
   export function cli(): void {
     const db = Owner.open();
     const code = String(crypto.randomInt(0, 1e6)).padStart(6, "0");
@@ -286,7 +286,7 @@ export namespace Owner {
     return Owner.page("Signed in", "You can close this tab and go back to " + Owner.safe(link.what) + ".");
   }
 
-  // a browser signs in with the code of `kny serve login`: used once, and
+  // a browser signs in with the code of `troop serve login`: used once, and
   // gone after TRIES wrong ones; it stays on the address it came in on,
   // and goes to the path it was going to. A wrong code and no code get one
   // answer, so a guess learns nothing
@@ -298,9 +298,9 @@ export namespace Owner {
       const row = live === null ? null : (db.query("update tickets set data = json_set(data, '$.tries', (data ->> 'tries') + 1) where hash = ? returning data ->> 'tries' as tries").get(live.hash) as { tries: number } | null);
       if (live !== null && row !== null && row.tries >= TRIES) {
         db.query("delete from tickets where hash = ?").run(live.hash);
-        return Owner.page_login(TRIES + " wrong codes: this sign-in code works no more. Run <code>kny serve login</code> again for a new one.", to);
+        return Owner.page_login(TRIES + " wrong codes: this sign-in code works no more. Run <code>troop serve login</code> again for a new one.", to);
       }
-      return Owner.page_login("That code didn't sign in. Check the code <code>kny serve login</code> printed, or run it again for a new one.", to);
+      return Owner.page_login("That code didn't sign in. Check the code <code>troop serve login</code> printed, or run it again for a new one.", to);
     }
     db.query("delete from sessions where hash = ?").run(Owner.hash(Owner.token(req)));
     const token = Owner.random();
@@ -310,7 +310,7 @@ export namespace Owner {
 
   // a path of this server, never another site: else /
   export function relative(to: string): string {
-    const base = "http://kunumy.invalid";
+    const base = "http://montroop.invalid";
     try {
       const url = new URL(to, base);
       return to.startsWith("/") && url.origin === base && !url.pathname.startsWith("//") ? url.pathname + url.search : "/";
@@ -334,7 +334,7 @@ export namespace Owner {
   }
 
   export function page(title: string, body: string): Response {
-    const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} · Kunumy</title><link rel="stylesheet" href="/style.css"></head><body class="solo"><main><h1>${title}</h1><p class="sub">${body}</p></main></body></html>`;
+    const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} · Montroop</title><link rel="stylesheet" href="/style.css"></head><body class="solo"><main><h1>${title}</h1><p class="sub">${body}</p></main></body></html>`;
     return new Response(page, { headers: { "content-type": "text/html; charset=utf-8" } });
   }
 

@@ -5,7 +5,7 @@
 // server links to it over its socket, takes in what it tells (Wire) and
 // acks it, tries again while it runs, and once it's gone takes in what its
 // log holds past the last ack. What a holder runs for (a work session), and
-// the calls of Kunumy's tools it sends, are its owner's business, told
+// the calls of Montroop's tools it sends, are its owner's business, told
 // through the hooks given at boot.
 
 import * as fs from "node:fs";
@@ -27,7 +27,7 @@ export type Holder = { id: string; dir: string; unit: string; sock: string };
 // once, returning what's left to do once it's acked. welcome: a link's
 // first message, with the ids of the calls the holder has parked and of
 // the questions waiting. gone: the holder ended, its log taken in. call:
-// one of Kunumy's tools to run for it; took: it has the result of a call.
+// one of Montroop's tools to run for it; took: it has the result of a call.
 // scratch: the devices' scratch folders, which its rules read
 type On = {
   held    : (id: string) => { holder: Holder; ack: number } | null;
@@ -76,7 +76,7 @@ export namespace Holders {
 
   // the unit and socket of a holder's launch n
   export function named(id: string, dir: string, n: number): Holder {
-    return { id, dir, unit: "kny-hold-" + id + "-" + n, sock: path.join(dir, "hold-" + n + ".sock") };
+    return { id, dir, unit: "troop-hold-" + id + "-" + n, sock: path.join(dir, "hold-" + n + ".sock") };
   }
 
   // a holder found at the server's start: linked to again if it runs,
@@ -94,7 +94,7 @@ export namespace Holders {
   export function launch(h: Holder, about: string, start: Omit<Start, "sock">): string | null {
     const begin: Start = { ...start, sock: h.sock };
     fs.writeFileSync(path.join(h.dir, START), JSON.stringify(begin, null, 1) + "\n", { mode: 0o600 });
-    const env = { ...Object.fromEntries(ENV.flatMap((k) => (process.env[k] ? [[k, process.env[k]]] : []))), KNY_DIR: config.DIR };
+    const env = { ...Object.fromEntries(ENV.flatMap((k) => (process.env[k] ? [[k, process.env[k]]] : []))), TROOP_DIR: config.DIR };
     const why = transient({ name: h.unit, dir: h.dir }, about, [...command(), "hold", h.dir], env);
     if (why === null) {
       unlink(h.id);
@@ -151,7 +151,7 @@ export namespace Holders {
       try {
         got(id, sock, msg);
       } catch (err) {
-        console.error("kny: holder " + id + ": " + err_why(err));
+        console.error("troop: holder " + id + ": " + err_why(err));
       }
     }));
     sock.on("error", () => {});

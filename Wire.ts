@@ -11,7 +11,7 @@
 // each change, so a side can tell what the other knows (2: the holder's
 // start names its driver; 3: a start may give a whole job to the driver
 // its provider picks, a run tells a usage limit it waits out, the server
-// runs Kunumy's tools for holders, and the devices' scratch folders the
+// runs Montroop's tools for holders, and the devices' scratch folders the
 // rules read; 4: a start may run a subagent, whose question tool is ask,
 // and the server pokes holders when the usage limits were reset).
 
@@ -26,19 +26,19 @@ import type { Rule } from "./Rules.ts";
 // provider's own)
 export type Ask = { id: string; tool: string; input: Record<string, unknown>; what: string };
 
-// a call of one of Kunumy's tools, which the server runs, once however
+// a call of one of Montroop's tools, which the server runs, once however
 // often it's told (id: the provider's tool use id)
 export type Calling = { id: string; tool: string; input: Record<string, unknown> };
 
-// one of Kunumy's tools as a run is offered it; device: the device whose
+// one of Montroop's tools as a run is offered it; device: the device whose
 // scratch folder the rules read its arguments with, null for the one they
 // name, if any
 export type Kit = Spec & { device: string | null };
 
-// Kunumy's one MCP server in Claude Code, the server's (ClaudeSub) and a
+// Montroop's one MCP server in Claude Code, the server's (ClaudeSub) and a
 // holder's (Code), which names each of its tools for the model
-// mcp__kunumy__<name> (#190)
-export const MCP = "kunumy";
+// mcp__montroop__<name> (#190)
+export const MCP = "montroop";
 export const HELD = "mcp__" + MCP + "__";
 
 // each open device's scratch folder, by its name
@@ -76,7 +76,7 @@ export type Told = { seq: number; at: number; ev: Ev };
 
 export const VERSION = 4;
 
-// the first version whose server runs Kunumy's tools for holders
+// the first version whose server runs Montroop's tools for holders
 export const TOOLS = 3;
 
 const CLIP = 2000;

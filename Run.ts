@@ -219,7 +219,7 @@ export namespace Run {
     try {
       step();
     } catch (err) {
-      console.error("kny: " + run.name + ": " + err_stack(err));
+      console.error("troop: " + run.name + ": " + err_stack(err));
     }
   }
 

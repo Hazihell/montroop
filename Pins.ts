@@ -7,7 +7,7 @@ import { write_whole } from "./Write.ts";
 
 // what the agents learned about the user that must not fade with the
 // memory's compression: one line each, the same for every agent and
-// subagent, in pins.json in Kunumy's dir. A pin with until is
+// subagent, in pins.json in Montroop's dir. A pin with until is
 // temporary; a lasting one leaves when unused for STALE days
 export type Pin = {
   id    : number;

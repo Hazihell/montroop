@@ -107,10 +107,10 @@ async function until<T>(what: string, ms: number, probe: () => Promise<T | null>
 }
 
 export async function smoke(bin: string): Promise<void> {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "kny-smoke-"));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "troop-smoke-"));
   const site = "http://127.0.0.1:" + (await free_port());
   const pick = "claude-sub:haiku-5.5:low:slow";
-  const env = { ...process.env, KNY_DIR: tmp, KNY_SERVICE: "serve", KNY_SITE: site, KNY_VENDORS: "claude-sub", KNY_PICK: pick, KNY_COMPACTOR: pick, KNY_CLAUDE_SUB: config.CLAUDE_SUB, KNY_CLAUDE: "" };
+  const env = { ...process.env, TROOP_DIR: tmp, TROOP_SERVICE: "serve", TROOP_SITE: site, TROOP_VENDORS: "claude-sub", TROOP_PICK: pick, TROOP_COMPACTOR: pick, TROOP_CLAUDE_SUB: config.CLAUDE_SUB, TROOP_CLAUDE: "" };
   const server = Bun.spawn([bin, "serve", site.replace(/.*:/, "")], { env, stdout: Bun.file(tmp + "/out.log"), stderr: Bun.file(tmp + "/out.log") });
   try {
     await until("server", UP, async () => ((await fetch(site)).ok ? true : null));

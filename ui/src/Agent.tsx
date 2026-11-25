@@ -6,7 +6,7 @@ import { get, text_of } from "../../Json.ts";
 import * as View from "../../View.ts";
 import { Avatar, Face, look_of, look_text } from "./Avatar.tsx";
 import { Back } from "./Back.tsx";
-import { act, holds, note, show, useKunumy } from "./Kunumy.ts";
+import { act, holds, note, show, useMontroop } from "./Montroop.ts";
 import { Versions } from "./Versions.tsx";
 
 const Importer = lazy(() => import("./Importer.tsx"));
@@ -62,8 +62,8 @@ function Set({ name, about, children }: { name: string; about?: string; children
 // the MCP servers of the devices, each on or off for every agent; the client
 // holds the agent while its settings are open, to know which are on
 function Plugs({ agent }: { agent: string }): ReactNode {
-  const held = useKunumy((s) => s.agent === agent && s.loaded);
-  const plugs = useKunumy((s) => s.plugs);
+  const held = useMontroop((s) => s.agent === agent && s.loaded);
+  const plugs = useMontroop((s) => s.plugs);
   useEffect(() => {
     show(agent, null, false);
     return () => show(null);
@@ -87,8 +87,8 @@ function Plugs({ agent }: { agent: string }): ReactNode {
 // a's settings, saved as they change, or a new agent's, made with Create
 function Fields({ a, all }: { a: Agent | null; all: All }): ReactNode {
   const navigate = useNavigate();
-  const here = useKunumy((s) => s.agent);
-  const others = useKunumy((s) => s.team.filter((m) => m.archived === 0 && m.id !== a?.id).length);
+  const here = useMontroop((s) => s.agent);
+  const others = useMontroop((s) => s.team.filter((m) => m.archived === 0 && m.id !== a?.id).length);
   const [seed] = useState(() => String(Math.random()));
   const [first] = useState<Form>(() => ({
     name    : a?.name ?? "",
@@ -255,7 +255,7 @@ export function AgentPage({ agent }: { agent: string | null }): ReactNode {
 
 // the agents archived, each to restore or delete for good
 export function Archived(): ReactNode {
-  const gone = useKunumy((s) => s.team).filter((m) => m.archived !== 0);
+  const gone = useMontroop((s) => s.team).filter((m) => m.archived !== 0);
   const restore = (m: View.Mate) => void View.post("/api/agents/" + m.id + "/restore", {}).then((out) => note(out.error === undefined ? m.name + " is back in the team." : text_of(out.error)));
   const drop = async (m: View.Mate) => {
     const left = (await fetch("/api/agents/" + m.id + "/left").then((r) => r.json()).catch(() => ({ left: [] }))) as { left: string[] };
@@ -264,7 +264,7 @@ export function Archived(): ReactNode {
       return;
     }
     const res = await fetch("/api/agents/" + m.id, { method: "DELETE" }).catch(() => null);
-    const out = ((await res?.json().catch(() => null)) ?? { error: "Can't reach Kunumy." }) as { error?: string };
+    const out = ((await res?.json().catch(() => null)) ?? { error: "Can't reach Montroop." }) as { error?: string };
     note(out.error ?? m.name + " is deleted.");
   };
   if (gone.length === 0) {

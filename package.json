@@ -1,5 +1,5 @@
 {
-  "name": "kunumy",
+  "name": "montroop",
   "private": true,
   "scripts": {
     "build": "bun Build.ts",

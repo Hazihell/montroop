@@ -1,12 +1,12 @@
 import { afterAll, expect, test } from "bun:test";
 import * as path from "node:path";
 import { wake_text } from "../../Wake.ts";
-import { down, fake, gate, Kny, older, procs, repo, ROOT, said, tag, until, waiting } from "../rig.ts";
+import { down, fake, gate, Troop, older, procs, repo, ROOT, said, tag, until, waiting } from "../rig.ts";
 
 afterAll(down);
 
 test.concurrent("a holder of the version before is adopted by this version's server and its run seen through; the session then runs again on this version's holder", async () => {
-  const k = await Kny.up({}, older());
+  const k = await Troop.up({}, older());
   const t = tag();
   await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
   await fake.next(t + "-done", { what: "reply", text: t + " finished" });

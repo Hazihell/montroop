@@ -119,7 +119,7 @@ const OWN: Spec[] = [
   spec("date", "The date and time of message id.", { id: INT }, ["id"]),
 ];
 // built at each listing: spawn names the models offered now, which
-// Settings change while Kunumy runs
+// Settings change while Montroop runs
 const boss = (): Spec[] => [
   spec("schedule", "Schedule a message to yourself: at its time it reaches you as a new message from the timer, starting \"[Timer id]\", and starts a turn as a report does, whether or not the user is online. Give `at` to send it once, or `cron` to send it again and again, and the time zone both are read in (the user's). Write the message as the task to do then, whole: by then this turn is far back in the view.", {
     message : STR,
@@ -147,7 +147,7 @@ const boss = (): Spec[] => [
     id     : INT,
     ids    : { type: "array", items: INT },
   }, ["action"]),
-  spec("session", "Work sessions: a Claude Code session of your own on a git repo of this server's computer, in its own new branch and worktree, that runs on its own for as long as the task takes, through server restarts. start: repo, base (the ref its branch starts from; default the repo's HEAD), branch (its new branch's name, one the repo doesn't have yet; default kny/<name>), name, brief (its whole task: it knows only that, the repo and its instructions), model. It never waits on you while it runs: you get one message \"[Session name] done|failed|stopped|waiting|question: …\" when its run ends, it waits on the user's approval of a call (only the user can give it, in the app), or it asks you something; that message starts your turn, so don't wait for it, read it to check, or schedule a check. send: a message (text) to it, by name: mode steer (default: into its work now; to a session that asked you something, the answer) or queue (for its next run, once this one ends); to a session done or stopped it starts a new run; request: an id of yours for this message, the same on a retry, so it's sent once. read: its state, what it waits on, its report and its latest lines; after (a line's number) and n for its log from there. stop: stop it at once (its worktree stays). list: your sessions. archive: remove its worktree and branch once its work is merged or not wanted (force: even with commits or changes found nowhere else).", {
+  spec("session", "Work sessions: a Claude Code session of your own on a git repo of this server's computer, in its own new branch and worktree, that runs on its own for as long as the task takes, through server restarts. start: repo, base (the ref its branch starts from; default the repo's HEAD), branch (its new branch's name, one the repo doesn't have yet; default troop/<name>), name, brief (its whole task: it knows only that, the repo and its instructions), model. It never waits on you while it runs: you get one message \"[Session name] done|failed|stopped|waiting|question: …\" when its run ends, it waits on the user's approval of a call (only the user can give it, in the app), or it asks you something; that message starts your turn, so don't wait for it, read it to check, or schedule a check. send: a message (text) to it, by name: mode steer (default: into its work now; to a session that asked you something, the answer) or queue (for its next run, once this one ends); to a session done or stopped it starts a new run; request: an id of yours for this message, the same on a retry, so it's sent once. read: its state, what it waits on, its report and its latest lines; after (a line's number) and n for its log from there. stop: stop it at once (its worktree stays). list: your sessions. archive: remove its worktree and branch once its work is merged or not wanted (force: even with commits or changes found nowhere else).", {
     action  : { type: "string", enum: ["start", "send", "read", "stop", "list", "archive"] },
     name    : { type: "string", description: "The session's name: 1 to 40 lowercase letters, digits and dashes." },
     repo    : { type: "string", description: "Start: the repo's folder (~ is the home folder)." },
@@ -166,7 +166,7 @@ const boss = (): Spec[] => [
   spec("resume", "Wake every call on this server waiting for an AI service's usage limit (other turns, summaries), when the user says a limit was reset early. Each asks again once; one still limited waits again.", {}, []),
 ];
 // the subagent tool, for an agent whose subagents run on the engine
-const SUBAGENT = (): Spec => spec("subagent", "Subagents: workers of your own, each on one task, that run on their own for as long as it takes, through server restarts, each in its own folder on this server's computer (with a repo, its own worktree), with that computer's tools of its provider (files, shell, web) and Kunumy's device tools. start: tasks, started at once, their names returned at once. It never waits on you while it runs: you get one message \"[Subagent name] done|failed|stopped|waiting|question: …\" when its run ends (done: with its last reply, its result), it waits on the user's approval of a call (only the user can give it, in the app) or on a usage limit, or it asks you something; that message starts your turn, so don't wait for it, read it to check, or schedule a check. send: a message (text) to it, by name: mode steer (default: into its work now; to one that asked you something, the answer) or queue (for its next run, once this one ends); to one done or stopped it starts a new run where it left off; request: an id of yours for this message, the same on a retry, so it's sent once. read: its state, what it waits on, its result and its latest lines; after (a line's number) and n for its log from there. stop: stop it at once (why: for its record; its folder stays). list: your subagents. archive: remove its folder, worktree and branch once its work is merged or not wanted (force: even with commits or changes found nowhere else).", {
+const SUBAGENT = (): Spec => spec("subagent", "Subagents: workers of your own, each on one task, that run on their own for as long as it takes, through server restarts, each in its own folder on this server's computer (with a repo, its own worktree), with that computer's tools of its provider (files, shell, web) and Montroop's device tools. start: tasks, started at once, their names returned at once. It never waits on you while it runs: you get one message \"[Subagent name] done|failed|stopped|waiting|question: …\" when its run ends (done: with its last reply, its result), it waits on the user's approval of a call (only the user can give it, in the app) or on a usage limit, or it asks you something; that message starts your turn, so don't wait for it, read it to check, or schedule a check. send: a message (text) to it, by name: mode steer (default: into its work now; to one that asked you something, the answer) or queue (for its next run, once this one ends); to one done or stopped it starts a new run where it left off; request: an id of yours for this message, the same on a retry, so it's sent once. read: its state, what it waits on, its result and its latest lines; after (a line's number) and n for its log from there. stop: stop it at once (why: for its record; its folder stays). list: your subagents. archive: remove its folder, worktree and branch once its work is merged or not wanted (force: even with commits or changes found nowhere else).", {
   action  : { type: "string", enum: ["start", "send", "read", "stop", "list", "archive"] },
   tasks   : { type: "array", items: { type: "object", properties: {
     task   : { type: "string", description: "Its whole brief: it knows only this, what the other options give it, and the pins." },
@@ -174,7 +174,7 @@ const SUBAGENT = (): Spec => spec("subagent", "Subagents: workers of your own, e
     model  : { type: "string", description: "Its model, one offered here; by default, yours. Set it only when the user asks for that model or vendor, since another vendor may cost more. A repo needs a Claude plan's model." },
     effort : { type: "string", description: "How hard it thinks, one of its model's own levels (" + Sub.efforts() + "); by default, as hard as you, or its model's default level if it has no level of that name." },
     memory : { type: "boolean", description: "Whether it starts with your view and can zoom, search and date your memory; by default true without a repo, false with one." },
-    repo   : { type: "string", description: "A git repo's folder on this server's computer (~ is the home folder): it works in its own worktree, on a new branch kny/<name> from base. Without, in a folder of its own." },
+    repo   : { type: "string", description: "A git repo's folder on this server's computer (~ is the home folder): it works in its own worktree, on a new branch troop/<name> from base. Without, in a folder of its own." },
     base   : { type: "string", description: "The ref its worktree starts from; by default the repo's HEAD." },
     write  : { type: "boolean", description: "false: a worktree at base on no branch, its edit tools denied, removed when its run ends: for reviews and research. Default true." },
     mcp    : { type: "boolean", description: "Whether it gets the devices' MCP tools; default true." },
@@ -332,7 +332,7 @@ export namespace Tools {
     switch (method) {
       case "initialize": {
         const protocolVersion = params.protocolVersion ?? "2025-06-18";
-        return { protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "kunumy", version: "1" } };
+        return { protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "montroop", version: "1" } };
       }
       // notes only for a caller that puts them in the model's request
       // (Agent.notes), heard only then: Claude Code drops them (#190)
@@ -340,7 +340,7 @@ export namespace Tools {
         const bare = tools.seats.get(who)?.mcp === false;
         const all = bare ? [] : await Mcp.list(tools.mcp, Tools.held(tools, who));
         const theirs = all.filter((t) => t.name.length <= NAME_MOST - prefix.length);
-        // a deferred tool overrides alwaysLoad on Kunumy's server, tested 20 Nov 2026
+        // a deferred tool overrides alwaysLoad on Montroop's server, tested 20 Nov 2026
         const list = [...Tools.listed(tools, who), ...theirs].map((t) => ({ name: t.name, description: t.info, inputSchema: t.schema, ...(t.defer === true ? { _meta: { "anthropic/alwaysLoad": false } } : {}) }));
         if (params.notes !== true || bare) {
           return { tools: list };
@@ -390,7 +390,7 @@ export namespace Tools {
 
   // a call a rule names runs once the owner approves it
   export async function gated(tools: Tools, who: string, name: string, args: Record<string, unknown>, device: string | null, signal: AbortSignal, run: () => Promise<Out>): Promise<Out> {
-    const rule = Rules.kunumy(config.ASK, name, args, device, Tools.scratch(tools));
+    const rule = Rules.montroop(config.ASK, name, args, device, Tools.scratch(tools));
     if (rule === null) {
       return await run();
     }
@@ -592,7 +592,7 @@ export namespace Tools {
     return { device: String(device), job: { name, input, cwd: who } };
   }
 
-  // Kunumy's tools a work session or subagent of who's is offered: the
+  // Montroop's tools a work session or subagent of who's is offered: the
   // memory tools on who's memory, the devices' tools and skills, and the
   // devices' MCP tools as last listed, each with the device it runs on;
   // a subagent's as its options say (write false: none that edits a file)
@@ -817,7 +817,7 @@ export namespace Tools {
     if (why !== d.why) {
       d.why = why;
       if (why !== "") {
-        console.error("kny: device " + device + ": " + why);
+        console.error("troop: device " + device + ": " + why);
         tools.hub.note("The device " + device + "'s MCP servers: " + why + ".");
       }
     }
@@ -825,7 +825,7 @@ export namespace Tools {
   }
 
   export function same_prefix_note(name: string, prefix: string, other: string): string {
-    return "The device " + name + "'s MCP servers are left out: their tools would be named " + prefix + "_…, as the device " + other + "'s are. Rename one of the two (name in its ~/.config/kunumy/device.json).";
+    return "The device " + name + "'s MCP servers are left out: their tools would be named " + prefix + "_…, as the device " + other + "'s are. Rename one of the two (name in its ~/.config/montroop/device.json).";
   }
 
   export function plug(tools: Tools): void {
@@ -838,7 +838,7 @@ export namespace Tools {
       if (clash !== d.clash) {
         d.clash = clash;
         if (clash !== "") {
-          console.error("kny: " + clash);
+          console.error("troop: " + clash);
           tools.hub.note(clash);
         }
       }
@@ -897,7 +897,7 @@ export namespace Tools {
     const d = tools.devices.get(device);
     const open = Tools.opened(tools).map(([name]) => name).join(", ") || "none";
     if (d === undefined || d.terms.size === 0) {
-      return "No device " + device + " is open (its kny device isn't running). Open: " + open + ". Only the user starts it, so don't retry or wait: end your turn, saying what is left.";
+      return "No device " + device + " is open (its troop device isn't running). Open: " + open + ". Only the user starts it, so don't retry or wait: end your turn, saying what is left.";
     }
     return d;
   }

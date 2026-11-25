@@ -1,13 +1,13 @@
 import { afterAll, expect, test } from "bun:test";
 import { wake_text } from "../../Wake.ts";
-import { chat, down, fake, gate, kill, Kny, procs, repo, said, tag, until, VIAS, waiting } from "../rig.ts";
+import { chat, down, fake, gate, kill, Troop, procs, repo, said, tag, until, VIAS, waiting } from "../rig.ts";
 
 const GONE = "its holder ended before the run did";
 
 afterAll(down);
 
 test.concurrent("a holder killed mid-run fails the run once, leaves nothing of it running, and a resume finishes it", async () => {
-  const k = await Kny.up();
+  const k = await Troop.up();
   const t = tag();
   await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
   const s = await k.session("hk", t + ": work", repo());
@@ -24,7 +24,7 @@ test.concurrent("a holder killed mid-run fails the run once, leaves nothing of i
 });
 
 test.concurrent("subagent: a holder killed mid-run is tried again with no message, told its last calls' outcome is unknown, and finishes", async () => {
-  const k = await Kny.up();
+  const k = await Troop.up();
   const t = tag();
   await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
   const [s] = await k.subagents({ task: t + ": work", name: "rk", repo: repo(), base: "main" });
@@ -40,7 +40,7 @@ test.concurrent("subagent: a holder killed mid-run is tried again with no messag
 
 for (const via of VIAS) {
   test.concurrent(via + ": Claude Code killed under its holder fails the run, and its holder exits leaving nothing running", async () => {
-    const k = await Kny.up();
+    const k = await Troop.up();
     const t = tag();
     await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
     const s = await k.work(via, "cc", t + ": work", repo());
@@ -55,7 +55,7 @@ for (const via of VIAS) {
   });
 
   test.concurrent(via + ": a question asked while the server is down reaches it once it's back, and is answered; each wake comes once across restarts", async () => {
-    const k = await Kny.up();
+    const k = await Troop.up();
     const t = tag();
     await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
     await fake.next(t + "-done", { what: "tool", calls: [[via === "session" ? "ask_owner" : "ask", { question: "Which word should it be?" }]] });
@@ -84,7 +84,7 @@ for (const via of VIAS) {
   });
 
   test.concurrent(via + ": a run that ends while the server is down is taken from its log at the next start, and the message queued for it runs next", async () => {
-    const k = await Kny.up();
+    const k = await Troop.up();
     const t = tag();
     await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
     const s = await k.work(via, "qd", t + ": work", repo());
@@ -107,7 +107,7 @@ for (const via of VIAS) {
   });
 
   test.concurrent(via + ": a holder whose run ended while the server was down is adopted while it waits to be acked, and its end wakes the agent once", async () => {
-    const k = await Kny.up();
+    const k = await Troop.up();
     const t = tag();
     await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
     await fake.next(t + "-done", { what: "reply", text: t + " finished" });
@@ -128,7 +128,7 @@ for (const via of VIAS) {
   });
 
   test.concurrent(via + ": a new server waits for the running one's lock, then takes over its running holders", async () => {
-    const k = await Kny.up();
+    const k = await Troop.up();
     const t = tag();
     await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
     const s = await k.work(via, "up", t + ": work", repo());

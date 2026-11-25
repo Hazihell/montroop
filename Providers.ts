@@ -3,7 +3,7 @@
 // Which driver runs a job: its provider's, for the kind of account it
 // runs on and the kind of context it has. A plan runs on its provider's
 // harness (Claude Code, in either context) or its plan's API (ChatGPT's),
-// an API key on the API, with Kunumy's own loop (Loop) over the vendor's
+// an API key on the API, with Montroop's own loop (Loop) over the vendor's
 // wire. A model or effort the provider doesn't offer is refused before
 // any call; Claude Code takes names of its own for its models too (opus),
 // as its default.
@@ -19,7 +19,7 @@ import { LABELS, Pick } from "./Pick.ts";
 
 type Kind = Job["account"]["kind"];
 
-// each provider's accounts, as the vendors the rest of Kunumy names, and
+// each provider's accounts, as the vendors the rest of Montroop names, and
 // the driver for a job on each
 const PROVIDERS: Record<string, Record<Kind, { vendor: Vendor; driver: (job: Job) => Driver }>> = {
   claude: {

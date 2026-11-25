@@ -50,7 +50,7 @@ export type Servers = { all: Map<string, Server>; note: (text: string) => void; 
 export type Held = Servers["all"];
 
 // a tool's name, as the model sees it, is at most this long at every
-// vendor Kunumy talks to, tested 16 Nov 2026 (#190)
+// vendor Montroop talks to, tested 16 Nov 2026 (#190)
 export const NAME_MOST = 128;
 
 const START_MS = 60e3;
@@ -64,7 +64,7 @@ const IMAGE_MAX_BYTES = 5 * 2 ** 20;
 const EXPIRED = "ended its session (HTTP 404)";
 
 const VERSION = "2025-06-18";
-const INIT    = { protocolVersion: VERSION, capabilities: {}, clientInfo: { name: "kunumy", version: "1" } };
+const INIT    = { protocolVersion: VERSION, capabilities: {}, clientInfo: { name: "montroop", version: "1" } };
 
 const TAIL = 1000;
 
@@ -288,7 +288,7 @@ export namespace Mcp {
     if (left.join(", ") !== s.left) {
       s.left = left.join(", ");
       if (s.left !== "") {
-        console.error("kny: MCP server " + s.conf.name + " has tools left out: " + s.left);
+        console.error("troop: MCP server " + s.conf.name + " has tools left out: " + s.left);
         Mcp.say(servers, s, Mcp.left_note(s));
       }
     }
@@ -375,7 +375,7 @@ export namespace Mcp {
           if (again && why?.startsWith(EXPIRED)) {
             continue;
           }
-          const next = why === "was ended by kny" ? "." : "; the next call starts it again.";
+          const next = why === "was ended by troop" ? "." : "; the next call starts it again.";
           return fail(head + (why === null ? "failed: " + err_why(err) + "." : why + next));
         }
       }
@@ -433,7 +433,7 @@ export namespace Mcp {
     if (get(msg, "method") === "ping") {
       return { jsonrpc: "2.0", id, result: {} };
     }
-    return { jsonrpc: "2.0", id, error: { code: -32601, message: "Kunumy offers no " + String(get(msg, "method")) } };
+    return { jsonrpc: "2.0", id, error: { code: -32601, message: "Montroop offers no " + String(get(msg, "method")) } };
   }
 
   export async function* texts(stream: ReadableStream<Uint8Array>): AsyncGenerator<string> {
@@ -522,7 +522,7 @@ export namespace Mcp {
         lines.forEach((line) => line.trim() !== "" && heard(line));
       }
     })().catch((err: unknown) => {
-      fail(err_why(err) + "; kny ended it");
+      fail(err_why(err) + "; troop ended it");
       end();
     });
     const err = (async () => {
@@ -567,7 +567,7 @@ export namespace Mcp {
       write({ jsonrpc: "2.0", id, method, params });
     });
     const close = () => {
-      fail(dead ?? "was ended by kny");
+      fail(dead ?? "was ended by troop");
       end();
     };
     return { ask, tell, close, dead: () => dead };
@@ -605,7 +605,7 @@ export namespace Mcp {
     const tell = (method: string, params: object, signal = AbortSignal.timeout(START_MS)) => send({ method, params, tell: true }, signal).then(() => {});
     const close = () => {
       if (dead === null) {
-        dead = "was ended by kny";
+        dead = "was ended by troop";
         run(conf.device, job({ method: "close" }), AbortSignal.timeout(START_MS)).catch(() => undefined);
       }
     };
@@ -656,7 +656,7 @@ export namespace Mcp {
       HERE.set(key, (s = run));
     }
     if (s === undefined) {
-      return answer({ dead: "isn't running: kny there restarted or lost the server" });
+      return answer({ dead: "isn't running: troop there restarted or lost the server" });
     }
     try {
       const result = input.tell ? await s.link.tell(method, params) : await s.link.ask(method, params, signal);
@@ -769,7 +769,7 @@ export namespace Mcp {
         return get(msg, "result");
       } catch (err) {
         if (err_why(err).startsWith("sent a message over")) {
-          end(err_why(err) + "; kny ended it");
+          end(err_why(err) + "; troop ended it");
         }
         throw dead !== null ? new Error(dead) : err;
       } finally {
@@ -785,7 +785,7 @@ export namespace Mcp {
         }
       }
     };
-    return { ask, tell, close: () => end("was ended by kny"), dead: () => dead };
+    return { ask, tell, close: () => end("was ended by troop"), dead: () => dead };
   }
 
 }

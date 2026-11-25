@@ -17,7 +17,7 @@ type Entry = { version: string; text: string };
 
 class Stop extends Error {}
 
-const UPDATES = process.env.KNY_UPDATES ?? path.join(os.homedir(), ".kunumy-updates");
+const UPDATES = process.env.TROOP_UPDATES ?? path.join(os.homedir(), ".montroop-updates");
 const WORK = UPDATES + "/work";
 const PREVIOUS = UPDATES + "/previous";
 const SNAPSHOTS = UPDATES + "/snapshots";
@@ -31,19 +31,19 @@ const CHANGELOGS = {
   sdk  : "https://raw.githubusercontent.com/anthropics/claude-agent-sdk-typescript/main/CHANGELOG.md",
   code : "https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md",
 };
-const UNITS = ["kny-serve", "kny-device"];
-const RIG = "kny-update-rig";
+const UNITS = ["troop-serve", "troop-device"];
+const RIG = "troop-update-rig";
 const SHOWN = 25;
 const WAIT = 90e3;
 
-const HELP = `kny update check [--all]            what the Agent SDK has new, and where it touches what we rely on
-kny update apply [sdk[=VERSION]] [--dry-run]
+const HELP = `troop update check [--all]            what the Agent SDK has new, and where it touches what we rely on
+troop update apply [sdk[=VERSION]] [--dry-run]
                                      bump the SDK in a worktree, test, then install and restart
-kny update apply current            the same for the clone's main as it is, nothing bumped
-kny update apply --resume           go on after you fixed what it stopped on
-kny update rollback                 put the previous binary back and restart
-kny update gate [dir]               the cache test alone, on a checkout (default: this clone)
-Options: --src DIR (the git clone; remembered), --bin FILE (where kny is installed), --base BRANCH (main)`;
+troop update apply current            the same for the clone's main as it is, nothing bumped
+troop update apply --resume           go on after you fixed what it stopped on
+troop update rollback                 put the previous binary back and restart
+troop update gate [dir]               the cache test alone, on a checkout (default: this clone)
+Options: --src DIR (the git clone; remembered), --bin FILE (where troop is installed), --base BRANCH (main)`;
 
 function sh(cmd: string[], cwd?: string, env: Record<string, string> = {}): Out {
   const p = Bun.spawnSync(cmd, { cwd, env: { ...process.env, GIT_TERMINAL_PROMPT: "0", ...env }, stdout: "pipe", stderr: "pipe" });
@@ -69,10 +69,10 @@ function compare(a: string, b: string): number {
 
 function source(flag: string | undefined): string {
   const saved = fs.existsSync(UPDATES + "/src") ? fs.readFileSync(UPDATES + "/src", "utf8").trim() : "";
-  const dir = path.resolve(flag ?? process.env.KNY_SRC ?? (saved || process.cwd()));
+  const dir = path.resolve(flag ?? process.env.TROOP_SRC ?? (saved || process.cwd()));
   const top = git(dir, "rev-parse", "--show-toplevel");
   if (!top.ok || !fs.existsSync(top.out + "/Cli.ts")) {
-    throw new Stop("no Kunumy clone at " + dir + ": give it with --src DIR (it is remembered)");
+    throw new Stop("no Montroop clone at " + dir + ": give it with --src DIR (it is remembered)");
   }
   fs.mkdirSync(UPDATES, { recursive: true, mode: 0o700 });
   fs.writeFileSync(UPDATES + "/src", top.out + "\n");
@@ -190,8 +190,8 @@ async function check(args: string[]): Promise<number> {
   const { values } = parseArgs({ args, options: { src: { type: "string" }, base: { type: "string" }, sdk: { type: "string" }, all: { type: "boolean" } } });
   const src = source(values.src);
   const sdk = await sdk_lines(src, values.base ?? "main", values.sdk, values.all === true).catch((err: unknown) => ({ lines: ["  could not check the SDK: " + err_why(err)], available: false, reasons: ["the SDK could not be checked"] }));
-  const verdict = sdk.reasons.length > 0 ? "NEEDS A LOOK on our side: " + sdk.reasons.join("; ") : sdk.available ? "update available, and nothing in it needs work on our side that these checks can see: `kny update apply --dry-run` tests it, `kny update apply` deploys it" : "up to date";
-  console.log("kny update check: " + verdict + "\n\nAgent SDK\n" + sdk.lines.join("\n"));
+  const verdict = sdk.reasons.length > 0 ? "NEEDS A LOOK on our side: " + sdk.reasons.join("; ") : sdk.available ? "update available, and nothing in it needs work on our side that these checks can see: `troop update apply --dry-run` tests it, `troop update apply` deploys it" : "up to date";
+  console.log("troop update check: " + verdict + "\n\nAgent SDK\n" + sdk.lines.join("\n"));
   return 0;
 }
 
@@ -199,20 +199,20 @@ function snapshot(): string {
   const data = config.DIR;
   const dir = SNAPSHOTS + "/" + stamp();
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const skip = (name: string) => name === "claude-sub" || /^claude-/.test(name) || name === "lock" || name === "server.pid" || /^kunumy\.db/.test(name);
+  const skip = (name: string) => name === "claude-sub" || /^claude-/.test(name) || name === "lock" || name === "server.pid" || /^montroop\.db/.test(name);
   for (const name of fs.readdirSync(data).filter((n) => !skip(n))) {
     fs.cpSync(path.join(data, name), path.join(dir, name), { recursive: true, preserveTimestamps: true, verbatimSymlinks: true });
   }
-  const db = path.join(data, "kunumy.db");
+  const db = path.join(data, "montroop.db");
   if (fs.existsSync(db)) {
     const from = new Database(db, { readonly: true });
-    from.run("VACUUM INTO '" + path.join(dir, "kunumy.db").replace(/'/g, "''") + "'");
+    from.run("VACUUM INTO '" + path.join(dir, "montroop.db").replace(/'/g, "''") + "'");
     from.close();
-    const copy = new Database(path.join(dir, "kunumy.db"), { readonly: true });
+    const copy = new Database(path.join(dir, "montroop.db"), { readonly: true });
     const check = copy.query("pragma integrity_check").get();
     copy.close();
     if (get(check, "integrity_check") !== "ok") {
-      throw new Stop("the backup of kunumy.db failed its integrity check: " + JSON.stringify(check));
+      throw new Stop("the backup of montroop.db failed its integrity check: " + JSON.stringify(check));
     }
   }
   for (const old of fs.readdirSync(SNAPSHOTS).sort().slice(0, -KEPT)) {
@@ -244,7 +244,7 @@ function engine(): string {
 function rig(log: string, work: string): void {
   const docker = engine();
   const stop = () => sh([docker, "rm", "-f", RIG]);
-  const context = fs.mkdtempSync(path.join(os.tmpdir(), "kny-rig-"));
+  const context = fs.mkdtempSync(path.join(os.tmpdir(), "troop-rig-"));
   for (const f of ["package.json", "bun.lock"]) {
     fs.copyFileSync(path.join(work, f), path.join(context, f));
   }
@@ -272,11 +272,11 @@ function rig(log: string, work: string): void {
 function gate(dir: string, src: () => string): number {
   const d = path.resolve(dir);
   if (!fs.existsSync(d + "/AskAI.ts") || !fs.existsSync(d + "/node_modules")) {
-    throw new Stop(d + " is no Kunumy checkout with its dependencies installed (bun install)");
+    throw new Stop(d + " is no Montroop checkout with its dependencies installed (bun install)");
   }
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "kny-gate-"));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "troop-gate-"));
   try {
-    const env = { ...process.env, KNY_DIR: tmp, KNY_CLAUDE_SUB: config.CLAUDE_SUB, KNY_CLAUDE: "", KNY_GATE: d };
+    const env = { ...process.env, TROOP_DIR: tmp, TROOP_CLAUDE_SUB: config.CLAUDE_SUB, TROOP_CLAUDE: "", TROOP_GATE: d };
     const compiled = /^(\/\$bunfs|B:\\~BUN)/.test(Bun.main);
     const bun = compiled ? Bun.which("bun") : process.execPath;
     if (bun === null) {
@@ -300,7 +300,7 @@ function units_of(bin: string): string[] {
 }
 
 function local_site(): string {
-  const port = /\bargv\[\]=\S+ serve (\d+)/.exec(sh(["systemctl", "--user", "show", "-p", "ExecStart", "kny-serve"]).out)?.[1] ?? "8788";
+  const port = /\bargv\[\]=\S+ serve (\d+)/.exec(sh(["systemctl", "--user", "show", "-p", "ExecStart", "troop-serve"]).out)?.[1] ?? "8788";
   return "http://127.0.0.1:" + port;
 }
 
@@ -327,7 +327,7 @@ async function restart(units: string[]): Promise<void> {
     if (!r.ok) {
       throw new Stop("systemctl restart " + u + ": " + r.err);
     }
-    if (u === "kny-serve") {
+    if (u === "troop-serve") {
       await serving();
     }
   }
@@ -351,7 +351,7 @@ function keep_previous(bin: string, snap: string, commit: string): void {
   fs.mkdirSync(PREVIOUS, { recursive: true, mode: 0o700 });
   const now = UPDATES + "/current.json";
   if (fs.existsSync(bin)) {
-    const kept = PREVIOUS + "/kny";
+    const kept = PREVIOUS + "/troop";
     fs.rmSync(kept + ".new", { force: true });
     try {
       fs.linkSync(bin, kept + ".new");
@@ -365,25 +365,25 @@ function keep_previous(bin: string, snap: string, commit: string): void {
 }
 
 function bin_path(flag: string | undefined): string {
-  return path.resolve(flag ?? process.env.KNY_INSTALL ?? path.join(os.homedir(), ".local/bin/kny"));
+  return path.resolve(flag ?? process.env.TROOP_INSTALL ?? path.join(os.homedir(), ".local/bin/troop"));
 }
 
 async function rollback(args: string[]): Promise<number> {
   const { values } = parseArgs({ args, options: { bin: { type: "string" } } });
   const bin = bin_path(values.bin);
-  if (!fs.existsSync(PREVIOUS + "/kny")) {
-    throw new Stop("no previous binary kept yet (" + PREVIOUS + "/kny): nothing was deployed with `kny update apply`");
+  if (!fs.existsSync(PREVIOUS + "/troop")) {
+    throw new Stop("no previous binary kept yet (" + PREVIOUS + "/troop): nothing was deployed with `troop update apply`");
   }
   const info = fs.existsSync(PREVIOUS + "/info.json") ? (JSON.parse(fs.readFileSync(PREVIOUS + "/info.json", "utf8")) as Record<string, unknown>) : {};
-  install(PREVIOUS + "/kny", bin);
+  install(PREVIOUS + "/troop", bin);
   fs.writeFileSync(UPDATES + "/current.json", JSON.stringify({ commit: info.commit, at: info.at }));
-  console.log("put back " + bin + " from " + PREVIOUS + "/kny" + (info.commit === undefined ? "" : " (commit " + text_of(info.commit).slice(0, 9) + ", deployed " + text_of(info.at) + ")"));
+  console.log("put back " + bin + " from " + PREVIOUS + "/troop" + (info.commit === undefined ? "" : " (commit " + text_of(info.commit).slice(0, 9) + ", deployed " + text_of(info.at) + ")"));
   const units = units_of(bin);
   await restart(units);
   if (units.length === 0) {
     console.log("no systemd service runs " + bin + ": restart yours");
   }
-  console.log("data: a snapshot from before the update is in " + text_of(info.snapshot, SNAPSHOTS) + " (kunumy.db is a consistent backup); the rollback leaves ~/.kunumy as it is");
+  console.log("data: a snapshot from before the update is in " + text_of(info.snapshot, SNAPSHOTS) + " (montroop.db is a consistent backup); the rollback leaves ~/.montroop as it is");
   return 0;
 }
 
@@ -417,7 +417,7 @@ async function apply(args: string[]): Promise<number> {
     throw new Stop("apply takes sdk[=VERSION] or current, not " + asked.wants.join(" "));
   }
   if (!resumed && unfinished() && values.discard !== true) {
-    throw new Stop("an earlier attempt waits in " + WORK + " with unfinished work: `kny update apply --resume` goes on with it, --discard drops it");
+    throw new Stop("an earlier attempt waits in " + WORK + " with unfinished work: `troop update apply --resume` goes on with it, --discard drops it");
   }
   fs.mkdirSync(LOGS, { recursive: true, mode: 0o700 });
   const log = LOGS + "/" + stamp() + ".log";
@@ -427,10 +427,10 @@ async function apply(args: string[]): Promise<number> {
   console.log("log: " + log);
   const units = units_of(bin);
   if (values.bin === undefined && units.length === 0 && values["dry-run"] !== true && process.platform === "linux") {
-    throw new Stop("no systemd user service runs " + bin + " (kny serve -d, kny device -d), so nothing could be restarted onto the new build: nothing was changed. --bin FILE installs somewhere else.");
+    throw new Stop("no systemd user service runs " + bin + " (troop serve -d, troop device -d), so nothing could be restarted onto the new build: nothing was changed. --bin FILE installs somewhere else.");
   }
 
-  console.log("==> snapshot ~/.kunumy (claude-sub, the plan's sign-in, left out)");
+  console.log("==> snapshot ~/.montroop (claude-sub, the plan's sign-in, left out)");
   const snap = snapshot();
   console.log("    " + snap);
 
@@ -462,7 +462,7 @@ async function apply(args: string[]): Promise<number> {
   }
   if (!resumed && note === "" && !asked.wants.includes("current")) {
     git(src, "worktree", "remove", "--force", WORK);
-    console.log("nothing to update (`kny update apply current` rebuilds and deploys " + base + " as it is)");
+    console.log("nothing to update (`troop update apply current` rebuilds and deploys " + base + " as it is)");
     return 0;
   }
   const commit = git(WORK, "rev-parse", "HEAD").out;
@@ -483,24 +483,24 @@ async function apply(args: string[]): Promise<number> {
 
   const was = fs.existsSync(bin);
   keep_previous(bin, snap, commit);
-  install(WORK + "/kny", bin);
+  install(WORK + "/troop", bin);
   console.log("==> installed " + bin + " (commit " + commit.slice(0, 9) + ")");
   try {
     await restart(units);
     console.log("==> smoke: a real turn on a scratch server of the installed binary");
     await smoke(bin);
   } catch (err) {
-    console.error("kny update: the deployed build failed: " + err_why(err));
+    console.error("troop update: the deployed build failed: " + err_why(err));
     if (was) {
       console.error("rolling back");
-      await rollback(["--bin", bin]).catch((e: unknown) => console.error("rollback failed: " + err_why(e) + "\nby hand: cp " + PREVIOUS + "/kny " + bin + " && systemctl --user restart kny-serve kny-device"));
+      await rollback(["--bin", bin]).catch((e: unknown) => console.error("rollback failed: " + err_why(e) + "\nby hand: cp " + PREVIOUS + "/troop " + bin + " && systemctl --user restart troop-serve troop-device"));
     }
     return 1;
   }
   const main = git(src, "rev-parse", "--abbrev-ref", "HEAD").out === base && git(src, "status", "--porcelain", "--untracked-files=no").out === "";
   const merged = main && commit !== git(src, "rev-parse", base).out ? git(src, "merge", "--ff-only", commit).ok : commit === git(src, "rev-parse", base).out;
   console.log("deployed " + (note || base + " as it is; ") + "commit " + commit.slice(0, 9) + ". " + (merged ? base + " has it." : "Merge it into " + base + ": git merge --ff-only " + commit.slice(0, 9)));
-  console.log("Back out: `kny update rollback` (if kny won't start: " + PREVIOUS + "/kny update rollback). Data snapshot: " + snap);
+  console.log("Back out: `troop update rollback` (if troop won't start: " + PREVIOUS + "/troop update rollback). Data snapshot: " + snap);
   return 0;
 }
 
@@ -515,13 +515,13 @@ export async function update(args: string[]): Promise<number> {
       case "rollback":
         return await rollback(rest);
       case "gate":
-        return process.env.KNY_GATE === undefined ? gate(rest[0] ?? source(undefined), () => source(undefined)) : await gate_turns(process.env.KNY_GATE);
+        return process.env.TROOP_GATE === undefined ? gate(rest[0] ?? source(undefined), () => source(undefined)) : await gate_turns(process.env.TROOP_GATE);
       default:
         console.log(HELP);
         return sub === "help" || sub === "--help" ? 0 : 2;
     }
   } catch (err) {
-    console.error("kny update: " + (err instanceof Stop ? err.message : err_why(err)));
+    console.error("troop update: " + (err instanceof Stop ? err.message : err_why(err)));
     return 1;
   }
 }

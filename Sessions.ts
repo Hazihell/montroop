@@ -3,7 +3,7 @@
 // The server's side of work sessions: each run is a holder's (Holders),
 // running Claude Code in the session's worktree; what it tells goes into
 // the session's record (Session); each call it parks shows as the owner's
-// Ask card (Gate), whose answer goes back to it; each call of Kunumy's
+// Ask card (Gate), whose answer goes back to it; each call of Montroop's
 // tools it sends runs here once (Tools), its result kept till the holder
 // took it. On boot the holders still running are adopted, and the
 // sessions whose holder is gone marked as failed, to resume. When a run
@@ -44,7 +44,7 @@ import { Wire, type Ev, type Told } from "./Wire.ts";
 import { Worktree } from "./Worktree.ts";
 
 // what a new session needs: its agent; a repo on this computer, the ref
-// its branch starts from and the branch ("": kny/<name>); its name; the
+// its branch starts from and the branch ("": troop/<name>); its name; the
 // brief its system prompt adds; the first message; the model ("": the
 // account's default)
 type Begin = { agent: string; repo: string; base: string; branch: string; name: string; brief: string; prompt: string; model: string };
@@ -123,7 +123,7 @@ type Lately = { seq: number; last: string; until: number | null; used: number | 
 const LATELY = new Map<string, Lately>();
 // the wakes being delivered
 const SENDING = new Set<string>();
-// the calls of Kunumy's tools running here, by id, with their session
+// the calls of Montroop's tools running here, by id, with their session
 const CALLS = new Map<string, { session: string; stop: AbortController }>();
 // the times each subagent's holder was tried again lately
 const TRIED = new Map<string, number[]>();
@@ -214,7 +214,7 @@ export namespace Sessions {
     }
     const id = crypto.randomUUID().slice(0, 8);
     const base = Worktree.named(top.dir, b.base || "HEAD");
-    const branch = b.branch || "kny/" + b.name;
+    const branch = b.branch || "troop/" + b.name;
     const worktree = path.join(Machine.agent_dir(b.agent), "sessions", b.name);
     fs.mkdirSync(path.dirname(worktree), { recursive: true });
     const made = Worktree.make(top.dir, base, branch, worktree);
@@ -244,7 +244,7 @@ export namespace Sessions {
     const first = s.launches > 0 && s.sdk === "" ? Session.runs(s.id)[0]?.prompt ?? prompt : prompt;
     const text = first === prompt ? prompt : first + "\n\n" + prompt;
     const t = HOOKS.tools;
-    const why = Session.kind(s) === "subagent" ? launch_sub(s, h, text) : Holders.launch(h, "Kunumy work session " + s.name, { driver: "claude-code", prompt: text, resume: s.sdk, rules: config.ASK, scratch: t === null ? {} : Tools.scratch(t), tools: t === null ? [] : Tools.kit(t, s.agent) });
+    const why = Session.kind(s) === "subagent" ? launch_sub(s, h, text) : Holders.launch(h, "Montroop work session " + s.name, { driver: "claude-code", prompt: text, resume: s.sdk, rules: config.ASK, scratch: t === null ? {} : Tools.scratch(t), tools: t === null ? [] : Tools.kit(t, s.agent) });
     if (why !== null) {
       after(s.id, Session.move(s.id, "failed", why, about === null ? null : { about, text: why }) ?? []);
       return why;
@@ -272,7 +272,7 @@ export namespace Sessions {
     const tools = t === null ? [] : Tools.kit(t, s.agent, { memory: s.memory === 1, mcp: sub.mcp, write: s.write === 1 });
     const c = sub.job.context;
     const job = { ...sub.job, context: c.kind === "native" ? { ...c, resume: s.sdk } : c, tools: [] };
-    return Holders.launch(h, "Kunumy subagent " + s.name, { driver: "provider", job, sub: true, prompt, resume: s.sdk, rules: config.ASK, scratch: t === null ? {} : Tools.scratch(t), tools });
+    return Holders.launch(h, "Montroop subagent " + s.name, { driver: "provider", job, sub: true, prompt, resume: s.sdk, rules: config.ASK, scratch: t === null ? {} : Tools.scratch(t), tools });
   }
 
   // a subagent's job, or why it can't be read
@@ -355,7 +355,7 @@ export namespace Sessions {
     Session.unheard(id).filter((say) => say.mode !== "queue").forEach((say) => Holders.send(id, { $: "say", id: say.id, text: say.text, answer: say.mode === "answer" }));
   }
 
-  // a call of Kunumy's tools its holder sent, run once: its result sent
+  // a call of Montroop's tools its holder sent, run once: its result sent
   // as soon as it's in, and again each time the holder tells the call
   // again till it took it. One a server before this one started runs
   // again, as Tools.held_call says
@@ -713,7 +713,7 @@ export namespace Sessions {
     }
     const brief = arg("brief");
     const s = start({ agent, repo: Machine.home(arg("repo")), base: arg("base"), branch: arg("branch"), name: arg("name"), brief, prompt: brief, model: arg("model") });
-    const bare = typeof s === "string" || fs.existsSync(Browser.script(s.dir)) ? "" : " It has no browser: agent-browser is neither on this computer's PATH nor set as agent_browser in Kunumy's config.";
+    const bare = typeof s === "string" || fs.existsSync(Browser.script(s.dir)) ? "" : " It has no browser: agent-browser is neither on this computer's PATH nor set as agent_browser in Montroop's config.";
     return typeof s === "string" ? { text: s, fail: true } : { text: "Started session " + s.name + " on branch " + s.branch + " (from " + s.base + "), in " + s.worktree + "." + bare + " It works on its own: you get one message \"[Session " + s.name + "] …\" when it's done, fails, waits on the user's approval or asks you something. Don't wait for it or read it to check: go on with other work, or end your turn.", fail: false };
   }
 

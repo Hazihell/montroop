@@ -4,7 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { text_of } from "../../Json.ts";
 import * as View from "../../View.ts";
 import { Face } from "./Avatar.tsx";
-import { note, useKunumy, work_mood } from "./Kunumy.ts";
+import { note, useMontroop, work_mood } from "./Montroop.ts";
 
 // an agent's work sessions and subagents as the app shows them, one kind:
 // in its list of what runs (each opens its page, one at work stops from
@@ -13,7 +13,7 @@ import { note, useKunumy, work_mood } from "./Kunumy.ts";
 const NO_WORKS: View.SessionRow[] = [];
 
 export function useWorks(agent: string): View.SessionRow[] {
-  return useKunumy((s) => s.team.find((m) => m.id === agent)?.works ?? NO_WORKS);
+  return useMontroop((s) => s.team.find((m) => m.id === agent)?.works ?? NO_WORKS);
 }
 
 export function work_live(w: View.SessionRow): boolean {
@@ -104,7 +104,7 @@ export function work_stop(w: View.SessionRow): void {
 
 export function WorkRows({ agent }: { agent: string }): ReactNode {
   const works = useWorks(agent);
-  const name = useKunumy((s) => s.team.find((m) => m.id === agent)?.name ?? "");
+  const name = useMontroop((s) => s.team.find((m) => m.id === agent)?.name ?? "");
   const now = useNow(works.some(work_live));
   return works.map((w) => (
     <div key={w.id} className="item work">

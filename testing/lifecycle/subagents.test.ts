@@ -2,7 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { chat, down, fake, gate, git, Kny, repo, ROOT, said, SUB, tag, until, VIAS, waiting } from "../rig.ts";
+import { chat, down, fake, gate, git, Troop, repo, ROOT, said, SUB, tag, until, VIAS, waiting } from "../rig.ts";
 
 afterAll(down);
 
@@ -18,9 +18,9 @@ async function asked(match: string): Promise<number> {
   return Math.min(...(await fake.seen(match)).map((s) => Date.parse(s.at)));
 }
 
-// its chat on claude-sub, which lists Kunumy's tools through Claude Code
+// its chat on claude-sub, which lists Montroop's tools through Claude Code
 test.concurrent("the subagent tool is offered, in place of spawn, tell, stop and session, only to an agent whose setting turns it on", async () => {
-  const k = await Kny.up(SUB);
+  const k = await Troop.up(SUB);
   const [off, on] = [tag(), tag()];
   await k.tell(off + ": hello");
   await until("its turn", async () => (await fake.seen(off + ": hello")).length > 0);
@@ -28,14 +28,14 @@ test.concurrent("the subagent tool is offered, in place of spawn, tell, stop and
   await k.tell(on + ": hello");
   await until("its turn", async () => (await fake.seen(on + ": hello")).length > 0);
 
-  const tools = async (t: string) => (await fake.seen(t + ": hello"))[0].tools.map((n) => n.replace(/^mcp__kunumy__/, "")).filter((n) => ["subagent", "spawn", "tell", "stop", "session"].includes(n)).sort();
+  const tools = async (t: string) => (await fake.seen(t + ": hello"))[0].tools.map((n) => n.replace(/^mcp__montroop__/, "")).filter((n) => ["subagent", "spawn", "tell", "stop", "session"].includes(n)).sort();
   expect(await tools(off)).toEqual(["session", "spawn", "stop", "tell"]);
   expect(await tools(on)).toEqual(["subagent"]);
 });
 
-// its chat on claude-sub, which calls Kunumy's subagent tool through Claude Code
+// its chat on claude-sub, which calls Montroop's subagent tool through Claude Code
 test.concurrent("one with no repo starts with its agent's view, in a folder of its own, and zooms its agent's memory", async () => {
-  const k = await Kny.up(SUB);
+  const k = await Troop.up(SUB);
   const t = tag();
   await fake.next(t + ": remember", { what: "reply", text: "Noted." });
   await k.tell(t + ": remember the heron-" + t);
@@ -55,7 +55,7 @@ test.concurrent("one with no repo starts with its agent's view, in a folder of i
 });
 
 test.concurrent("three started at once: the first at once, the others once it has begun to answer, each waking its agent once", async () => {
-  const k = await Kny.up();
+  const k = await Troop.up();
   const t = tag();
   await fake.next(t + ": one", { what: "stall", ms: 1500 });
   const all = await k.subagents({ task: t + ": one", name: "s1" }, { task: t + ": two", name: "s2" }, { task: t + ": three", name: "s3" });
@@ -70,7 +70,7 @@ test.concurrent("three started at once: the first at once, the others once it ha
 });
 
 test.concurrent("a review with write false works on a worktree on no branch, its edit tools denied, removed when its run ends", async () => {
-  const k = await Kny.up();
+  const k = await Troop.up();
   const t = tag();
   const r = repo();
   const file = path.join(k.dir, "scratch", k.agent, "sessions", "rv", "written-" + t);
@@ -81,12 +81,12 @@ test.concurrent("a review with write false works on a worktree on no branch, its
   expect(done.log.find((x) => x.ev.k === "result")?.ev).toMatchObject({ error: true });
   await until("its worktree removed", () => !fs.existsSync(done.worktree));
   expect(fs.existsSync(file)).toBe(false);
-  expect(git(r, "branch", "--list", "kny/rv")).toBe("");
+  expect(git(r, "branch", "--list", "troop/rv")).toBe("");
   await until("the done wake", async () => await said(k, s.woke("done:")) === 1);
 });
 
 test.concurrent("a review stopped mid-run has its worktree removed once its holder has ended", async () => {
-  const k = await Kny.up();
+  const k = await Troop.up();
   const t = tag();
   await fake.next(t + ": review", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
   const [s] = await k.subagents({ task: t + ": review", name: "rs", repo: repo(), base: "main", write: false });
@@ -98,7 +98,7 @@ test.concurrent("a review stopped mid-run has its worktree removed once its hold
 });
 
 test.concurrent("one lists with its task, model and effort, and how full its context was at its latest request", async () => {
-  const k = await Kny.up();
+  const k = await Troop.up();
   const t = tag();
   await fake.next(t + ": count the herons", { what: "reply", text: "Twelve.", used: { input: 1200, read: 30000, write: 800 } });
   const [s] = await k.subagents({ task: t + ": count the herons", name: "ls", model: "haiku-5.5", effort: "low", memory: false });
@@ -107,7 +107,7 @@ test.concurrent("one lists with its task, model and effort, and how full its con
 });
 
 test.concurrent("one waiting out a usage limit lists as waiting on it, with its reset, till it is stopped, and not once resumed", async () => {
-  const k = await Kny.up();
+  const k = await Troop.up();
   const t = tag();
   const reset = Date.now() + 3600e3;
   await fake.next(t + ": work", { what: "error", kind: "usage-limit", reset });
@@ -131,7 +131,7 @@ test.concurrent("one waiting out a usage limit lists as waiting on it, with its 
 });
 
 test.concurrent("a usage limit is waited out in its holder, and it goes on by itself at the reset", async () => {
-  const k = await Kny.up();
+  const k = await Troop.up();
   const t = tag();
   const reset = Date.now() + 3000;
   await fake.next(t + ": work", { what: "error", kind: "usage-limit", reset });
@@ -145,7 +145,7 @@ test.concurrent("a usage limit is waited out in its holder, and it goes on by it
 });
 
 test.concurrent("a long usage limit wakes its agent once, and the user's word that it was reset early (resume) has it ask again", async () => {
-  const k = await Kny.up();
+  const k = await Troop.up();
   const t = tag();
   const reset = Date.now() + 3600e3;
   await fake.next(t + ": work", { what: "error", kind: "usage-limit", reset });
@@ -161,7 +161,7 @@ test.concurrent("a long usage limit wakes its agent once, and the user's word th
 });
 
 test.concurrent("one at work through a server restart goes on in the same holder, and wakes its agent once", async () => {
-  const k = await Kny.up();
+  const k = await Troop.up();
   const t = tag();
   await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
   await fake.next(t + "-done", { what: "reply", text: t + " finished" });
@@ -178,9 +178,9 @@ test.concurrent("one at work through a server restart goes on in the same holder
   expect(await said(k, s.woke("failed:"))).toBe(0);
 });
 
-test.concurrent("one on an API key runs Kunumy's loop, and its calls of Kunumy's tools, on a device and on its agent's memory, are answered; its latest request's tokens make its meter", async () => {
+test.concurrent("one on an API key runs Montroop's loop, and its calls of Montroop's tools, on a device and on its agent's memory, are answered; its latest request's tokens make its meter", async () => {
   const model = "claude-api:haiku-5.5:low:slow";
-  const k = await Kny.up({ vendors: "claude-api", pick: model, compactor: model }, ROOT, { anthropic: "sk-ant-api03-test-" + tag() });
+  const k = await Troop.up({ vendors: "claude-api", pick: model, compactor: model }, ROOT, { anthropic: "sk-ant-api03-test-" + tag() });
   const t = tag();
   await k.device("box");
   await fake.next(t + ": work", { what: "tool", calls: [["shell", { device: "box", command: "echo " + t + "-ran" }], ["search", { query: "heron-" + t }]] });
@@ -197,7 +197,7 @@ test.concurrent("one on an API key runs Kunumy's loop, and its calls of Kunumy's
 
 for (const via of VIAS) {
   test.concurrent(via + ": <scratch> in a rule is the scratch folder of the computer its own tools run on: a delete there (its worktree too) asks no one, one outside it asks", async () => {
-    const k = await Kny.up();
+    const k = await Troop.up();
     const t = tag();
     const elsewhere = path.join(k.dir, "scratch", "elsewhere-" + t);
     fs.mkdirSync(elsewhere, { recursive: true });

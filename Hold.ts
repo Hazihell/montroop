@@ -1,10 +1,10 @@
 // Hold
 // ====
-// `kny hold <dir>`: a holder, a process of its own (a unit the server
+// `troop hold <dir>`: a holder, a process of its own (a unit the server
 // starts, Holders) so the run in it outlives a server restart. Its driver
 // (Driver) does the run, until it has nothing left to do; the holder tells
 // the server everything it does (Wire), parks each call a rule names until
-// the server sends the owner's answer, has the server run Kunumy's tools,
+// the server sends the owner's answer, has the server run Montroop's tools,
 // and passes on the questions the run asks its agent and the messages sent
 // to it. What it tells is also kept in its log, which the server reads what
 // it missed from once the holder is gone.
@@ -33,7 +33,7 @@ export type Spec = { cwd: string; claude: string; model: string; append: string 
 // for a new one; provider: the one the job's provider picks), whether it
 // runs a subagent (its question is ask, its result its last reply), its
 // first message, the rules that ask the owner first and the devices'
-// scratch folders they read, the kit of Kunumy's tools it's offered (none
+// scratch folders they read, the kit of Montroop's tools it's offered (none
 // given: a provider job's own tools, run on the device they name), the
 // socket it listens on
 export type Start = { driver: "claude-code" | "provider"; job?: Omit<Job, "dir">; sub?: boolean; prompt: string; resume: string; rules: Rule[]; scratch: Scratch; tools?: Kit[]; sock: string };
@@ -55,7 +55,7 @@ type Box = { queue: string[]; wake: () => void; shut: boolean };
 // parked, the calls the server runs till their results come, the
 // questions waiting for an answer, the messages the server sent (by id),
 // the driver's inbox, the rules that park a call and the devices' scratch
-// folders they read, whether the linked server is from before Kunumy's
+// folders they read, whether the linked server is from before Montroop's
 // tools ran in sessions, the connection that owns it now, how it tells an
 // event
 type Held = {
@@ -72,7 +72,7 @@ type Held = {
   emit    : Io["emit"];
 };
 
-// Kunumy's tools the holder answers itself, before those the server runs
+// Montroop's tools the holder answers itself, before those the server runs
 export const HOLDS: Tool[] = [
   spec("ask_owner", "Ask the agent that started this session a question, when you can't go on without its answer (a decision, missing information). The call waits for the answer, which can take a while; it comes back as this call's result.", { question: STR }, ["question"]),
   spec("report", "Give your result to the agent that started this session, once, when you're done: what you did, where (branch, commits, files), how you checked it, what is left. Then end your turn.", { result: STR }, ["result"]),
@@ -81,11 +81,11 @@ export const HOLDS: Tool[] = [
 // a subagent's: its last reply is its result
 const ASK: Tool[] = [spec("ask", "Ask the agent that started you a question, when you can't go on without its answer (a decision, missing information). The call waits for the answer, which can take a while; it comes back as this call's result.", { question: STR }, ["question"])];
 
-// what a call of Kunumy's gets while an older server, which runs none,
+// what a call of Montroop's gets while an older server, which runs none,
 // owns the holder
-const OLD = { text: "The server runs an older Kunumy, which runs no tools for work sessions.", fail: true };
+const OLD = { text: "The server runs an older Montroop, which runs no tools for work sessions.", fail: true };
 
-// a gate's wait no one ends: a call of Kunumy's waits for its answer
+// a gate's wait no one ends: a call of Montroop's waits for its answer
 // while the run does
 const NEVER = new AbortController().signal;
 
@@ -258,8 +258,8 @@ export namespace Hold {
     parked.done(ok ? { ok, note: note === "" ? "" : "The user approved this with a note: “" + note + "”" } : { ok, note: "The user denied this (" + parked.ask.what.toLowerCase() + ")" + said + " Don't do it another way; if it's still needed, say so when you finish." });
   }
 
-  // one of Kunumy's tools: the holder's own answered here; the server's
-  // gated as the in-server endpoint gates them (by Kunumy's name, reading
+  // one of Montroop's tools: the holder's own answered here; the server's
+  // gated as the in-server endpoint gates them (by Montroop's name, reading
   // the scratch folder of the device it runs on), then sent to the server,
   // and again after each hello till its result comes
   async function call(h: Held, kit: Kit[], c: Call): Promise<Out> {
@@ -277,7 +277,7 @@ export namespace Hold {
     if (h.older) {
       return OLD;
     }
-    const said = await gate(h, Rules.kunumy(h.rules, c.tool, c.args, tool.device, h.scratch), c, NEVER, c.tool);
+    const said = await gate(h, Rules.montroop(h.rules, c.tool, c.args, tool.device, h.scratch), c, NEVER, c.tool);
     if (!said.ok) {
       return { text: said.note, fail: true };
     }
@@ -364,7 +364,7 @@ export namespace Hold {
     const io: Io = { emit: h.emit, inbox: inbox(h.box), parks: (call) => own(call) !== null, gate: (call, stop) => gate(h, own(call), call, stop), call: (c) => call(h, kit, c) };
     let end: End;
     try {
-      end = job === null || driver === null ? { ok: false, text: "This holder has no driver " + name + ": a newer kny started it." } : typeof driver === "string" ? { ok: false, text: driver } : await driver(job, io);
+      end = job === null || driver === null ? { ok: false, text: "This holder has no driver " + name + ": a newer troop started it." } : typeof driver === "string" ? { ok: false, text: driver } : await driver(job, io);
     } catch (err) {
       end = { ok: false, text: err_why(err) };
     }

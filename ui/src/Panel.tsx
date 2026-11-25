@@ -4,7 +4,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import type { Timer } from "../../Timer.ts";
 import { timer_when } from "../../Timer.ts";
 import * as View from "../../View.ts";
-import { act, MOODS, mood_of, useKunumy } from "./Kunumy.ts";
+import { act, MOODS, mood_of, useMontroop } from "./Montroop.ts";
 import { useWorks, work_live, WorkRows } from "./Works.tsx";
 
 // everything about one agent past its chat: what goes on for it, its memory,
@@ -18,29 +18,29 @@ const NO_SUBS: NonNullable<View.Mate["subs"]> = [];
 // the client holds one agent at a time: its jobs, timers and context are
 // known only while it is that one
 function useHeld(agent: string): boolean {
-  return useKunumy((s) => s.agent === agent && s.loaded);
+  return useMontroop((s) => s.agent === agent && s.loaded);
 }
 
 // how many things work for the agent now: its subagents, its work
 // sessions at work and its background jobs; timers wait, so they don't count
 export function useGoing(agent: string): number {
-  return useKunumy((s) => {
+  return useMontroop((s) => {
     const mate = s.team.find((m) => m.id === agent);
     return (mate?.subs?.length ?? 0) + (mate?.works?.filter(work_live).length ?? 0) + (s.agent === agent ? s.jobs.length : 0);
   });
 }
 
 function useContext(agent: string): number | null {
-  return useKunumy((s) => (s.agent === agent && s.talk !== null ? View.talk_percent(s.talk) : null));
+  return useMontroop((s) => (s.agent === agent && s.talk !== null ? View.talk_percent(s.talk) : null));
 }
 
 // the agent's work sessions, subagents, background jobs and timers
 export function RunList({ agent }: { agent: string }): ReactNode {
   const held = useHeld(agent);
   const works = useWorks(agent);
-  const subs = useKunumy((s) => s.team.find((m) => m.id === agent)?.subs ?? NO_SUBS);
-  const allJobs = useKunumy((s) => s.jobs);
-  const allTimers = useKunumy((s) => s.timers);
+  const subs = useMontroop((s) => s.team.find((m) => m.id === agent)?.subs ?? NO_SUBS);
+  const allJobs = useMontroop((s) => s.jobs);
+  const allTimers = useMontroop((s) => s.timers);
   const jobs = held ? allJobs : NO_JOBS;
   const timers = held ? allTimers : NO_TIMERS;
   if (works.length + subs.length + jobs.length + timers.length === 0) {
@@ -75,7 +75,7 @@ export function RunList({ agent }: { agent: string }): ReactNode {
 
 // how full the agent's context is
 export function Context({ agent, label = false }: { agent: string; label?: boolean }): ReactNode {
-  const talk = useKunumy((s) => (s.agent === agent ? s.talk : null));
+  const talk = useMontroop((s) => (s.agent === agent ? s.talk : null));
   if (talk === null) {
     return null;
   }
@@ -97,8 +97,8 @@ export function Context({ agent, label = false }: { agent: string; label?: boole
 // the agent as the head of its column, in words: the chat's header beside
 // it already shows its face
 function Who({ agent }: { agent: string }): ReactNode {
-  const mate = useKunumy((s) => s.team.find((m) => m.id === agent));
-  const mood = useKunumy((s) => (mate === undefined ? "idle" : mood_of(mate, s)));
+  const mate = useMontroop((s) => s.team.find((m) => m.id === agent));
+  const mood = useMontroop((s) => (mate === undefined ? "idle" : mood_of(mate, s)));
   return (
     <header className="mast">
       <h2>{mate?.name ?? ""}</h2>
@@ -141,11 +141,11 @@ function Places({ agent }: { agent: string }): ReactNode {
 // the chat. Leaving: it takes nothing more, and says when it is gone
 export function Menu({ agent, face, close, leaving, gone }: { agent: string; face: HTMLElement | null; close: () => void; leaving: boolean; gone: () => void }): ReactNode {
   const box = useRef<HTMLDivElement>(null);
-  const mate = useKunumy((s) => s.team.find((m) => m.id === agent));
-  const mood = useKunumy((s) => (mate === undefined ? "idle" : mood_of(mate, s)));
+  const mate = useMontroop((s) => s.team.find((m) => m.id === agent));
+  const mood = useMontroop((s) => (mate === undefined ? "idle" : mood_of(mate, s)));
   const going = useGoing(agent);
   const full = useContext(agent);
-  const state = useKunumy((s) => (s.offline ? "Offline" : MOODS[mood]));
+  const state = useMontroop((s) => (s.offline ? "Offline" : MOODS[mood]));
   useEffect(() => {
     if (!leaving) {
       return undefined;

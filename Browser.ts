@@ -17,7 +17,7 @@ export const MEDIA = "media";
 
 const PROFILE = "browser";
 const SETTINGS = "browser.json";
-const NAMESPACE = "kunumy";
+const NAMESPACE = "montroop";
 const IDLE = "30m";
 const CLOSE_MS = 10e3;
 

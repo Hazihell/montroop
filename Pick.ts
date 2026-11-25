@@ -58,7 +58,7 @@ const MODELS: Record<Vendor, Model[]> = {
 
 const SPEEDS = ["slow", "fast", "ultrafast"];
 
-// the models Kunumy dropped, each with the one in its place (#200): a setting
+// the models Montroop dropped, each with the one in its place (#200): a setting
 // that still names one is refused with that name, never moved onto it
 const REPLACED: Record<string, string> = { "gpt-6-astra": "gpt-6.2-astra", "gpt-6.1-sol": "gpt-6.2-sol" };
 
@@ -227,7 +227,7 @@ export namespace Pick {
     return model !== undefined && typeof effort === "string" && !Pick.offers(model, effort) ? Pick.no_effort(model, effort) : null;
   }
 
-  // one saved by an older Kunumy at an effort its model doesn't have loads at
+  // one saved by an older Montroop at an effort its model doesn't have loads at
   // the model's default
   export function load(saved: object | null, offer: Offer, def: Pick): Pick {
     const x = saved ?? def;

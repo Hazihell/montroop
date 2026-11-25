@@ -274,7 +274,7 @@ export namespace Agent {
       const call = before.find((c) => c.kind === "tool" && c.of === undefined);
       const last = before.findLast((r) => r.kind === "echo" && r.of !== undefined && !gone.has(r) && web(r));
       if (call !== undefined) {
-        call.of = e.of = "kny-" + crypto.randomUUID();
+        call.of = e.of = "troop-" + crypto.randomUUID();
       } else if (last !== undefined) {
         last.text += "\n" + e.text;
         gone.add(e);
@@ -517,7 +517,7 @@ export namespace Agent {
     }
   }
 
-  // the tools' notes are for this request: Kunumy counts them heard as it
+  // the tools' notes are for this request: Montroop counts them heard as it
   // gives them (#190)
   export async function server(run: Doing): Promise<{ tools: Tool[]; notes: string[] }> {
     if (!run.ask.server) {

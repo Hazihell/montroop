@@ -55,7 +55,7 @@ export namespace Settings {
       error ??= "keys.json can't be read: fix it on the server (or remove it); nothing can be saved here till then.";
     }
     const settings = config.SETTINGS.map((s): Row => {
-      const env = "KNY_" + s.key.toUpperCase();
+      const env = "TROOP_" + s.key.toUpperCase();
       const from: config.From = process.env[env] !== undefined ? "env" : file[s.key] !== undefined && file[s.key] !== null ? "file" : "default";
       const value = config.config_value(file, s.key);
       const def = config.config_default(file, s.key);
@@ -66,7 +66,7 @@ export namespace Settings {
       const key = from === "env" ? config.KEYS[name] : keys[name] ?? "";
       return { name, env, from, tail: tail(key) };
     });
-    const profiles = process.env.KNY_PROFILES !== undefined ? null : profiles_in(file.profiles) ?? {};
+    const profiles = process.env.TROOP_PROFILES !== undefined ? null : profiles_in(file.profiles) ?? {};
     const ask = Rules.read(file.ask);
     return { version: snap.version, release: VERSION, settings, keys: shown, profiles, ask: typeof ask === "string" ? ASK : ask, built: ASK, error, none: config.config_none() };
   }
@@ -127,7 +127,7 @@ export namespace Settings {
     const next = { ...file };
     for (const [key, value] of Object.entries(set)) {
       const s = config.SETTINGS.find((s) => s.key === key);
-      const env = "KNY_" + key.toUpperCase();
+      const env = "TROOP_" + key.toUpperCase();
       if (s === undefined) {
         return refuse(400, "No setting " + JSON.stringify(key) + ".");
       }
@@ -147,8 +147,8 @@ export namespace Settings {
       next[key] = value.trim();
     }
     if (profiles !== undefined) {
-      if (process.env.KNY_PROFILES !== undefined) {
-        return refuse(409, "KNY_PROFILES sets the profiles: unset it on the server to change them here.", "profiles");
+      if (process.env.TROOP_PROFILES !== undefined) {
+        return refuse(409, "TROOP_PROFILES sets the profiles: unset it on the server to change them here.", "profiles");
       }
       if (given !== null && profiles === null) {
         return refuse(400, "Each profile needs a name (up to " + NAME + " characters, no \":\") and one to " + RANKS + " models.", "profiles");

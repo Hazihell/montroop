@@ -33,8 +33,8 @@ function runs(text: string): boolean {
 
 test("a detached unit runs with the variables it's given and its starter's home, none of the rest", async () => {
   const dir = folder();
-  process.env.KNY_UNIT_TEST_SECRET = "leaked";
-  const why = transient({ name: "u-" + tag(), dir }, "a test unit", ["sh", "-c", "echo \"$GIVEN|$HOME|$KNY_UNIT_TEST_SECRET\" > " + path.join(dir, "env")], { GIVEN: "yes" });
+  process.env.TROOP_UNIT_TEST_SECRET = "leaked";
+  const why = transient({ name: "u-" + tag(), dir }, "a test unit", ["sh", "-c", "echo \"$GIVEN|$HOME|$TROOP_UNIT_TEST_SECRET\" > " + path.join(dir, "env")], { GIVEN: "yes" });
 
   expect(why).toBeNull();
   // the shell makes the file before it writes the line

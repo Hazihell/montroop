@@ -3,7 +3,7 @@ import { RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { router } from "./App.tsx";
-import { boot } from "./Kunumy.ts";
+import { boot } from "./Montroop.ts";
 import "./app.css";
 
 const app = document.getElementById("app");

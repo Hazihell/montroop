@@ -6,10 +6,10 @@ import { Session } from "../../Session.ts";
 import { Sessions } from "../../Sessions.ts";
 import type { Ev } from "../../Wire.ts";
 
-const mine = Session.add({ id: "0123abcd", name: "mine", agent: "owner1", repo: "/repo", base: "main", branch: "kny/mine", worktree: "/repo-mine", account: "", model: "", dir: path.join(DIR, "sessions", "0123abcd") }, "the first message");
+const mine = Session.add({ id: "0123abcd", name: "mine", agent: "owner1", repo: "/repo", base: "main", branch: "troop/mine", worktree: "/repo-mine", account: "", model: "", dir: path.join(DIR, "sessions", "0123abcd") }, "the first message");
 
 test("an agent's session tool lists only its own sessions", () => {
-  expect(Sessions.tool("owner1", { action: "list" })).toEqual({ text: "mine: running, branch kny/mine", fail: false });
+  expect(Sessions.tool("owner1", { action: "list" })).toEqual({ text: "mine: running, branch troop/mine", fail: false });
   expect(Sessions.tool("other1", { action: "list" })).toEqual({ text: "You have no sessions.", fail: false });
 });
 
@@ -24,7 +24,7 @@ test("another agent can't read, send to, stop or archive a session", () => {
 test("the session tool sees an agent's sessions, and the subagent tool its subagents, another agent's none", () => {
   Session.add({ id: "4567cdef", name: "helper", agent: "owner1", repo: "", base: "", branch: "", worktree: "/scratch/owner1/sessions/helper", provider: "claude", account: "", model: "claude-haiku-5-5", effort: "low", memory: 1, write: 1, device: "", dir: path.join(DIR, "sessions", "4567cdef") }, "the task");
   expect(Sessions.act("owner1", "subagent", { action: "list" })).toEqual({ text: "helper: running", fail: false });
-  expect(Sessions.tool("owner1", { action: "list" })).toEqual({ text: "mine: running, branch kny/mine", fail: false });
+  expect(Sessions.tool("owner1", { action: "list" })).toEqual({ text: "mine: running, branch troop/mine", fail: false });
   expect(Sessions.tool("owner1", { action: "read", name: "helper" })).toEqual({ text: "You have no session \"helper\". Yours: mine.", fail: true });
   for (const action of ["read", "send", "stop", "archive"]) {
     expect([action, Sessions.act("other1", "subagent", { action, name: "helper", text: "hello", request: "r-1" })]).toEqual([action, { text: "You have no subagent \"helper\". Yours: none.", fail: true }]);

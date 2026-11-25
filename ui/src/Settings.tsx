@@ -4,7 +4,7 @@ import { text_of } from "../../Json.ts";
 import * as View from "../../View.ts";
 import { Archived } from "./Agent.tsx";
 import { Back } from "./Back.tsx";
-import { note, signed_out } from "./Kunumy.ts";
+import { note, signed_out } from "./Montroop.ts";
 import { Owned } from "./Owned.tsx";
 import { ACCENTS, prefs_set, usePrefs, type Theme } from "./Prefs.ts";
 import { push_state, push_sub, push_turn, type Bell, type Notify } from "./Push.ts";
@@ -14,8 +14,8 @@ type Swatch = CSSProperties & { "--s": string };
 const THEMES: Array<[Theme, string]> = [["system", "Auto"], ["dark", "Dark"], ["light", "Light"]];
 
 const BELL: Record<Notify, string> = {
-  off     : "Replies on this device, when Kunumy isn't open.",
-  on      : "Replies on this device, when Kunumy isn't open.",
+  off     : "Replies on this device, when Montroop isn't open.",
+  on      : "Replies on this device, when Montroop isn't open.",
   blocked : "Blocked in this browser's settings for this site.",
   home    : "On iPhone and iPad: Share, then Add to Home Screen, and open it from there.",
 };

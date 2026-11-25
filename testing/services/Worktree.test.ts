@@ -40,8 +40,8 @@ test("archiving removes the worktree and its branch, and no other branch", () =>
   const r = repo();
   git(r, "branch", "keep", "main");
   const dir = place(r, "wt");
-  Worktree.make(r, "main", "kny/done", dir);
-  expect(Worktree.remove(r, "main", "kny/done", dir, false)).toBeNull();
+  Worktree.make(r, "main", "troop/done", dir);
+  expect(Worktree.remove(r, "main", "troop/done", dir, false)).toBeNull();
   expect(fs.existsSync(dir)).toBe(false);
   expect(git(r, "branch", "--format=%(refname:short)").split("\n")).toEqual(["keep", "main"]);
 });
@@ -49,20 +49,20 @@ test("archiving removes the worktree and its branch, and no other branch", () =>
 test("archiving refuses to lose work found nowhere else, unless forced", () => {
   const r = repo();
   const dir = place(r, "wt");
-  Worktree.make(r, "main", "kny/work", dir);
+  Worktree.make(r, "main", "troop/work", dir);
   git(dir, "commit", "-q", "--allow-empty", "-m", "mine");
   fs.writeFileSync(path.join(dir, "draft.txt"), "draft\n");
-  expect(Worktree.remove(r, "main", "kny/work", dir, false)).toBe(dir + " has 1 commit not pushed and 1 file not committed: push it first, or force");
+  expect(Worktree.remove(r, "main", "troop/work", dir, false)).toBe(dir + " has 1 commit not pushed and 1 file not committed: push it first, or force");
   expect(fs.existsSync(path.join(dir, "draft.txt"))).toBe(true);
-  expect(Worktree.remove(r, "main", "kny/work", dir, true)).toBeNull();
-  expect([fs.existsSync(dir), git(r, "branch", "--list", "kny/work")]).toEqual([false, ""]);
+  expect(Worktree.remove(r, "main", "troop/work", dir, true)).toBeNull();
+  expect([fs.existsSync(dir), git(r, "branch", "--list", "troop/work")]).toEqual([false, ""]);
 });
 
 test("a branch pushed to a remote counts as saved", () => {
   const r = repo();
   const dir = place(r, "wt");
-  Worktree.make(r, "main", "kny/pushed", dir);
+  Worktree.make(r, "main", "troop/pushed", dir);
   git(dir, "commit", "-q", "--allow-empty", "-m", "mine");
-  git(dir, "push", "-q", "origin", "kny/pushed");
-  expect(Worktree.remove(r, "main", "kny/pushed", dir, false)).toBeNull();
+  git(dir, "push", "-q", "origin", "troop/pushed");
+  expect(Worktree.remove(r, "main", "troop/pushed", dir, false)).toBeNull();
 });

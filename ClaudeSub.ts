@@ -25,7 +25,7 @@ const WEB = ["WebSearch"];
 
 // ToolSearch keeps the claude.ai connectors' tool definitions (~140k
 // tokens with Slack, Linear, Gmail and Calendar) out of every call until
-// Claude looks one up; Kunumy's own tools stay loaded, by alwaysLoad in mcp()
+// Claude looks one up; Montroop's own tools stay loaded, by alwaysLoad in mcp()
 const TOOLS = [...WEB, "ToolSearch"];
 
 const MORE = ["Task", "DesignSync"];
@@ -48,8 +48,8 @@ const ENV = {
   CLAUDE_CODE_NO_MODEL_FALLBACK            : "1",
   CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK     : "1",
   CLAUDE_CODE_MAX_OUTPUT_TOKENS            : "128000",
-  MCP_TIMEOUT                              : "60000", // connecting to Kunumy's tools, whose list takes up to 5 s
-  CLAUDE_AGENT_SDK_CLIENT_APP              : "kunumy",
+  MCP_TIMEOUT                              : "60000", // connecting to Montroop's tools, whose list takes up to 5 s
+  CLAUDE_AGENT_SDK_CLIENT_APP              : "montroop",
 };
 
 // Claude Code's model slots, its side jobs' too: all the picked model
@@ -66,7 +66,7 @@ const OFF = ["server_error", "overloaded", "billing_error", "account_on_hold", "
 
 const BUSY_ERRORS = ["server_error", "overloaded"];
 
-const NO_BIN = "claude-sub needs Claude Code: `bun install` in Kunumy's folder, or set `claude` to a Claude Code executable";
+const NO_BIN = "claude-sub needs Claude Code: `bun install` in Montroop's folder, or set `claude` to a Claude Code executable";
 
 const DIED = "Claude Code ended early";
 
@@ -202,7 +202,7 @@ export namespace ClaudeSub {
 
   export function sign_in(account: string): string {
     const named = account === "" ? "" : " (account " + account + ")";
-    return "claude-sub" + named + " is not signed in, or its sign-in expired: run `kny serve claude login" + (account === "" ? "" : " --account " + account) + "` on the server";
+    return "claude-sub" + named + " is not signed in, or its sign-in expired: run `troop serve claude login" + (account === "" ? "" : " --account " + account) + "` on the server";
   }
 
   export function env(dir: string): Record<string, string | undefined> {
@@ -394,7 +394,7 @@ export namespace ClaudeSub {
     }
     const out = await Agent.unless_stopped(code.q.setMcpServers(ClaudeSub.mcp(server)), signal);
     const err = out?.errors?.[MCP];
-    return err === undefined ? null : "claude-sub couldn't reach Kunumy's tools: " + err;
+    return err === undefined ? null : "claude-sub couldn't reach Montroop's tools: " + err;
   }
 
   // when a limit Claude Code told resets (ms since 1970; null: not told).
@@ -456,7 +456,7 @@ export namespace ClaudeSub {
           if (signal.aborted) {
             return {};
           }
-          // Claude Code passes on no note of its tools' list: Kunumy gives them
+          // Claude Code passes on no note of its tools' list: Montroop gives them
           // in the first message (#190)
           const notes = ask.server === "" ? [] : await Agent.notes(ClaudeSub.url(ask.server), signal);
           await ClaudeSub.first_message(code, ask, notes);
@@ -544,9 +544,9 @@ export namespace ClaudeSub {
   }
 
   // a call Claude Code runs itself (a claude.ai connector's, a web search)
-  // asks the owner by the rules Kunumy's endpoint gates its own tools by
+  // asks the owner by the rules Montroop's endpoint gates its own tools by
   // (Tools.gated); with no endpoint (a compaction), a call they name is refused.
-  // Others it refuses itself (dontAsk), or they're Kunumy's, gated there
+  // Others it refuses itself (dontAsk), or they're Montroop's, gated there
   async function gate(ask: Ask, input: HookInput, signal: AbortSignal): Promise<SyncHookJSONOutput> {
     const deny = (why: string): SyncHookJSONOutput => ({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: why } });
     if (input.hook_event_name !== "PreToolUse") {

@@ -70,7 +70,7 @@ const REORDER = 16;
 
 const CELL = 16;
 
-export const SCRATCH = (process.env.KNY_DIR ?? "~/.kunumy").replace(/[\\/]+$/, "") + "/scratch";
+export const SCRATCH = (process.env.TROOP_DIR ?? "~/.montroop").replace(/[\\/]+$/, "") + "/scratch";
 
 const TIMEOUT = [1, 3600];
 
@@ -271,7 +271,7 @@ export namespace Machine {
     const argv = WIN ? [SHELL, "-NoProfile", "-NonInteractive", "-Command", PWSH + command] : [SHELL, "-c", "exec 2>&1\n" + command];
     return Bun.spawn(argv, {
       cwd         : cwd,
-      env         : { ...process.env, KNY_RUN: RUN, KNY_AGENT: agent },
+      env         : { ...process.env, TROOP_RUN: RUN, TROOP_AGENT: agent },
       stdin       : "ignore",
       stdout      : "pipe",
       stderr      : WIN ? "pipe" : "ignore",
@@ -357,7 +357,7 @@ export namespace Machine {
     if (WIN) {
       return null; // no ps: a process that left its shell's tree lives on
     }
-    const marks = ["KNY_RUN=" + RUN, ...(agent === null ? [] : ["KNY_AGENT=" + agent])];
+    const marks = ["TROOP_RUN=" + RUN, ...(agent === null ? [] : ["TROOP_AGENT=" + agent])];
     const kept = new Set(agent === null || jobs ? [] : [...JOBS.running.keys()].map((p) => String(p.pid)));
     const found = Bun.spawnSync(PS).stdout.toString().split("\n").map((line) => line.trim().split(/\s+/)).filter((words) => marks.every((m) => words.includes(m)) && !kept.has(words[1]));
     found.forEach((words) => Machine.kill(Number(words[0])));

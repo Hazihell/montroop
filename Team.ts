@@ -43,7 +43,7 @@ export namespace Team {
       return null;
     }
     const id = new_id();
-    db.query("insert into agents (id, name, about, picture, prompt, made) values (?, ?, ?, ?, null, 0)").run(id, "Kunumy", FIRST_ABOUT, LOGO);
+    db.query("insert into agents (id, name, about, picture, prompt, made) values (?, ?, ?, ?, null, 0)").run(id, "Montroop", FIRST_ABOUT, LOGO);
     return id;
   }
 
@@ -111,7 +111,7 @@ export namespace Team {
       return "A system prompt holds at most " + OWN / 1024 + " KB.";
     }
     if (claude !== was && claude !== "" && !config.claude_accounts().includes(claude)) {
-      return "No Claude account " + claude + " is signed in: run `kny serve claude login --account " + claude + "` on the server.";
+      return "No Claude account " + claude + " is signed in: run `troop serve claude login --account " + claude + "` on the server.";
     }
     return { name, about, picture, prompt: own === Team.default_prompt(name) ? null : own, claude };
   }

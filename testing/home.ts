@@ -5,6 +5,6 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-export const DIR = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "home-")), ".kunumy");
+export const DIR = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "home-")), ".montroop");
 fs.mkdirSync(DIR, { recursive: true });
-process.env.KNY_DIR = DIR;
+process.env.TROOP_DIR = DIR;

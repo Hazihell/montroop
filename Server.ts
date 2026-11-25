@@ -154,7 +154,7 @@ const BUFFER     = 2 ** 31 - 1;
 const OWN        = ["/ws"];
 
 const HELLO      = hello_md.trim().replace("{install}", install_cmd(false));
-const HELLO_LINE = "reply: hello: Kunumy, one endless chat kept in a memory tree, recent days in more detail; build anything for years; recalls the past (ad2cat.py); a chatbot with a memory system; kny device on the user's computers.";
+const HELLO_LINE = "reply: hello: Montroop, one endless chat kept in a memory tree, recent days in more detail; build anything for years; recalls the past (ad2cat.py); a chatbot with a memory system; troop device on the user's computers.";
 
 // a message to a page this long or longer goes deflated, if the page takes
 // that: a chat's messages, as it opens, are most of what a page gets
@@ -909,7 +909,7 @@ export namespace Chat {
     return {
       spawn   : (tasks) => Chat.spawn(chat, tasks),
       tell    : (name, text) => Promise.resolve(Chat.tell(chat, name, text)),
-      stop    : (name, why) => Chat.sub_stop(chat, name, Chat.name(chat) || "Kunumy", why),
+      stop    : (name, why) => Chat.sub_stop(chat, name, Chat.name(chat) || "Montroop", why),
       working : () => [...chat.subs.values()].filter((s) => s.run.busy).map((s) => s.name + " (" + Chat.sub_doing(s) + ")"),
       show    : (name) => (chat.subs.has(name) || Memory.agent(chat.mem, name) !== null ? Memory.agent_show(chat.mem, name) : null),
     };
@@ -995,7 +995,7 @@ export namespace Chat {
         Main.team_soon();
         return msg;
       },
-      say    : (say) => ({ ...say, from: wake_read(say.text)?.kind === "job" ? Prompts.sender("job") : Chat.name(chat) || "Kunumy" }),
+      say    : (say) => ({ ...say, from: wake_read(say.text)?.kind === "job" ? Prompts.sender("job") : Chat.name(chat) || "Montroop" }),
       queued : (run) => {
         Memory.agent_held(chat.mem, run.name, run.queue.map((x) => x.q.text));
         Chat.change(chat);
@@ -1264,7 +1264,7 @@ export namespace Chat {
       console.log("push " + (agent?.name ?? chat.id) + ": skipped (" + not + ")");
       return;
     }
-    Push.notify(Owner.open(), text, { title: agent.name, url: "/a/" + agent.id, tag: "kunumy-" + agent.id });
+    Push.notify(Owner.open(), text, { title: agent.name, url: "/a/" + agent.id, tag: "montroop-" + agent.id });
   }
 
   export function after(chat: Chat): void {
@@ -1526,7 +1526,7 @@ export namespace Chat {
       const dues = mem.timers.filter((t) => Date.parse(t.at) <= at);
       try {
         if (dues.length > 0 && Web.full()) {
-          console.error("kny: the schedules wait: " + Web.FULL);
+          console.error("troop: the schedules wait: " + Web.FULL);
           return Chat.timed(chat, true);
         }
         if (dues.length > 0) {
@@ -1540,7 +1540,7 @@ export namespace Chat {
         }
         Chat.timed(chat);
       } catch (err) {
-        console.error("kny: the schedules failed: " + err_stack(err));
+        console.error("troop: the schedules failed: " + err_stack(err));
         Chat.timed(chat, true);
       }
     });
@@ -2432,7 +2432,7 @@ export namespace Main {
 
   // the scratch folders a delete can't reach: on devices not open now
   export function left(chat: Chat): string[] {
-    return [...Main.tools.devices].filter(([, d]) => ![...d.terms.values()].some((t) => t.live())).map(([name, d]) => name + ": " + ([...d.terms.values()][0]?.scratch ?? "~/.kunumy/scratch") + "/" + chat.who);
+    return [...Main.tools.devices].filter(([, d]) => ![...d.terms.values()].some((t) => t.live())).map(([name, d]) => name + ": " + ([...d.terms.values()][0]?.scratch ?? "~/.montroop/scratch") + "/" + chat.who);
   }
 
   export async function forget(chat: Chat): Promise<Answer> {
@@ -2563,7 +2563,7 @@ export namespace Main {
       if (p === "/ws") {
         const q    = new URL(req.url).searchParams;
         const who  = Owner.hash(Owner.token(req));
-        const data = { who, tab: q.get("tab") ?? "", wire: q.get("wire"), host: q.get("device"), work: q.get("work") ?? "~/.kunumy/work", scratch: q.get("scratch"), shell: q.get("shell") === "PowerShell" ? "PowerShell" : null, device: null, seen: new Set<string>(), active: 0, agent: Main.chat_of(q.get("agent")).id };
+        const data = { who, tab: q.get("tab") ?? "", wire: q.get("wire"), host: q.get("device"), work: q.get("work") ?? "~/.montroop/work", scratch: q.get("scratch"), shell: q.get("shell") === "PowerShell" ? "PowerShell" : null, device: null, seen: new Set<string>(), active: 0, agent: Main.chat_of(q.get("agent")).id };
         return server.upgrade(req, { data }) ? undefined : new Response("upgrade failed", { status: 400 });
       }
       return await Main.page(p, req);
@@ -2580,7 +2580,7 @@ export namespace Main {
     try {
       run();
     } catch (err) {
-      console.error("kny: " + what + " failed: " + err_stack(err));
+      console.error("troop: " + what + " failed: " + err_stack(err));
       fail();
     }
   }
@@ -2643,7 +2643,7 @@ export namespace Main {
         open(ws: Sock) {
           Main.event("a socket", () => {
             if (ws.data.wire !== String(WIRE)) {
-              ws.send(JSON.stringify({ $: "error", text: "This page or kny is older than the server: reload or reopen it (`kny update` for the latest).", build: Web.BUILD, wire: WIRE }));
+              ws.send(JSON.stringify({ $: "error", text: "This page or troop is older than the server: reload or reopen it (`troop update` for the latest).", build: Web.BUILD, wire: WIRE }));
               return;
             }
             Main.socks.add(ws);
@@ -2699,17 +2699,17 @@ export namespace Main {
             run.later.splice(0).forEach((l) => l.step());
           });
         } catch (err) {
-          console.error("kny: " + err_stack(err));
+          console.error("troop: " + err_stack(err));
         }
         Chat.stop(chat, null);
         Memory.stop(chat.mem);
       });
     });
-    console.log("kny: serving on port " + port + " (127.0.0.1), data in " + config.DIR);
+    console.log("troop: serving on port " + port + " (127.0.0.1), data in " + config.DIR);
     Service.ready("serve");
     for (const note of [config.MCP_ENV_NOTE, config.MCP_FILE_STARTUP_NOTE]) {
       if (note !== null) {
-        console.error("kny: " + note);
+        console.error("troop: " + note);
       }
     }
   }
@@ -2725,7 +2725,7 @@ export namespace Main {
     }
     const out = await Settings.save(req);
     if (out.saved.length > 0) {
-      console.log("kny: settings saved: " + out.saved.join(", "));
+      console.log("troop: settings saved: " + out.saved.join(", "));
     }
     if (out.wrote) {
       Main.offer();
@@ -2757,14 +2757,14 @@ export namespace Main {
   // which a watch on the file itself stops seeing
   export function watch(): void {
     const names = [config.FILE_PATH, config.KEYS_PATH].map((f) => path.basename(f));
-    const off = (err: unknown) => console.error("kny: settings saved by hand apply after a restart: " + err_why(err));
+    const off = (err: unknown) => console.error("troop: settings saved by hand apply after a restart: " + err_why(err));
     let settle: Timer | undefined;
     const reload = () => {
       try {
         config.config_reload();
         Main.offer();
       } catch (err) {
-        console.error("kny: the settings changed on disk, but " + err_why(err) + "; the ones before stay");
+        console.error("troop: the settings changed on disk, but " + err_why(err) + "; the ones before stay");
       }
     };
     try {
@@ -2786,7 +2786,7 @@ export namespace Main {
   }
 
   export function unowned(err: unknown): void {
-    console.error("kny: a failure no one owned: " + err_stack(err));
+    console.error("troop: a failure no one owned: " + err_stack(err));
   }
 
 }

@@ -1,13 +1,13 @@
 import { useEffect, type ReactNode } from "react";
 import { Back } from "./Back.tsx";
 import { tree_hide, tree_show } from "./Tree.ts";
-import { useKunumy } from "./Kunumy.ts";
+import { useMontroop } from "./Montroop.ts";
 import { Tabs } from "./Pages.tsx";
 
 // an agent's memory as it is: what it sees now (view), or all of it as the
 // tree of summaries (tree), which Tree.ts draws into this page's elements
 export function Grown({ agent, view }: { agent: string; view: boolean }): ReactNode {
-  const name = useKunumy((s) => s.team.find((m) => m.id === agent)?.name ?? "");
+  const name = useMontroop((s) => s.team.find((m) => m.id === agent)?.name ?? "");
   useEffect(() => {
     if (agent !== "") {
       tree_show(view ? "VIEW" : "TREE", agent);

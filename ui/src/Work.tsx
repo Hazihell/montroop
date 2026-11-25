@@ -7,7 +7,7 @@ import * as Md from "../../Md.ts";
 import * as View from "../../View.ts";
 import type { Told } from "../../Wire.ts";
 import { Back } from "./Back.tsx";
-import { note, show, useKunumy } from "./Kunumy.ts";
+import { note, show, useMontroop } from "./Montroop.ts";
 import { Blocks } from "./Markdown.tsx";
 import { Ask, CallBody, ToolIcon } from "./Rows.tsx";
 import { viewer_open } from "./Viewer.tsx";
@@ -54,7 +54,7 @@ function useDetail(id: string, moved: string): { d: View.SessionPage | null; log
       if (got === null || got === "gone") {
         setGone(got === "gone");
         if (got === null) {
-          note("Can't reach Kunumy: the session shows again once it can.");
+          note("Can't reach Montroop: the session shows again once it can.");
         }
         return;
       }
@@ -207,7 +207,7 @@ function SayBox({ id, name, live, sent }: { id: string; name: string; live: bool
 // what waits on someone now
 function Log({ d, log, id, agent, live, earlier }: { d: View.SessionPage; log: Told[]; id: string; agent: string; live: boolean; earlier: () => void }): ReactNode {
   const working = live && d.waits !== "limit";
-  const asks = useKunumy((s) => s.asks).filter((a) => a.from === "session" && a.who === d.who);
+  const asks = useMontroop((s) => s.asks).filter((a) => a.from === "session" && a.who === d.who);
   const results = new Map(log.flatMap((t) => (t.ev.k === "result" ? [[t.ev.id, { text: t.ev.text, error: t.ev.error }] as const] : [])));
   const placed = new Map<number, string[]>();
   const rest = d.media.filter((m) => {
@@ -257,7 +257,7 @@ export function WorkPage({ agent, id }: { agent: string; id: string }): ReactNod
   const navigate = useNavigate();
   const works = useWorks(agent);
   const row = works.find((w) => w.id === id);
-  const named = useKunumy((s) => s.team.find((m) => m.id === agent)?.name ?? "");
+  const named = useMontroop((s) => s.team.find((m) => m.id === agent)?.name ?? "");
   const { d, log, gone, earlier, again } = useDetail(id, row === undefined ? "" : String(row.at));
   const scroll = useRef<HTMLDivElement>(null);
   const held = useRef({ bottom: true, height: 0, first: -1 });

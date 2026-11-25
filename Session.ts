@@ -1,10 +1,10 @@
 // Session
 // =======
-// A work session's record in kunumy.db: an agent's Claude Code session on a
+// A work session's record in montroop.db: an agent's Claude Code session on a
 // repo, in its own branch and worktree, or a subagent of its, kept across
 // server restarts. A session has runs (a message it works on until it's
 // done with it), each tried again (an attempt) when its holder died; the
-// calls it has parked for the owner's answer; the calls of Kunumy's tools
+// calls it has parked for the owner's answer; the calls of Montroop's tools
 // its holder had the server run; the questions it asked its agent; the
 // messages sent to it not yet taken in; the messages that wake its agent.
 
@@ -28,7 +28,7 @@ type Step = "ask" | "answered" | "ended" | "failed" | "stop" | "run";
 // personal; key, an API key; chatgpt, the ChatGPT plan); model, effort:
 // its own ("": the account's default); memory: 1 if it reads its agent's
 // memory; write: 0 if its edit tools are denied; device: the computer it
-// runs on ("": the server's); dir: its folder in Kunumy's, with its log;
+// runs on ("": the server's); dir: its folder in Montroop's, with its log;
 // sdk: the provider's session it resumes; ack: the last of its holder's
 // events taken in; launches: its holders so far; unit, sock: the latest
 // one's systemd unit and socket, as named at its launch; last: its latest

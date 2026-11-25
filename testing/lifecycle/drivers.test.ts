@@ -54,7 +54,7 @@ async function hold(home: string, job: Omit<Job, "dir">, prompt: string, meanwhi
   const ends = () => Hold.told(dir).filter((x) => x.ev.k === "end").length;
   const before = ends();
   fs.writeFileSync(path.join(dir, "start.json"), JSON.stringify({ driver: "provider", job, prompt: job.context.kind === "given" ? "" : prompt, resume: "", rules: [], sock: path.join(dir, "hold.sock"), ...more }));
-  const p = Bun.spawn(["bun", path.join(ROOT, "Cli.ts"), "hold", dir], { env: { ...process.env, KNY_DIR: home, ...env }, stdio: ["ignore", "ignore", "ignore"] });
+  const p = Bun.spawn(["bun", path.join(ROOT, "Cli.ts"), "hold", dir], { env: { ...process.env, TROOP_DIR: home, ...env }, stdio: ["ignore", "ignore", "ignore"] });
   await meanwhile(dir);
   // with no server to take what it told, it would wait a minute to exit
   await until("its run over", () => ends() > before, 25000);
@@ -78,7 +78,7 @@ async function tell(dir: string, ...msgs: object[]): Promise<void> {
 const evs = (told: Told[]): Ev[] => told.map((x) => x.ev);
 
 for (const [name, of] of Object.entries(DRIVERS)) {
-  test.concurrent(name + ": a tool call of Kunumy's runs in the holder, its result goes back to the model in the same turn", async () => {
+  test.concurrent(name + ": a tool call of Montroop's runs in the holder, its result goes back to the model in the same turn", async () => {
     const t = tag();
     const home = signed(fs.mkdtempSync(path.join(os.tmpdir(), "home-")));
     await fake.next(t + ": work", { what: "tool", calls: [["report", { result: t + " result" }]] });
@@ -188,7 +188,7 @@ test.concurrent("claude-code, native: a brief is told again after a compaction",
   expect(JSON.stringify(await fake.body(t + ": after"))).toContain("Your task, as you were first given it:\\n\\nThe brief " + t + ".");
 });
 
-// a server of the test's own for a holder: each call of Kunumy's tools
+// a server of the test's own for a holder: each call of Montroop's tools
 // answered with what out makes of its input, each call parked denied
 async function serve(dir: string, rules: Rule[], scratch: Record<string, string>, out: (input: Record<string, unknown>) => string): Promise<void> {
   const send = (c: { write: (s: string) => unknown }, msg: object) => c.write(JSON.stringify(msg) + "\n");
@@ -285,7 +285,7 @@ test.concurrent.each([["anthropic api", "usage limits"], ["openai api", "quota"]
   expect(end?.k === "end" ? end.text : "").toContain(word);
 });
 
-// Kunumy's tools on an endpoint of the test's own, as the server's own
+// Montroop's tools on an endpoint of the test's own, as the server's own
 // path reaches them (Tools.answer lists them so)
 function endpoint(tools: Spec[]): string {
   const server = Bun.serve({ port: 0, hostname: "127.0.0.1", async fetch(req) {
@@ -294,7 +294,7 @@ function endpoint(tools: Spec[]): string {
       return new Response(null, { status: 202 });
     }
     const listed = tools.map((t) => ({ name: t.name, description: t.info, inputSchema: t.schema, ...(t.defer === true ? { _meta: { "anthropic/alwaysLoad": false } } : {}) }));
-    const result = msg.method === "initialize" ? { protocolVersion: msg.params?.protocolVersion ?? "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "kunumy", version: "1" } } : msg.method === "tools/list" ? { tools: listed } : {};
+    const result = msg.method === "initialize" ? { protocolVersion: msg.params?.protocolVersion ?? "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "montroop", version: "1" } } : msg.method === "tools/list" ? { tools: listed } : {};
     return Response.json({ jsonrpc: "2.0", id: msg.id, result });
   } });
   return "http://127.0.0.1:" + server.port + "/";

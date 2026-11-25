@@ -8,7 +8,7 @@ type Push = { reg: ServiceWorkerRegistration; key: string };
 export type Bell = { state: Notify; push: Push | null };
 
 // "on" or "off": notifications as the user last had them on this device
-const NOTIFY = "kunumy.notify";
+const NOTIFY = "montroop.notify";
 const BLOCKED = "they're blocked in this browser's settings for this site.";
 const KEEP_EVERY = 60 * 60 * 1000;
 
@@ -108,7 +108,7 @@ export async function push_keep(): Promise<void> {
   localStorage.setItem(NOTIFY, "on");
 }
 
-// all of Kunumy's notifications go once the app is in view
+// all of Montroop's notifications go once the app is in view
 export function push_clear(): void {
   if (document.visibilityState === "visible" && "serviceWorker" in navigator) {
     navigator.serviceWorker.ready.then((reg) => reg.getNotifications()).then((notes) => notes.forEach((n) => n.close())).catch(() => {});

@@ -4,7 +4,7 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useSta
 import * as View from "../../View.ts";
 import { Avatar, Face, look_of } from "./Avatar.tsx";
 import { Composer } from "./Composer.tsx";
-import { intro_end, MOODS, mood_of, noted, show, useKunumy, welcomed } from "./Kunumy.ts";
+import { intro_end, MOODS, mood_of, noted, show, useMontroop, welcomed } from "./Montroop.ts";
 import { Back, steps_of, turn, TURNS, useBack, useEdgeBack, useStep } from "./Back.tsx";
 import { Agents, Memory, Running, useLeaving, usePop } from "./Pages.tsx";
 import { Menu, Panel, useGoing } from "./Panel.tsx";
@@ -30,9 +30,9 @@ const FADE = 600;
 function SignIn(): ReactNode {
   return (
     <form className="m-auto flex w-full max-w-sm flex-col items-start gap-3 p-6" method="post" action="/auth">
-      <Avatar look={look_of("", "kunumy")} mood="asking" size={104} lit />
+      <Avatar look={look_of("", "montroop")} mood="asking" size={104} lit />
       <h1 className="text-4xl font-extrabold tracking-tight">Sign in</h1>
-      <p className="text-mid">This Kunumy server is private. On the computer it runs on, run <code className="font-mono text-[0.84em]">kny serve login</code> and type the code it prints here.</p>
+      <p className="text-mid">This Montroop server is private. On the computer it runs on, run <code className="font-mono text-[0.84em]">troop serve login</code> and type the code it prints here.</p>
       <input type="hidden" name="to" value={location.pathname} />
       <input className="field text-center font-mono text-xl tracking-[0.3em]" name="code" inputMode="numeric" autoComplete="one-time-code" autoFocus aria-label="Sign-in code" />
       <button type="submit" className="pillbtn go w-full">Sign in</button>
@@ -45,8 +45,8 @@ function Wait(): ReactNode {
 }
 
 function Note(): ReactNode {
-  const note = useKunumy((s) => s.note);
-  const stale = useKunumy((s) => s.stale);
+  const note = useMontroop((s) => s.note);
+  const stale = useMontroop((s) => s.stale);
   useEffect(() => {
     const timer = note === "" || stale ? undefined : setTimeout(noted, NOTE);
     return () => clearTimeout(timer);
@@ -63,9 +63,9 @@ function Note(): ReactNode {
   );
 }
 
-// the first open of this browser: what Kunumy is, in two scenes, gone at a tap
+// the first open of this browser: what Montroop is, in two scenes, gone at a tap
 function Intro(): ReactNode {
-  const on = useKunumy((s) => s.intro);
+  const on = useMontroop((s) => s.intro);
   const [out, setOut] = useState(false);
   useEffect(() => {
     if (!on) {
@@ -90,7 +90,7 @@ function Intro(): ReactNode {
   return (
     <div className={"intro" + (out ? " out" : "")}>
       <div><p>Your entire life.</p><p>One single chat.</p></div>
-      <div><Avatar look={look_of("", "kunumy")} mood="idle" size={88} lit /><h1>Kunumy</h1></div>
+      <div><Avatar look={look_of("", "montroop")} mood="idle" size={88} lit /><h1>Montroop</h1></div>
     </div>
   );
 }
@@ -182,7 +182,7 @@ function Tuck({ shown }: { shown: boolean }): ReactNode {
 // no bar of places: the list is home, and all about one agent opens from
 // its chat
 function Shell(): ReactNode {
-  const signed = useKunumy((s) => s.signed);
+  const signed = useMontroop((s) => s.signed);
   const path = useLocation().pathname;
   const at = useMatches({ select: (all) => all.at(-1)?.routeId });
   const wide = useMedia(WIDE);
@@ -208,10 +208,10 @@ function Shell(): ReactNode {
   );
 }
 
-// Kunumy opens on the agents; a wide screen has them beside, and here what to do
+// Montroop opens on the agents; a wide screen has them beside, and here what to do
 function Home(): ReactNode {
   const wide = useMedia(WIDE);
-  const any = useKunumy((s) => s.team.some((m) => m.archived === 0));
+  const any = useMontroop((s) => s.team.some((m) => m.archived === 0));
   const listed = usePrefs((s) => s.list);
   if (!wide) {
     return <Agents />;
@@ -219,7 +219,7 @@ function Home(): ReactNode {
   return (
     <section className="page">
       <div className="m-auto grid max-w-xs justify-items-center gap-3 p-6 text-center">
-        <Avatar look={look_of("", "kunumy")} mood="idle" size={88} lit />
+        <Avatar look={look_of("", "montroop")} mood="idle" size={88} lit />
         <p className="text-mid">{!listed ? "Show the agents to open a chat." : any ? "Pick an agent to open its chat." : "Make your first agent with the + button."}</p>
       </div>
     </section>
@@ -235,7 +235,7 @@ function Tree({ agent }: { agent: string }): ReactNode {
 const ACTED = new Set(Object.values(MOODS).map((m) => m.toLowerCase()));
 
 // the name on a glass pill over the face's chin, and after it what the face
-// can't show (Kunumy offline, a subagent's tool, its usage limit, it done). The
+// can't show (Montroop offline, a subagent's tool, its usage limit, it done). The
 // pill's width follows its words; a note gone stays in it, fading, as it
 // narrows back to the name, which gives way first when both don't fit
 function Tag({ name, note }: { name: string; note: string }): ReactNode {
@@ -280,14 +280,14 @@ function Tag({ name, note }: { name: string; note: string }): ReactNode {
 // does, read only
 function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode {
   const navigate = useNavigate();
-  const mate = useKunumy((s) => s.team.find((m) => m.id === agent));
-  const loaded = useKunumy((s) => s.loaded && s.agent === agent && s.page === sub);
-  const mood = useKunumy((s) => (sub !== null ? s.mood : mate === undefined ? "idle" : mood_of(mate, s)));
-  const offline = useKunumy((s) => s.offline);
-  const row = useKunumy((s) => s.sub);
-  const meter = useKunumy((s) => s.meter);
-  const knobs = useKunumy((s) => s.knobs);
-  const welcome = useKunumy((s) => s.welcome);
+  const mate = useMontroop((s) => s.team.find((m) => m.id === agent));
+  const loaded = useMontroop((s) => s.loaded && s.agent === agent && s.page === sub);
+  const mood = useMontroop((s) => (sub !== null ? s.mood : mate === undefined ? "idle" : mood_of(mate, s)));
+  const offline = useMontroop((s) => s.offline);
+  const row = useMontroop((s) => s.sub);
+  const meter = useMontroop((s) => s.meter);
+  const knobs = useMontroop((s) => s.knobs);
+  const welcome = useMontroop((s) => s.welcome);
   const [head, setHead] = useState<HTMLElement | null>(null);
   const [page, setPage] = useState<HTMLElement | null>(null);
   const back = useBack(sub === null ? "/" : "/a/" + agent);
@@ -305,7 +305,7 @@ function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode 
     return () => show(null);
   }, [agent, sub]);
   // the server shows another agent's chat when it has none of this one
-  useEffect(() => useKunumy.subscribe((s) => {
+  useEffect(() => useMontroop.subscribe((s) => {
     if (s.loaded && s.agent !== agent) {
       void navigate({ to: "/a/$agent", params: { agent: s.agent }, replace: true });
     }
@@ -349,7 +349,7 @@ function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode 
 }
 
 // the agent the owner had open last, for an old link with no agent in it
-const last = (): string => useKunumy.getState().agent;
+const last = (): string => useMontroop.getState().agent;
 const own = (where: "running" | "memory" | "tree", hash?: string) => () => {
   const agent = last();
   if (agent === "") {

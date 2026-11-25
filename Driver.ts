@@ -25,7 +25,7 @@ type Account = { provider: string; id: string } & ({ kind: "plan"; dir: string }
 // one's first message starts with, before the holder's first message,
 // and the brief it's told again after each compaction, "" for none);
 // the folder the provider's own tools work in (null: none); write: false
-// denies its edit tools; Kunumy's tools, each run through io.call; the
+// denies its edit tools; Montroop's tools, each run through io.call; the
 // web searches a request may make
 export type Job = {
   dir     : string;
@@ -57,7 +57,7 @@ export type Inbox = { pending: () => boolean; next: () => Promise<string | null>
 // emit: an event told to the server and logged; parks: whether a rule has
 // the owner answer the call first; gate: before a tool of the provider's
 // own runs, parked if a rule says so (stop: dropped); call: one of
-// Kunumy's tools (Job.tools), run once, gated where a rule says so
+// Montroop's tools (Job.tools), run once, gated where a rule says so
 export type Io = {
   emit  : (ev: Ev) => void;
   inbox : Inbox;

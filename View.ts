@@ -277,12 +277,12 @@ export const USE_PING = 20000;
 
 export const FRAME = 2 ** 22;
 
-export const HINT = "Message Kunumy";
+export const HINT = "Message Montroop";
 
 export const ASKS = "Asks first";
 
 // a browser's sign-in, on the app's page and the server's own
-export const SIGN_IN = "This Kunumy server is private. On the computer it runs on, run <code>kny serve login</code> and type the code it prints here.";
+export const SIGN_IN = "This Montroop server is private. On the computer it runs on, run <code>troop serve login</code> and type the code it prints here.";
 // to: the path of this server the browser goes to once signed in
 export function sign_in_form(to: string): string {
   const value = to.replace(/[&<>"]/g, (c) => "&#" + c.charCodeAt(0) + ";");
@@ -293,8 +293,8 @@ const WAIT = "compressing…";
 const SUMS = "compressing earlier messages…";
 
 const UNSENT = "Sends once connected.";
-const OLDER  = "This kny is older than the server: run `kny update`.";
-const NEWER  = "The server runs an older kny than this one: run `kny update` there. Trying again every " + SLOW / 1000 + " s.";
+const OLDER  = "This troop is older than the server: run `troop update`.";
+const NEWER  = "The server runs an older troop than this one: run `troop update` there. Trying again every " + SLOW / 1000 + " s.";
 
 const MARKS: Array<[string, number, string]> = [
   ["image/png", 0, "\x89PNG"],

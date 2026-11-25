@@ -1,4 +1,4 @@
-// What the suite's tests that run Kunumy itself share: a Kunumy server of
+// What the suite's tests that run Montroop itself share: a Montroop server of
 // their own (its own data folder and port, signed in), the fake models
 // (testing/fake, started by test.sh) steered as `fake` does, test repos,
 // and the processes running.
@@ -24,7 +24,7 @@ export const VIAS: Via[] = ["session", "subagent"];
 
 // the servers and devices a test file started, killed after it
 // (afterAll(down)), so a failed test leaves none running
-const UP: Kny[] = [];
+const UP: Troop[] = [];
 const DEVICES: Bun.Subprocess[] = [];
 
 type Page = {
@@ -96,7 +96,7 @@ function port(): number {
   throw new Error("no port left");
 }
 
-// the agent's chat and compactor run on Kunumy's own loop, so a turn starts
+// the agent's chat and compactor run on Montroop's own loop, so a turn starts
 // no Claude Code and a usage limit on claude-sub doesn't stop them: work
 // sessions and subagents (subagents()) run Claude Code on claude-sub all
 // the same. A test of the chat on claude-sub passes SUB.
@@ -104,9 +104,9 @@ const CHAT = "openai-api:gpt-6-luna:low:slow";
 const SUB_MODEL = "claude-sub:haiku-5.5:low:slow";
 export const SUB = { pick: SUB_MODEL, compactor: SUB_MODEL };
 
-// a Kunumy server on a data folder of its own, with fake sign-ins to
+// a Montroop server on a data folder of its own, with fake sign-ins to
 // Claude; root: the checkout it runs (another version's, see older())
-export class Kny {
+export class Troop {
   proc: Bun.Subprocess | null = null;
   cookie = "";
   agent = "";
@@ -120,9 +120,9 @@ export class Kny {
 
   // more: config.json's settings beyond the suite's own; root: the checkout
   // the server runs from; keys: its API keys (keys.json)
-  static async up(more: Json = {}, root = ROOT, keys: Json = {}): Promise<Kny> {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), "kny-"));
-    const k = new Kny(path.join(home, ".kunumy"), port(), root);
+  static async up(more: Json = {}, root = ROOT, keys: Json = {}): Promise<Troop> {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "troop-"));
+    const k = new Troop(path.join(home, ".montroop"), port(), root);
     UP.push(k);
     // a sign-in and key of its own, as the fake keeps a usage limit per credential
     const own = tag();
@@ -137,7 +137,7 @@ export class Kny {
   }
 
   env(): Record<string, string> {
-    return { ...(process.env as Record<string, string>), HOME: this.home, KNY_DIR: this.dir };
+    return { ...(process.env as Record<string, string>), HOME: this.home, TROOP_DIR: this.dir };
   }
 
   // a server started on this data folder; up: once it serves
@@ -168,7 +168,7 @@ export class Kny {
     const out = Bun.spawnSync(["bun", path.join(this.root, "Cli.ts"), "serve", "login"], { env: this.env() }).stdout.toString();
     const code = /\b(\d{6})\b/.exec(out)?.[1] ?? "";
     const res = await fetch(this.url + "/auth", { method: "POST", body: new URLSearchParams({ code }), redirect: "manual" });
-    this.cookie = res.headers.getSetCookie().map((c) => c.split(";")[0]).find((c) => c.startsWith("kunumy=")) ?? "";
+    this.cookie = res.headers.getSetCookie().map((c) => c.split(";")[0]).find((c) => c.startsWith("montroop=")) ?? "";
     if (this.cookie === "") {
       throw new Error("sign-in failed: " + res.status + " " + out);
     }
@@ -201,14 +201,14 @@ export class Kny {
     }
   }
 
-  // a device of this server's: kny device in a home of its own, signed in,
+  // a device of this server's: troop device in a home of its own, signed in,
   // once the server has used it
   async device(name: string): Promise<Device> {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "device-"));
     const conf = path.join(home, ".config");
-    fs.mkdirSync(path.join(conf, "kunumy"), { recursive: true });
-    fs.writeFileSync(path.join(conf, "kunumy", "device.json"), JSON.stringify({ name, work: path.join(home, "work") }));
-    const proc = Bun.spawn(["bun", path.join(this.root, "Cli.ts"), "device", this.url], { cwd: home, env: { ...process.env as Record<string, string>, HOME: home, KNY_DIR: path.join(home, ".kunumy"), XDG_CONFIG_HOME: conf }, stdio: ["ignore", "pipe", "ignore"] });
+    fs.mkdirSync(path.join(conf, "montroop"), { recursive: true });
+    fs.writeFileSync(path.join(conf, "montroop", "device.json"), JSON.stringify({ name, work: path.join(home, "work") }));
+    const proc = Bun.spawn(["bun", path.join(this.root, "Cli.ts"), "device", this.url], { cwd: home, env: { ...process.env as Record<string, string>, HOME: home, TROOP_DIR: path.join(home, ".montroop"), XDG_CONFIG_HOME: conf }, stdio: ["ignore", "pipe", "ignore"] });
     DEVICES.push(proc);
     let out = "";
     void (async () => {
@@ -261,7 +261,7 @@ class Device {
   readonly scratch: string;
 
   constructor(readonly home: string) {
-    this.scratch = path.join(home, ".kunumy", "scratch");
+    this.scratch = path.join(home, ".montroop", "scratch");
   }
 
   // whether a server has run a job on it since forget()
@@ -277,7 +277,7 @@ class Device {
 class Session {
   worktree = "";
 
-  constructor(readonly k: Kny, readonly id: string, readonly name: string, readonly via: Via) {}
+  constructor(readonly k: Troop, readonly id: string, readonly name: string, readonly via: Via) {}
 
   // the start of a wake it sends its agent
   woke(body: string): string {
@@ -424,7 +424,7 @@ export function repo(): string {
 }
 
 // an agent's chat as the app shows it: each message's kind and text
-export async function chat(k: Kny, agent = k.agent): Promise<Array<{ kind: string; text: string }>> {
+export async function chat(k: Troop, agent = k.agent): Promise<Array<{ kind: string; text: string }>> {
   const meta = (await k.api("GET", "/api/tree?agent=" + agent)).json as { count: number };
   if (meta.count === 0) {
     return [];
@@ -435,6 +435,6 @@ export async function chat(k: Kny, agent = k.agent): Promise<Array<{ kind: strin
 }
 
 // how many messages in an agent's chat start with text
-export async function said(k: Kny, text: string, agent = k.agent): Promise<number> {
+export async function said(k: Troop, text: string, agent = k.agent): Promise<number> {
   return (await chat(k, agent)).filter((m) => m.text.startsWith(text)).length;
 }

@@ -41,7 +41,7 @@ mentions something you need, before you act, guess or ask.
 
 # Work
 
-The user's computers that run kny device now are listed in your first
+The user's computers that run troop device now are listed in your first
 message. A task that needs a computer not listed can't be done now: say so in
 your report. Your shell, read, write, edit, view_video and host tools run on
 the one their `device` field names. A computer is listed only while its device

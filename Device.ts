@@ -14,8 +14,8 @@ import { FRAME, media_kind, PING, QUIT, RETRY, SLOW, TICK, WIRE, type Server } f
 
 const LOCAL = process.platform === "darwin" ? child.spawnSync("scutil", ["--get", "LocalHostName"]).stdout?.toString().trim() : "";
 const HOST  = LOCAL || os.hostname();
-const WORK  = "~/.kunumy/work";
-const FILE  = Machine.home(process.env.KNY_DIR ?? "~/.kunumy") + "/config.json";
+const WORK  = "~/.montroop/work";
+const FILE  = Machine.home(process.env.TROOP_DIR ?? "~/.montroop") + "/config.json";
 
 const LOOK = 2000;
 
@@ -36,7 +36,7 @@ export async function signin(given: string | undefined): Promise<{ url: string; 
 
 export async function run(given: string | undefined): Promise<void> {
   const { url, token, name, work } = await signin(given);
-  console.log("kny device " + name + " on " + url + ", work dir " + work);
+  console.log("troop device " + name + " on " + url + ", work dir " + work);
   const query = "?tab=" + crypto.randomUUID() + "&wire=" + WIRE + "&device=" + encodeURIComponent(name) + "&work=" + encodeURIComponent(work) + "&scratch=" + encodeURIComponent(SCRATCH) + (WIN ? "&shell=PowerShell" : "");
   const jobs = new Map<string, AbortController>();
   const outs = new Map<string, { $: "out"; id: string; job: string; out: object } | { $: "done"; id: string; agent: string; text: string }>();
@@ -83,12 +83,12 @@ export async function run(given: string | undefined): Promise<void> {
       } else if (msg.$ === "error" && !joined) {
         const old = (msg.wire ?? 0) > WIRE;
         if (refused !== old) {
-          console.error("kny: " + (old ? "this device's kny is older than the server: run `kny update`; it stops trying till then" : "the server runs an older kny than this device: run `kny update` there; trying again every " + SLOW / 1000 + " s"));
+          console.error("troop: " + (old ? "this device's troop is older than the server: run `troop update`; it stops trying till then" : "the server runs an older troop than this device: run `troop update` there; trying again every " + SLOW / 1000 + " s"));
         }
         [refused, next] = [old, old ? null : SLOW];
         sock.close();
       } else if (msg.$ === "note" || msg.$ === "error") {
-        console.error("kny: " + msg.text);
+        console.error("troop: " + msg.text);
       }
       if (msg.$ !== "error") {
         [joined, refused] = [true, null];
@@ -102,7 +102,7 @@ export async function run(given: string | undefined): Promise<void> {
       ws = null;
       Mcp.lost();
       if (!up && !await Client.signed(url, token)) {
-        Client.fail("this device is signed out: run kny device to sign it in again");
+        Client.fail("this device is signed out: run troop device to sign it in again");
       }
       if (next !== null) {
         setTimeout(open, next);
@@ -208,7 +208,7 @@ function servers(): string | null {
     const why = err instanceof SyntaxError ? "isn't JSON" : "can't be read (" + (err_code(err) ?? String(err)) + ")";
     if (why !== said) {
       said = why;
-      console.error("kny: " + FILE + " or its mcp " + why + ": the MCP servers told stay as they were");
+      console.error("troop: " + FILE + " or its mcp " + why + ": the MCP servers told stay as they were");
     }
     return null;
   }

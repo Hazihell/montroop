@@ -37,7 +37,7 @@ test("it runs agent-browser on the session's own session, profile and settings, 
   const [cwd, ...args] = out.map((l) => l.replace(/^\w+=/, ""));
   expect(cwd).toBe(path.join(dir, "media"));
   const flag = (name: string) => (args.includes(name) ? args[args.indexOf(name) + 1] : "missing " + name);
-  expect([flag("--session"), flag("--namespace"), flag("--profile"), flag("--config"), flag("--idle-timeout")]).toEqual(["5e551011", "kunumy", path.join(dir, "browser"), path.join(dir, "browser.json"), "30m"]);
+  expect([flag("--session"), flag("--namespace"), flag("--profile"), flag("--config"), flag("--idle-timeout")]).toEqual(["5e551011", "montroop", path.join(dir, "browser"), path.join(dir, "browser.json"), "30m"]);
   expect(args).toContain("--no-auto-connect");
   expect(args.slice(-2)).toEqual(["open", "http://127.0.0.1:8000/"]);
 });

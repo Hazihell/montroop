@@ -3,13 +3,13 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Hold } from "../../Hold.ts";
-import { down, fake, gate, git, Kny, repo, said, tag, until, VIAS, waiting } from "../rig.ts";
+import { down, fake, gate, git, Troop, repo, said, tag, until, VIAS, waiting } from "../rig.ts";
 
 afterAll(down);
 
 // a holder started by hand on a start.json as given, no server linked to
 // it: what it logged once its run is over
-async function hold(k: Kny, start: Record<string, unknown>): Promise<unknown[]> {
+async function hold(k: Troop, start: Record<string, unknown>): Promise<unknown[]> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hold-"));
   fs.writeFileSync(path.join(dir, "spec.json"), JSON.stringify({ cwd: repo(), claude: path.join(k.dir, "claude-sub"), model: "", append: "" }));
   fs.writeFileSync(path.join(dir, "start.json"), JSON.stringify({ ...start, resume: "", rules: [], sock: path.join(dir, "hold.sock") }));
@@ -21,7 +21,7 @@ async function hold(k: Kny, start: Record<string, unknown>): Promise<unknown[]> 
 }
 
 test.concurrent("a start that names no driver, as one from before drivers were named, runs Claude Code", async () => {
-  const k = await Kny.up();
+  const k = await Troop.up();
   const t = tag();
   await fake.next(t + ": work", { what: "reply", text: t + " fine" });
 
@@ -32,7 +32,7 @@ test.concurrent("a start that names no driver, as one from before drivers were n
 
 for (const via of VIAS) {
   test.concurrent(via + ": a second connection's hello takes the holder over, and the server takes it back and sees the run through", async () => {
-    const k = await Kny.up();
+    const k = await Troop.up();
     const t = tag();
     await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
     await fake.next(t + "-done", { what: "reply", text: t + " finished" });
@@ -54,7 +54,7 @@ for (const via of VIAS) {
   });
 
   test.concurrent(via + ": a command left running in the background keeps it at work past its turn, till it ends", async () => {
-    const k = await Kny.up();
+    const k = await Troop.up();
     const t = tag();
     await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) + " > bg.txt", run_in_background: true }]] });
     const s = await k.work(via, "bg", t + ": work", repo());
@@ -67,7 +67,7 @@ for (const via of VIAS) {
   });
 
   test.concurrent(via + ": a project's own deny rule still stops its call", async () => {
-    const k = await Kny.up();
+    const k = await Troop.up();
     const t = tag();
     const r = repo();
     fs.mkdirSync(path.join(r, ".claude"));

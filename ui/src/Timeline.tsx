@@ -2,7 +2,7 @@ import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { ArrowDownIcon } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { earlier, holds, useKunumy } from "./Kunumy.ts";
+import { earlier, holds, useMontroop } from "./Montroop.ts";
 import { items_of, rose_keep, Row, useWork, type Item } from "./Rows.tsx";
 
 // more items than this coming at once stay still
@@ -41,9 +41,9 @@ function MineIcon(): ReactNode {
 // Each tap goes one of the user's messages further up, and the way shows as
 // long as one of them is above the face's room.
 export function Timeline({ sub, head }: { sub: boolean; head: HTMLElement | null }): ReactNode {
-  const rows = useKunumy((s) => s.rows);
-  const tail = useKunumy((s) => s.tail);
-  const greeted = useKunumy((s) => s.greeted);
+  const rows = useMontroop((s) => s.rows);
+  const tail = useMontroop((s) => s.tail);
+  const greeted = useMontroop((s) => s.greeted);
   const open = useWork((s) => s.open);
   const list = useRef<LegendListRef>(null);
   const [away, setAway] = useState(false);

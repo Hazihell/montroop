@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { ASK, Rules } from "../../Rules.ts";
 
-const SCRATCH = "/home/sam/.kunumy/scratch/a1";
+const SCRATCH = "/home/sam/.montroop/scratch/a1";
 
 function asks(tool: string, args: Record<string, unknown>): string | null {
   return Rules.match(ASK, tool, args, SCRATCH)?.what ?? null;
@@ -16,7 +16,7 @@ test("the default rules ask before a shell command that deletes outside the scra
 
 test("deleting inside the scratch folder, also named from ~, asks no one", () => {
   expect(asks("shell", { command: "rm -rf " + SCRATCH + "/build" })).toBeNull();
-  expect(asks("shell", { command: "rm -rf ~/.kunumy/scratch/a1/build" })).toBeNull();
+  expect(asks("shell", { command: "rm -rf ~/.montroop/scratch/a1/build" })).toBeNull();
 });
 
 test("a path that only starts like the scratch folder, or climbs out of it, isn't in it", () => {
@@ -62,11 +62,11 @@ test("the rules a config gives are read, or say what's wrong with them", () => {
   expect(Rules.read([{ what: "x", tools: "y", args: "(" }])).toStartWith("Rule 1's arguments are no regular expression: ");
 });
 
-test("a call of Kunumy's tools reads the scratch folder of the device it runs on, its own before the one its arguments name, and search asks no one", () => {
-  const scratch = { box: "/home/sam/.kunumy/scratch/a1", pc: "/home/ana/.kunumy/scratch/a1" };
-  const inside = { device: "box", command: "rm -rf /home/sam/.kunumy/scratch/a1/tmp" };
-  expect(Rules.kunumy(ASK, "shell", inside, null, scratch)).toBeNull();
-  expect(Rules.kunumy(ASK, "shell", inside, "pc", scratch)?.what).toBe("Delete files or data outside the scratch folder");
-  expect(Rules.kunumy(ASK, "shell", { ...inside, device: "gone" }, null, scratch)?.what).toBe("Delete files or data outside the scratch folder");
-  expect(Rules.kunumy([{ what: "Search", tools: "search", args: "" }], "search", { query: "x" }, null, scratch)).toBeNull();
+test("a call of Montroop's tools reads the scratch folder of the device it runs on, its own before the one its arguments name, and search asks no one", () => {
+  const scratch = { box: "/home/sam/.montroop/scratch/a1", pc: "/home/ana/.montroop/scratch/a1" };
+  const inside = { device: "box", command: "rm -rf /home/sam/.montroop/scratch/a1/tmp" };
+  expect(Rules.montroop(ASK, "shell", inside, null, scratch)).toBeNull();
+  expect(Rules.montroop(ASK, "shell", inside, "pc", scratch)?.what).toBe("Delete files or data outside the scratch folder");
+  expect(Rules.montroop(ASK, "shell", { ...inside, device: "gone" }, null, scratch)?.what).toBe("Delete files or data outside the scratch folder");
+  expect(Rules.montroop([{ what: "Search", tools: "search", args: "" }], "search", { query: "x" }, null, scratch)).toBeNull();
 });

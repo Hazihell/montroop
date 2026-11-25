@@ -13,7 +13,7 @@ let made = 0;
 
 function session(name = "s" + ++made): Session {
   const id = crypto.randomUUID().slice(0, 8);
-  return Session.add({ id, name, agent: "agent1", repo: "/repo", base: "main", branch: "kny/" + name, worktree: "/repo-" + name, account: "", model: "", dir: path.join(DIR, "sessions", id) }, "the first message");
+  return Session.add({ id, name, agent: "agent1", repo: "/repo", base: "main", branch: "troop/" + name, worktree: "/repo-" + name, account: "", model: "", dir: path.join(DIR, "sessions", id) }, "the first message");
 }
 
 // a subagent's record, as the subagent tool makes it
@@ -183,7 +183,7 @@ test("an event and the wake it makes are taken together, or neither is", () => {
 
 test("a record from an earlier version's tables opens with today's columns, its rows and unknown columns kept", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "old-"));
-  const db = new Database(path.join(dir, "kunumy.db"));
+  const db = new Database(path.join(dir, "montroop.db"));
   db.run("create table work_sessions (id text primary key, name text not null, agent text not null, repo text not null, base text not null, branch text not null, worktree text not null, account text not null, model text not null, dir text not null, status text not null, sdk text not null default '', ack integer not null default 0, launches integer not null default 0, last text not null default '', made integer not null, at integer not null, legacy integer not null default 0)");
   db.run("create table work_runs (session text not null, n integer not null, prompt text not null, status text not null, attempts integer not null default 1, why text not null default '', started integer not null, ended integer, primary key (session, n))");
   db.run("create table work_questions (id text primary key, session text not null, at integer not null)");
@@ -192,7 +192,7 @@ test("a record from an earlier version's tables opens with today's columns, its 
   db.run("insert into work_questions values ('q1', 'a1d5e551', 1)");
   db.close();
   const read = "import { Session } from './Session.ts'; console.log(JSON.stringify({ s: Session.get('a1d5e551'), runs: Session.runs('a1d5e551'), questions: Session.questions('a1d5e551') }))";
-  const out = Bun.spawnSync(["bun", "-e", read], { cwd: path.resolve(import.meta.dir, "../.."), env: { ...process.env, KNY_DIR: dir } });
+  const out = Bun.spawnSync(["bun", "-e", read], { cwd: path.resolve(import.meta.dir, "../.."), env: { ...process.env, TROOP_DIR: dir } });
   const got = JSON.parse(out.stdout.toString()) as { s: Record<string, unknown>; runs: Record<string, unknown>[]; questions: unknown[] };
   expect(got.s).toMatchObject({ name: "old", status: "done", ack: 3, launches: 2, archived: 0, legacy: 7, provider: "", effort: "", memory: 0, write: 1, device: "" });
   expect(got.runs).toMatchObject([{ n: 1, prompt: "the old prompt", report: "" }]);

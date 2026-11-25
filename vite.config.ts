@@ -5,9 +5,9 @@ import tailwind from "@tailwindcss/vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { defineConfig, type Plugin, type ProxyOptions } from "vite";
 
-// the page talks to a Kunumy server: KNY_SERVER names the one a dev or preview
+// the page talks to a Montroop server: TROOP_SERVER names the one a dev or preview
 // run passes its calls to
-const to = process.env.KNY_SERVER;
+const to = process.env.TROOP_SERVER;
 const paths = ["/api", "/auth", "/media", "/image"];
 const proxy: Record<string, ProxyOptions> = to === undefined ? {} : { ...Object.fromEntries(paths.map((path) => [path, { target: to }])), "/ws": { target: to, ws: true } };
 
@@ -19,7 +19,7 @@ const DIST = "ui/dist";
 // too slow to do as the server starts
 function files(): Plugin {
   return {
-    name: "kunumy-files",
+    name: "montroop-files",
     apply: "build",
     closeBundle() {
       for (const name of fs.readdirSync(DIST + "/assets").filter((name) => /\.(js|css)$/.test(name))) {
@@ -40,7 +40,7 @@ const FIRST_FONT = "HankenGrotesk";
 
 function preload(): Plugin {
   return {
-    name: "kunumy-preload",
+    name: "montroop-preload",
     apply: "build",
     transformIndexHtml: {
       order: "post",
@@ -58,7 +58,7 @@ const WEIGHT = /  \[\n    "([a-z]+)",\n[\s\S]*?\n  \],?\n/g;
 
 function weights(): Plugin {
   return {
-    name: "kunumy-weights",
+    name: "montroop-weights",
     transform(code, id) {
       return id.includes("@phosphor-icons/react/dist/defs/") ? code.replace(WEIGHT, (entry, weight: string) => (DRAWN.includes(weight) ? entry : "")) : null;
     },

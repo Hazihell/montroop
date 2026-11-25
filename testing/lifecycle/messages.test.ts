@@ -2,7 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { down, fake, gate, git, Kny, repo, said, tag, until, VIAS, waiting } from "../rig.ts";
+import { down, fake, gate, git, Troop, repo, said, tag, until, VIAS, waiting } from "../rig.ts";
 
 afterAll(down);
 
@@ -10,7 +10,7 @@ const AGAIN = "A message with this request was sent already: not sent twice.";
 
 for (const via of VIAS) {
   test.concurrent(via + ": a message sent twice with the same request goes in once, to a running one and to a done one", async () => {
-    const k = await Kny.up();
+    const k = await Troop.up();
     const t = tag();
     await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
     const s = await k.work(via, "so", t + ": work", repo());
@@ -33,7 +33,7 @@ for (const via of VIAS) {
   });
 
   test.concurrent(via + ": a stop by its agent's tool wakes no one, a stop by the user wakes its agent once, and each ends what it runs", async () => {
-    const k = await Kny.up();
+    const k = await Troop.up();
     const r = repo();
     const [ta, tb] = [tag(), tag()];
     await fake.next(ta + ": work", { what: "tool", calls: [["Bash", { command: gate(ta) }]] });
@@ -53,7 +53,7 @@ for (const via of VIAS) {
   });
 
   test.concurrent(via + ": a call that asks first waits across a server restart, runs once when approved, and not when denied", async () => {
-    const k = await Kny.up();
+    const k = await Troop.up();
     const r = repo();
     const canary = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "outside-")), "canary.txt");
     fs.writeFileSync(canary, "keep\n");
@@ -73,14 +73,14 @@ for (const via of VIAS) {
     expect((await k.api("POST", "/api/approve", { id: rm.id, ok: false, note: "" })).status).toBe(200);
 
     await s.status("done");
-    expect(git(path.join(path.dirname(r), "origin.git"), "rev-list", "--count", "main..kny/ap")).toBe("1");
+    expect(git(path.join(path.dirname(r), "origin.git"), "rev-list", "--count", "main..troop/ap")).toBe("1");
     expect(fs.existsSync(canary)).toBe(true);
     await until("the done wake", async () => await said(k, s.woke("done:")) === 1);
     expect(await said(k, s.woke("waiting:"))).toBe(2);
   });
 
   test.concurrent(via + ": the owner's note to an approved call, and to a denied one, reaches it with the call's result", async () => {
-    const k = await Kny.up();
+    const k = await Troop.up();
     const t = tag();
     await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: "git push -q --force origin HEAD:" + t + " && echo " + t + "-pushed" }]] });
     await fake.next(t + "-pushed", { what: "tool", calls: [["Bash", { command: "git push -q --force origin HEAD:" + t + "-2" }]] });

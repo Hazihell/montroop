@@ -4,7 +4,7 @@ import { Diff } from "../../Diff.ts";
 import { text_of } from "../../Json.ts";
 import type { Version } from "../../Team.ts";
 import * as View from "../../View.ts";
-import { note } from "./Kunumy.ts";
+import { note } from "./Montroop.ts";
 
 type Got = { prompt: string; versions: Version[] };
 

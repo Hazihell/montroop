@@ -1,6 +1,6 @@
 // Loop
 // ====
-// The driver over a vendor's API (a Wire, Agent): Kunumy runs the model's
+// The driver over a vendor's API (a Wire, Agent): Montroop runs the model's
 // loop, each tool call it makes run through the holder (io.call) and its
 // result sent in the next request, till a turn ends with none. Given, the
 // first message is the job's blocks; native, the job's first blocks and

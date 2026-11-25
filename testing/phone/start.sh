@@ -25,5 +25,5 @@ adb reverse tcp:8788 tcp:8788 > /dev/null
 adb shell am start -a android.intent.action.VIEW -d http://127.0.0.1:8788/ com.android.chrome > /dev/null
 up 120 'adb shell cat /proc/net/unix | grep -q chrome_devtools_remote' "Chrome did not start"
 adb forward tcp:9222 localabstract:chrome_devtools_remote > /dev/null
-echo "phone up: Android $(adb shell getprop ro.build.version.release | tr -d '\r'), Chrome $(cat /chrome.version), 1080x2400 at 420 dpi; Kunumy at http://127.0.0.1:8788"
+echo "phone up: Android $(adb shell getprop ro.build.version.release | tr -d '\r'), Chrome $(cat /chrome.version), 1080x2400 at 420 dpi; Montroop at http://127.0.0.1:8788"
 sleep infinity & wait
