@@ -10,7 +10,8 @@ fake error KIND [--reset 5m]   the next call fails: prompt-too-long, overloaded,
 fake stall 60s | fake cut      the next stream hangs that long, or drops halfway
 fake log | fake last [--json]  what the app sent: every call, or the last one (--json: its headers and body)
 fake clear                     forget what's queued, limits and refused sign-ins
---match TEXT                   only for the call whose latest message contains TEXT (the newest part of a turn's message, or a tool's result)`;
+--match TEXT                   only for the call whose latest message contains TEXT (the newest part of a turn's message, or a tool's result);
+                               "Compaction: TEXT": only for the compactor's call whose task contains TEXT`;
 
 const KINDS: Kind[] = ["prompt-too-long", "overloaded", "rate-limit", "usage-limit", "auth-expired"];
 

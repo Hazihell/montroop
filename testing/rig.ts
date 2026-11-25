@@ -158,6 +158,15 @@ export class Kny {
     }
   }
 
+  // the calls waiting on the owner's approval, and those answered
+  cards(): Array<{ id: string; tool: string; input: string; ok: boolean | null }> {
+    try {
+      return JSON.parse(fs.readFileSync(path.join(this.dir, "asks.json"), "utf8")) as Array<{ id: string; tool: string; input: string; ok: boolean | null }>;
+    } catch {
+      return [];
+    }
+  }
+
   async session(name: string, prompt: string, repo: string, more: Json = {}): Promise<Session> {
     const r = await this.api("POST", "/api/sessions", { agent: this.agent, repo, base: "main", name, brief: "", prompt, ...more });
     if (r.status !== 200) {

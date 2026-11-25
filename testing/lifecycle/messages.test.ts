@@ -61,22 +61,15 @@ test.concurrent("a call that asks first waits across a server restart, runs once
   await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: "git commit --allow-empty -qm ap && git push -q --force origin HEAD && echo " + t + "-pushed" }]] });
   await fake.next(t + "-pushed", { what: "tool", calls: [["Bash", { command: "rm -f " + canary }]] });
   const s = await k.session("ap", t + ": work", r);
-  const cards = (): Array<{ id: string; input: string; ok: boolean | null }> => {
-    try {
-      return JSON.parse(fs.readFileSync(path.join(k.dir, "asks.json"), "utf8")) as Array<{ id: string; input: string; ok: boolean | null }>;
-    } catch {
-      return [];
-    }
-  };
   expect((await s.status("waiting")).waits).toBe("approval");
-  const push = await until("the push's card", () => cards().find((c) => c.input.includes("git push")));
+  const push = await until("the push's card", () => k.cards().find((c) => c.input.includes("git push")));
   await k.kill();
   await k.start();
 
   const back = await s.page();
   expect([back.status, back.waits, back.parked.length]).toEqual(["waiting", "approval", 1]);
   expect((await k.api("POST", "/api/approve", { id: push.id, ok: true, note: "" })).status).toBe(200);
-  const rm = await until("the rm's card", () => cards().find((c) => c.input.includes("rm -f")));
+  const rm = await until("the rm's card", () => k.cards().find((c) => c.input.includes("rm -f")));
   expect((await k.api("POST", "/api/approve", { id: rm.id, ok: false, note: "" })).status).toBe(200);
 
   await s.status("done");

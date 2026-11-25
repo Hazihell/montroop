@@ -399,7 +399,7 @@ async function model(req: Request, vendor: Vendor, url: URL): Promise<Response> 
   const order: Order = until > Date.now() ? { what: "error", kind: "usage-limit", reset: until } : pick(latest, compaction);
   const tools = list(get(body, "tools")).map((t) => str(get(t, "name")) ?? str(get(t, "type")) ?? "");
   LOG.push({ n: LOG.length + 1, at: new Date().toISOString(), vendor, path: url.pathname, model: name, answer: JSON.stringify(order), system: got.system, tools, said: got.said, latest, headers: Object.fromEntries(req.headers), body });
-  LOG.splice(0, LOG.length - 200);
+  LOG.splice(0, LOG.length - 1000);
   const claude = vendor.startsWith("claude");
   if (order.what === "error") {
     if (order.kind === "usage-limit") {
