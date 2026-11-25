@@ -323,6 +323,25 @@ class Session {
   }
 }
 
+// the product was named Kunumy, its CLI kny, before Montroop: a checkout from
+// then gets the same rename, so it speaks to this one by the names it uses
+function renamed(dir: string): void {
+  for (const rel of fs.readdirSync(dir, { recursive: true, encoding: "utf8" })) {
+    const file = path.join(dir, rel);
+    if (!fs.statSync(file).isFile()) {
+      continue;
+    }
+    const text = fs.readFileSync(file, "utf8");
+    const now = text.replace(/KNY_/g, "TROOP_").replace(/Kunumy/g, "Montroop").replace(/kunumy/g, "montroop").replace(/\bKny\b/g, "Troop").replace(/\bkny\b/g, "troop");
+    if (now !== text) {
+      fs.writeFileSync(file, now);
+    }
+    if (/kunumy/i.test(rel)) {
+      fs.renameSync(file, path.join(dir, rel.replace(/Kunumy/g, "Montroop").replace(/kunumy/g, "montroop")));
+    }
+  }
+}
+
 // a checkout of the last commit whose holders spoke the wire's version
 // before version (by default this one's, Wire's VERSION), so a test can
 // start its server and holders; made once per test file
@@ -338,6 +357,7 @@ export function older(version = Number(/export const VERSION = (\d+);/.exec(fs.r
   if (r.exitCode !== 0 || raised === "") {
     throw new Error("no checkout of the version before " + version + ": " + r.stderr.toString());
   }
+  renamed(dir);
   fs.symlinkSync(path.join(ROOT, "node_modules"), path.join(dir, "node_modules"));
   fs.mkdirSync(path.join(dir, "ui"), { recursive: true });
   fs.symlinkSync(path.join(ROOT, "ui", "dist"), path.join(dir, "ui", "dist"));

@@ -54,7 +54,7 @@ export const STATES: Record<View.SessionRow["status"], string> = { running: "Run
 // question waits on
 export function WorkState({ w, agent, now }: { w: View.SessionRow; agent: string; now: number }): ReactNode {
   const said = w.waits === "approval" ? "Needs your approval"
-    : w.waits === "answer" ? "Asks " + (agent || "its agent")
+    : w.waits === "answer" ? "Asks " + (agent || "its mon")
     : w.waits === "limit" ? "Usage limit · " + (w.until === null || w.until <= now ? "trying again" : "resets " + View.clock(w.until, now))
     : STATES[w.status];
   return <span className={"state " + (w.waits === null ? w.status : "waiting")}>{said}</span>;
@@ -90,7 +90,7 @@ export function WorkHow({ w, long = false }: { w: View.SessionRow; long?: boolea
 export async function work_act(id: string, act: "say" | "stop" | "resume" | "archive", body: object = {}): Promise<Record<string, unknown> | null> {
   const out = await View.post("/api/sessions/" + id + "/" + act, body);
   if (out.ok !== true) {
-    note(text_of(out.error, "Could not " + act + " the session."));
+    note(text_of(out.error, "Could not " + act + " the submon."));
     return null;
   }
   return out;

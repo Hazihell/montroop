@@ -60,7 +60,7 @@ export function Settings(): ReactNode {
   };
   return (
     <section className="page">
-      <header className="head pl-3.5"><Back to="/" label="Back to the agents" /><h1 className="pl-1.5">Settings</h1></header>
+      <header className="head pl-3.5"><Back to="/" label="Back to your mons" /><h1 className="pl-1.5">Settings</h1></header>
       <div className="scroll pb-6">
         <div className="mx-auto max-w-xl">
           <h2 className="label pt-2">Accent</h2>

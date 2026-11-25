@@ -20,7 +20,7 @@ async function save(agent: string, look: Drawn): Promise<string> {
   const all = res?.ok === true ? ((await res.json().catch(() => null)) as { agents: Saved[] } | null) : null;
   const a = all?.agents.find((x) => x.id === agent);
   if (a === undefined) {
-    return "Could not read the agent. Try again in a moment.";
+    return "Could not read the mon. Try again in a moment.";
   }
   const out = await View.post("/api/agents/" + agent, { name: a.name, about: a.about, prompt: a.prompt, picture: look_text(look) });
   return out.error === undefined ? "" : text_of(out.error, "Could not save the look.");

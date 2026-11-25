@@ -1283,7 +1283,7 @@ export namespace Chat {
 
   export async function ingest(chat: Chat, id: string, body: Body): Promise<Answer> {
     if (chat.main.busy || chat.batch !== null) {
-      return { error: (chat.main.busy ? "The agent is answering" : "An import is under way") + ": import again once it ends." };
+      return { error: (chat.main.busy ? "The mon is answering" : "An import is under way") + ": import again once it ends." };
     }
     const done = Chat.done(chat);
     let said = 0;
@@ -2243,7 +2243,7 @@ export namespace Main {
     }
     if (what === "archive" || what === "restore") {
       const last = what === "archive" && Team.active().every((a) => a.id === id);
-      return out(last ? { error: Chat.name(chat) + " is the last active agent, so it can't be archived." } : Main.shelve(chat, what === "archive"));
+      return out(last ? { error: Chat.name(chat) + " is the last active mon, so it can't be archived." } : Main.shelve(chat, what === "archive"));
     }
     const x: unknown = await req.json().catch(() => null);
     if (what === "prompts") {
@@ -2314,7 +2314,7 @@ export namespace Main {
         return { text: "You can't archive yourself.", fail: true };
       }
       if (Team.active().every((a) => a.id === them.id)) {
-        return { text: them.name + " is the last active agent, so it can't be archived.", fail: true };
+        return { text: them.name + " is the last active mon, so it can't be archived.", fail: true };
       }
     } else if (them.archived === 0) {
       return { text: them.name + " isn't archived.", fail: true };

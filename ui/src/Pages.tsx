@@ -69,8 +69,8 @@ export function Agents({ side = false }: { side?: boolean }): ReactNode {
   return (
     <section className={side ? "list" : "page"}>
       <header className="head">
-        <h1>Agents</h1>
-        <Link to="/new" className="round gl" aria-label="New agent"><PlusIcon size={22} weight="bold" /></Link>
+        <h1>Mons</h1>
+        <Link to="/new" className="round gl" aria-label="New mon"><PlusIcon size={22} weight="bold" /></Link>
         <Link to="/settings" className="round gl" aria-label="Montroop's settings"><GearSixIcon size={22} /></Link>
       </header>
       <div className="scroll px-1.5 pb-4">
@@ -99,7 +99,7 @@ export function Running({ agent }: { agent: string }): ReactNode {
         <Back to={"/a/" + agent} label="Back to the chat" />
         <h1 className="truncate pl-1.5">Running</h1>
       </header>
-      {name === "" ? null : <p className="lede -mt-1 pb-1">{name}'s work sessions, subagents, background jobs and timers.</p>}
+      {name === "" ? null : <p className="lede -mt-1 pb-1">{name}'s submons, background jobs and timers.</p>}
       <div className="scroll pb-4"><RunList agent={agent} /></div>
     </section>
   );
@@ -142,15 +142,15 @@ export function Memory({ agent }: { agent: string }): ReactNode {
       <div className="scroll pb-4">
         <Context agent={agent} label />
         <h2 className="label">Pins</h2>
-        <p className="lede pb-2 text-[0.875rem]">What your agents learned about you and keep outside the memory's compression, for every agent.</p>
+        <p className="lede pb-2 text-[0.875rem]">What your mons learned about you and keep outside the memory's compression, for every mon.</p>
         {pins === undefined ? null
           : pins === null ? <p className="lede">Could not read the pins. <button type="button" className="font-semibold text-act-ink underline" onClick={() => load(null)}>Try again</button></p>
-          : pins.length === 0 ? <p className="lede">None yet. An agent pins what you teach it for good, and every agent follows it.</p>
+          : pins.length === 0 ? <p className="lede">None yet. A mon pins what you teach it for good, and every mon follows it.</p>
           : pins.map((pin) => (
             <div key={pin.id} className="item">
               <PushPinIcon size={18} />
               <p>{pin.text}<small>{pin_note(pin)}</small></p>
-              <button type="button" className="pillbtn min-h-11 px-4 text-[0.875rem]" onClick={() => confirm("Unpin this? Agents stop following it.") && load(pin.id)}>Unpin</button>
+              <button type="button" className="pillbtn min-h-11 px-4 text-[0.875rem]" onClick={() => confirm("Unpin this? Mons stop following it.") && load(pin.id)}>Unpin</button>
             </div>
           ))}
       </div>

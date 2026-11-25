@@ -523,7 +523,7 @@ function view_heard(v: View, msg: Server): Client[] {
       if (!msg.found) {
         v.pages.delete(msg.name);
         v.page = v.page === page ? null : v.page;
-        v.notes.push("No subagent " + msg.name + ".");
+        v.notes.push("No submon " + msg.name + ".");
       }
       return [];
     }

@@ -173,7 +173,7 @@ function Tuck({ shown }: { shown: boolean }): ReactNode {
     return () => removeEventListener("keydown", key);
   }, [flip]);
   return (
-    <button ref={button} type="button" className="tuck round gl" aria-label="Agents" aria-controls="agents" aria-expanded={shown} aria-keyshortcuts={MAC ? "Meta+B" : "Control+B"} title={(shown ? "Hide" : "Show") + " the agents (" + (MAC ? "⌘B" : "Ctrl+B") + ")"} onClick={flip}>
+    <button ref={button} type="button" className="tuck round gl" aria-label="Mons" aria-controls="agents" aria-expanded={shown} aria-keyshortcuts={MAC ? "Meta+B" : "Control+B"} title={(shown ? "Hide" : "Show") + " your mons (" + (MAC ? "⌘B" : "Ctrl+B") + ")"} onClick={flip}>
       <SidebarSimpleIcon size={22} />
     </button>
   );
@@ -220,7 +220,7 @@ function Home(): ReactNode {
     <section className="page">
       <div className="m-auto grid max-w-xs justify-items-center gap-3 p-6 text-center">
         <Avatar look={look_of("", "montroop")} mood="idle" size={88} lit />
-        <p className="text-mid">{!listed ? "Show the agents to open a chat." : any ? "Pick an agent to open its chat." : "Make your first agent with the + button."}</p>
+        <p className="text-mid">{!listed ? "Show your mons to open a chat." : any ? "Pick a mon to open its chat." : "Mons are your agents. Make your first one with the + button."}</p>
       </div>
     </section>
   );
@@ -316,9 +316,9 @@ function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode 
     <section ref={setPage} className={"page swipe" + (panel ? " paned" : "")}>
       <div className="relative flex min-h-0 flex-1 flex-col">
         <header className="top">
-          <Back to={sub === null ? "/" : "/a/" + agent} label={sub === null ? "Back to the agents" : "Back to " + (mate?.name ?? "the chat")} className={sub === null ? "back" : ""} />
+          <Back to={sub === null ? "/" : "/a/" + agent} label={sub === null ? "Back to your mons" : "Back to " + (mate?.name ?? "the chat")} className={sub === null ? "back" : ""} />
           {sub === null ? (
-            <button ref={setFace} type="button" className="isl" aria-haspopup={wider ? undefined : "menu"} aria-expanded={wider ? panel : menu} aria-label={[mate?.name ?? "This agent", doing, going > 0 ? going + " at work" : ""].filter((t) => t !== "").join(", ")} onClick={() => (wider ? panel_set(!shown) : openMenu())}>
+            <button ref={setFace} type="button" className="isl" aria-haspopup={wider ? undefined : "menu"} aria-expanded={wider ? panel : menu} aria-label={[mate?.name ?? "This mon", doing, going > 0 ? going + " at work" : ""].filter((t) => t !== "").join(", ")} onClick={() => (wider ? panel_set(!shown) : openMenu())}>
               <span className="relative">
                 <Face picture={mate?.picture ?? ""} id={agent} mood={mood} size={FACE} />
                 {going > 0 ? <em key={going} className={"count" + pop}>{going}</em> : null}

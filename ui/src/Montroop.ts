@@ -116,7 +116,7 @@ const WORK_SAID: Record<View.SessionRow["status"] | NonNullable<View.Waits>, [st
   running  : ["working", "working"],
   waiting  : ["waits", "wait"],
   approval : ["needs you", "need you"],
-  answer   : ["waits on its agent", "wait on their agent"],
+  answer   : ["waits on its mon", "wait on their mon"],
   limit    : ["waits on a usage limit", "wait on a usage limit"],
   done     : ["done", "done"],
   failed   : ["failed", "failed"],

@@ -44,7 +44,7 @@ export function RunList({ agent }: { agent: string }): ReactNode {
   const jobs = held ? allJobs : NO_JOBS;
   const timers = held ? allTimers : NO_TIMERS;
   if (works.length + subs.length + jobs.length + timers.length === 0) {
-    return <p className="lede py-2">{held ? "Nothing runs right now. Its work sessions, subagents, background jobs and timers show here." : "…"}</p>;
+    return <p className="lede py-2">{held ? "Nothing runs right now. Its submons, background jobs and timers show here." : "…"}</p>;
   }
   return (
     <div className="pb-2">
@@ -111,7 +111,7 @@ function Who({ agent }: { agent: string }): ReactNode {
 function Places({ agent }: { agent: string }): ReactNode {
   const full = useContext(agent);
   return (
-    <nav className="places" aria-label="The agent">
+    <nav className="places" aria-label="The mon">
       <Link to="/a/$agent/memory" params={{ agent }} className="item go">
         <BrainIcon size={20} />
         <p>Memory<small>{full === null ? "Context and pins" : full + "% of its context · pins"}</small></p>
@@ -124,7 +124,7 @@ function Places({ agent }: { agent: string }): ReactNode {
       </Link>
       <Link to="/a/$agent/edit" params={{ agent }} className="item go">
         <GearSixIcon size={20} />
-        <p>Agent settings<small>Prompt, account, MCP servers, history</small></p>
+        <p>Mon settings<small>Prompt, account, MCP servers, history</small></p>
         <CaretRightIcon size={16} className="self-center" />
       </Link>
       <Link to="/a/$agent/look" params={{ agent }} className="item go">
@@ -187,7 +187,7 @@ export function Menu({ agent, face, close, leaving, gone }: { agent: string; fac
       <button type="button" className="veil" tabIndex={-1} aria-hidden inert={leaving} onClick={close} />
       <div ref={box} className={"menu" + (leaving ? " leaving" : "")} inert={leaving}>
         <p>{mate?.name ?? ""}{state === "" ? null : <i>{state}</i>}</p>
-        <div role="menu" aria-label={mate?.name ?? "The agent"}>
+        <div role="menu" aria-label={mate?.name ?? "The mon"}>
           <Link role="menuitem" to="/a/$agent/running" params={{ agent }} replace>
             <PlayIcon size={20} weight={going > 0 ? "fill" : "regular"} />Running
             {going > 0 ? <em className="count static">{going}</em> : null}
@@ -201,7 +201,7 @@ export function Menu({ agent, face, close, leaving, gone }: { agent: string; fac
           </Link>
           <hr />
           <Link role="menuitem" to="/a/$agent/edit" params={{ agent }} replace>
-            <GearSixIcon size={20} />Agent settings
+            <GearSixIcon size={20} />Mon settings
           </Link>
           <Link role="menuitem" to="/a/$agent/look" params={{ agent }} replace>
             <PaintBrushIcon size={20} />Its look
@@ -216,7 +216,7 @@ export function Menu({ agent, face, close, leaving, gone }: { agent: string; fac
 // then its other places
 export function Panel({ agent }: { agent: string }): ReactNode {
   return (
-    <aside className="panel" aria-label="The agent">
+    <aside className="panel" aria-label="The mon">
       <Who agent={agent} />
       <Context agent={agent} />
       <h2 className="label pt-3">Running</h2>

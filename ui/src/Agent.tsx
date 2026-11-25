@@ -27,11 +27,11 @@ async function agents_read(): Promise<All | null> {
 // what Leader mode adds to each request: about 400 B a line
 function leader_cost(lines: number, agents: number): string {
   if (agents === 0) {
-    return "Adds nothing now: there are no other agents.";
+    return "Adds nothing now: there are no other mons.";
   }
   const kb = (lines * agents * 400) / 1000;
   const size = kb < 10 ? String(Math.round(kb * 10) / 10) : String(Math.round(kb));
-  return "Adds about " + size + " KB to every request (" + lines + (lines === 1 ? " line" : " lines") + " × " + agents + (agents === 1 ? " agent" : " agents") + ").";
+  return "Adds about " + size + " KB to every request (" + lines + (lines === 1 ? " line" : " lines") + " × " + agents + (agents === 1 ? " mon" : " mons") + ").";
 }
 
 // a picture cropped square to 256 px, into the media store of an agent
@@ -171,8 +171,8 @@ function Fields({ a, all }: { a: Agent | null; all: All }): ReactNode {
   return (
     <section className="page">
       <header className="head pl-3.5">
-        {a === null ? <Back to="/" label="Back to the agents" /> : <Back to={"/a/" + a.id} label="Back to the chat" />}
-        <h1 className="truncate pl-1.5">{a === null ? "New agent" : form.name}</h1>
+        {a === null ? <Back to="/" label="Back to your mons" /> : <Back to={"/a/" + a.id} label="Back to the chat" />}
+        <h1 className="truncate pl-1.5">{a === null ? "New mon" : form.name}</h1>
       </header>
       <div className="scroll pb-6">
         <form className="mx-auto flex max-w-xl flex-col" autoComplete="off" onSubmit={(ev) => { ev.preventDefault(); void send(form); }}>
@@ -189,30 +189,30 @@ function Fields({ a, all }: { a: Agent | null; all: All }): ReactNode {
           <Set name="Name">
             <input className="field" maxLength={NAME} spellCheck={false} value={form.name} onChange={(ev) => set({ name: ev.target.value })} onBlur={left} />
           </Set>
-          <Set name="Description" about="For the team list and the other agents.">
+          <Set name="Description" about="For the team list and the other mons.">
             <input className="field" maxLength={ABOUT} value={form.about} onChange={(ev) => set({ about: ev.target.value })} onBlur={left} />
           </Set>
           <Set name="System prompt" about="Who it is and what it does.">
             <textarea className="field" rows={6} value={form.prompt} onChange={(ev) => { setTemplate(null); set({ prompt: ev.target.value }); }} onBlur={left} />
           </Set>
           {accounts.length < 2 ? null : (
-            <Set name="Claude account" about="The Claude sign-in it, its subagents and its memory's summaries use, with that account's usage limits and connectors.">
+            <Set name="Claude account" about="The Claude sign-in it, its submons and its memory's summaries use, with that account's usage limits and connectors.">
               <select className="field" value={form.claude} onChange={(ev) => set({ claude: ev.target.value }, true)}>
                 {accounts.map((c) => <option key={c} value={c}>{c}{all.accounts.includes(c) ? "" : " (signed out)"}</option>)}
               </select>
             </Set>
           )}
-          <Set name="Manage agents" about="It may create, edit, archive and restore agents, when you ask it to. None is deleted.">
+          <Set name="Manage mons" about="It may create, edit, archive and restore mons, when you ask it to. None is deleted.">
             <input type="checkbox" role="switch" className="switch" checked={form.manage} onChange={(ev) => set({ manage: ev.target.checked }, true)} />
           </Set>
-          <Set name="Lasting subagents" about="Its subagents run on their own through restarts, each in its own folder or worktree, and it drives them with one subagent tool in place of spawn, tell, stop and session.">
+          <Set name="Lasting submons" about="Its submons (subagents) run on their own through restarts, each in its own folder or worktree, and it drives them with one subagent tool in place of spawn, tell, stop and session.">
             <input type="checkbox" role="switch" className="switch" checked={form.subagents} onChange={(ev) => set({ subagents: ev.target.checked }, true)} />
           </Set>
-          <Set name="Leader mode" about="Each turn, the newest lines of every other agent's memory, to zoom into.">
+          <Set name="Leader mode" about="Each turn, the newest lines of every other mon's memory, to zoom into.">
             <input type="checkbox" role="switch" className="switch" checked={form.leader} onChange={(ev) => set({ leader: ev.target.checked }, true)} />
           </Set>
           {form.leader ? (
-            <Set name="Lines per agent" about={Number.isInteger(Number(form.lines)) && Number(form.lines) >= 1 ? leader_cost(Number(form.lines), others) : undefined}>
+            <Set name="Lines per mon" about={Number.isInteger(Number(form.lines)) && Number(form.lines) >= 1 ? leader_cost(Number(form.lines), others) : undefined}>
               <input className="field" type="number" inputMode="numeric" min={1} max={View.LINES_MOST} step={1} value={form.lines} onChange={(ev) => set({ lines: ev.target.value })} onBlur={left} />
             </Set>
           ) : null}
@@ -248,7 +248,7 @@ export function AgentPage({ agent }: { agent: string | null }): ReactNode {
   }, [agent]);
   const a = agent === null ? null : all?.agents.find((x) => x.id === agent);
   if (all == null || a === undefined) {
-    return <section className="page"><p className="lede pt-8">{all === undefined ? "" : all === null ? "Could not read the agents. Try again in a moment." : "No such agent."}</p></section>;
+    return <section className="page"><p className="lede pt-8">{all === undefined ? "" : all === null ? "Could not read the mons. Try again in a moment." : "No such mon."}</p></section>;
   }
   return <Fields key={agent ?? "new"} a={a} all={all} />;
 }
@@ -272,7 +272,7 @@ export function Archived(): ReactNode {
   }
   return (
     <>
-      <h2 className="label">Archived agents</h2>
+      <h2 className="label">Archived mons</h2>
       {gone.map((m) => (
         <div key={m.id} className="item">
           <Face picture={m.picture} id={m.id} size={36} />

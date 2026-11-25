@@ -31,7 +31,7 @@ const SETTING: Record<string, [string, string]> = {
   pick              : ["Default model", "For chats that haven't picked one."],
   compactor         : ["Compactor model", "Writes the memory's summaries."],
   thinking          : ["Show thinking", "The model's thinking, in the chat."],
-  hops              : ["Hop limit", "Agent-to-agent messages in a row; 0: off."],
+  hops              : ["Hop limit", "Mon-to-mon messages in a row; 0: off."],
   compactor_context : ["Compactor context", "KB of chat each summary sees (1–128)."],
 };
 
@@ -44,7 +44,7 @@ const VENDOR_KEY: Record<string, string> = { "claude-api": "anthropic", "openai-
 
 const GROUPS: Array<[string, string[]]> = [
   ["Chat", ["thinking"]],
-  ["Agents", ["hops"]],
+  ["Mons", ["hops"]],
   ["Models", ["vendors", "pick", "compactor", "compactor_context"]],
 ];
 
@@ -366,7 +366,7 @@ function Ask(): ReactNode {
   );
   return (
     <div className="set">
-      <span><small>Your agents wait for your yes before a tool call that matches a rule: a card in the chat, and a notification on devices with notifications on. A rule names tools (<code>*</code> for any characters, <code>!</code> to leave one out; device MCP tools are named <code>device_server__tool</code>) and, if any, a regular expression its arguments must match, in which <code>{SCRATCH}</code> is the device's scratch folder.</small></span>
+      <span><small>Your mons wait for your yes before a tool call that matches a rule: a card in the chat, and a notification on devices with notifications on. A rule names tools (<code>*</code> for any characters, <code>!</code> to leave one out; device MCP tools are named <code>device_server__tool</code>) and, if any, a regular expression its arguments must match, in which <code>{SCRATCH}</code> is the device's scratch folder.</small></span>
       {rules.map((_, i) => (
         <div key={i} className="prof">
           <div className="flex gap-2">

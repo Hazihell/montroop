@@ -54,7 +54,7 @@ function useDetail(id: string, moved: string): { d: View.SessionPage | null; log
       if (got === null || got === "gone") {
         setGone(got === "gone");
         if (got === null) {
-          note("Can't reach Montroop: the session shows again once it can.");
+          note("Can't reach Montroop: the submon shows again once it can.");
         }
         return;
       }
@@ -246,7 +246,7 @@ function Log({ d, log, id, agent, live, earlier }: { d: View.SessionPage; log: T
       {!reported && report !== "" && !live ? <div className="row"><Report text={report} /></div> : null}
       {rest.length === 0 ? null : <div className="row"><p className="cap">Its media</p><div className="mt-2 flex flex-wrap gap-2">{rest.map((m) => <Media key={m} id={id} name={m} />)}</div></div>}
       {waiting.map((m) => <div key={m.id} className="row"><Sent text={m.text} why={m.mode === "queue" ? "Queued for its next run" : "Goes in at its next step"} /></div>)}
-      {d.questions.map((q) => <div key={q.id} className="row"><p className="cap">Waits for {agent || "its agent"} to answer “{Md.md_flat(q.text)}”. A message here answers it too.</p></div>)}
+      {d.questions.map((q) => <div key={q.id} className="row"><p className="cap">Waits for {agent || "its mon"} to answer “{Md.md_flat(q.text)}”. A message here answers it too.</p></div>)}
       {asks.map((a) => <div key={a.id} className="row"><Ask row={View.ask_row(a)} /></div>)}
       {working && asks.length === 0 && d.questions.length === 0 ? <div className="row"><p className="wait" role="status" aria-label="Working"><i /><i /><i /></p></div> : null}
     </>
@@ -313,8 +313,8 @@ export function WorkPage({ agent, id }: { agent: string; id: string }): ReactNod
   if (gone) {
     return (
       <section className="page">
-        <header className="head pl-3.5"><Back to={"/a/" + agent + "/running"} label="Back to what runs" /><h1 className="truncate pl-1.5">Session</h1></header>
-        <p className="lede">This session is gone: archived, or never was.</p>
+        <header className="head pl-3.5"><Back to={"/a/" + agent + "/running"} label="Back to what runs" /><h1 className="truncate pl-1.5">Submon</h1></header>
+        <p className="lede">This submon is gone: archived, or never was.</p>
       </section>
     );
   }

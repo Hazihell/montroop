@@ -18,8 +18,8 @@ const FAILED = "A file didn't upload: remove it, then send.";
 const SETTLE = 2000;
 
 const MODES: Array<[string, string]> = [
-  ["Standard", "Each message is summarized for the agent's memory. Cheapest, good for long working sessions."],
-  ["Conversation", "Messages stay word for word in the agent's view until you switch back. Costs more per turn."],
+  ["Standard", "Each message is summarized for the mon's memory. Cheapest, good for long working sessions."],
+  ["Conversation", "Messages stay word for word in the mon's view until you switch back. Costs more per turn."],
 ];
 
 type Item = { key: number; name: string; kind: string; size: number; state: "up" | "ok" | "bad"; part: number; url: string; peek: string };

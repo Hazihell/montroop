@@ -269,7 +269,7 @@ export function Ask({ row }: { row: Of<"Ask"> }): ReactNode {
       <h3>{row.ask.what}</h3>
       {row.ask.who === "" ? null : <p className="cap">asked by <AskedBy ask={row.ask} /></p>}
       <div className="prose my-2.5 text-[0.9375rem]"><CallBody call={row.call} /></div>
-      <input className="field" maxLength={2000} placeholder="Note for the agent (optional)" aria-label="Note for the agent" autoComplete="off" value={note} onChange={(ev) => setNote(ev.target.value)} />
+      <input className="field" maxLength={2000} placeholder="Note for the mon (optional)" aria-label="Note for the mon" autoComplete="off" value={note} onChange={(ev) => setNote(ev.target.value)} />
       <div className="mt-3 flex gap-2">
         <button type="button" className="pillbtn go" disabled={sent} onClick={() => say(true)}>Approve</button>
         <button type="button" className="pillbtn" disabled={sent} onClick={() => say(false)}>Deny</button>
