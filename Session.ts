@@ -1,12 +1,12 @@
 // Session
 // =======
 // A work session's record in kunumy.db: an agent's Claude Code session on a
-// repo, in its own branch and worktree, kept across server restarts. A
-// session has runs (a message it works on until it's done with it), each
-// tried again (an attempt) when its holder died; the calls it has parked
-// for the owner's answer; the calls of Kunumy's tools its holder had the
-// server run; the questions it asked its agent; the messages sent to it
-// not yet taken in; the messages that wake its agent.
+// repo, in its own branch and worktree, or a subagent of its, kept across
+// server restarts. A session has runs (a message it works on until it's
+// done with it), each tried again (an attempt) when its holder died; the
+// calls it has parked for the owner's answer; the calls of Kunumy's tools
+// its holder had the server run; the questions it asked its agent; the
+// messages sent to it not yet taken in; the messages that wake its agent.
 
 import type { Database } from "bun:sqlite";
 import type { Out } from "./Agent.ts";
@@ -20,16 +20,28 @@ export type Status = "running" | "waiting" | "done" | "failed" | "stopped";
 // answered: the last call parked answered; run: a new run or attempt
 type Step = "ask" | "answered" | "ended" | "failed" | "stop" | "run";
 
-// account: its Claude account ("": personal); dir: its folder in Kunumy's,
-// with its log; sdk: the Claude Code session it resumes; ack: the last of
-// its holder's events taken in; launches: its holders so far; unit, sock:
-// the latest one's systemd unit and socket, as named at its launch; last:
-// its latest words; seen: when the owner last looked at it
+// A subagent of the engine (one its agent started with the subagent tool)
+// is a session whose provider is named: it runs on its provider's driver,
+// as its job file says (Sessions). repo: "" for none, its worktree then its
+// own folder; branch: "" for none (no repo, or a detached worktree);
+// account: its account at its provider (a Claude plan's name, "" for
+// personal; key, an API key; chatgpt, the ChatGPT plan); model, effort:
+// its own ("": the account's default); memory: 1 if it reads its agent's
+// memory; write: 0 if its edit tools are denied; device: the computer it
+// runs on ("": the server's); dir: its folder in Kunumy's, with its log;
+// sdk: the provider's session it resumes; ack: the last of its holder's
+// events taken in; launches: its holders so far; unit, sock: the latest
+// one's systemd unit and socket, as named at its launch; last: its latest
+// words; seen: when the owner last looked at it
 export type Session = {
   id: string; name: string; agent: string; repo: string; base: string; branch: string; worktree: string;
-  account: string; model: string; dir: string; status: Status; sdk: string; ack: number; launches: number;
+  provider: string; account: string; model: string; effort: string; memory: number; write: number; device: string;
+  dir: string; status: Status; sdk: string; ack: number; launches: number;
   unit: string; sock: string; last: string; made: number; at: number; archived: number; seen: number;
 };
+
+// what started it: the session tool or the subagent tool
+export type Kind = "session" | "subagent";
 
 // report: what the session gave as the run's result
 export type Run = { session: string; n: number; prompt: string; status: Status; attempts: number; why: string; report: string; started: number; ended: number | null };
@@ -76,7 +88,7 @@ const NEXT: Record<Status, Partial<Record<Step, Status>>> = {
 // default) has the table rebuilt with this version's columns, its rows
 // copied as far as they allow. Otherwise columns a later version added stay.
 const TABLES: Record<string, string[]> = {
-  work_sessions   : ["id text primary key", "name text not null", "agent text not null", "repo text not null", "base text not null", "branch text not null", "worktree text not null", "account text not null", "model text not null", "dir text not null", "status text not null", "sdk text not null default ''", "ack integer not null default 0", "launches integer not null default 0", "unit text not null default ''", "sock text not null default ''", "last text not null default ''", "made integer not null", "at integer not null", "archived integer not null default 0", "seen integer not null default 0"],
+  work_sessions   : ["id text primary key", "name text not null", "agent text not null", "repo text not null", "base text not null", "branch text not null", "worktree text not null", "account text not null", "model text not null", "provider text not null default ''", "effort text not null default ''", "memory integer not null default 0", "write integer not null default 1", "device text not null default ''", "dir text not null", "status text not null", "sdk text not null default ''", "ack integer not null default 0", "launches integer not null default 0", "unit text not null default ''", "sock text not null default ''", "last text not null default ''", "made integer not null", "at integer not null", "archived integer not null default 0", "seen integer not null default 0"],
   work_runs       : ["session text not null", "n integer not null", "prompt text not null", "status text not null", "attempts integer not null default 1", "why text not null default ''", "report text not null default ''", "started integer not null", "ended integer", "primary key (session, n)"],
   work_asks       : ["id text primary key", "session text not null", "tool text not null", "input text not null", "what text not null", "ok integer", "note text not null default ''", "at integer not null"],
   work_says       : ["id text primary key", "session text not null", "text text not null", "mode text not null default 'steer'", "heard integer not null default 0", "at integer not null"],
@@ -130,11 +142,22 @@ export namespace Session {
     return NEXT[status][step] ?? null;
   }
 
-  export function add(s: Omit<Session, "status" | "sdk" | "ack" | "launches" | "unit" | "sock" | "last" | "made" | "at" | "archived" | "seen">, prompt: string): Session {
+  export function kind(s: Pick<Session, "provider">): Kind {
+    return s.provider === "" ? "session" : "subagent";
+  }
+
+  // who it is on the owner's cards and in its agent's wakes
+  export function label(s: Pick<Session, "provider" | "name">): string {
+    return (Session.kind(s) === "session" ? "Session " : "Subagent ") + s.name;
+  }
+
+  // a work session's fields as the session tool gives them, a subagent's
+  // all; the rest as the session tool's are
+  export function add(s: Omit<Session, "provider" | "effort" | "memory" | "write" | "device" | "status" | "sdk" | "ack" | "launches" | "unit" | "sock" | "last" | "made" | "at" | "archived" | "seen"> & Partial<Pick<Session, "provider" | "effort" | "memory" | "write" | "device">>, prompt: string): Session {
     const db = opened();
     const now = Date.now();
     db.transaction(() => {
-      db.query("insert into work_sessions (id, name, agent, repo, base, branch, worktree, account, model, dir, status, made, at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)").run(s.id, s.name, s.agent, s.repo, s.base, s.branch, s.worktree, s.account, s.model, s.dir, now, now);
+      db.query("insert into work_sessions (id, name, agent, repo, base, branch, worktree, account, model, provider, effort, memory, write, device, dir, status, made, at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)").run(s.id, s.name, s.agent, s.repo, s.base, s.branch, s.worktree, s.account, s.model, s.provider ?? "", s.effort ?? "", s.memory ?? 0, s.write ?? 1, s.device ?? "", s.dir, now, now);
       db.query("insert into work_runs (session, n, prompt, status, started) values (?, 1, ?, 'running', ?)").run(s.id, prompt, now);
     })();
     return Session.get(s.id) as Session;
@@ -199,7 +222,7 @@ export namespace Session {
     } else if (ev.k === "question" && live) {
       db.query("insert or ignore into work_questions (id, session, text, at) values (?, ?, ?, ?)").run(ev.id, s.id, ev.text, at);
       step(db, s.id, "ask");
-      return noted(db, s, String(seq), "question", ev.text + "\n\nIt waits for your answer: give it with session send. If only the user knows, ask them first.");
+      return noted(db, s, String(seq), "question", ev.text + "\n\nIt waits for your answer: give it with " + Session.kind(s) + " send. If only the user knows, ask them first.");
     } else if (ev.k === "limit" && live) {
       return noted(db, s, String(seq), "waiting", "a usage limit, till " + clock(ev.until) + ". It goes on by itself then: nothing to do.");
     } else if (ev.k === "replied") {
@@ -210,6 +233,10 @@ export namespace Session {
     } else if (ev.k === "heard") {
       db.query("update work_says set heard = 1 where id = ?").run(ev.id);
     } else if (ev.k === "end") {
+      // a subagent's result is its last reply
+      if (ev.ok && Session.kind(s) === "subagent" && LIVE.includes(s.status)) {
+        db.query("update work_runs set report = ? where session = ? and n = (select max(n) from work_runs where session = ?)").run(ev.text, s.id, s.id);
+      }
       const to = step(db, s.id, ev.ok ? "ended" : "failed", ev.ok ? "" : ev.text);
       if (to === null) {
         return [{ do: "uncard", ask: null }];
@@ -258,7 +285,7 @@ export namespace Session {
 
   // a wake message kept to send, in the transaction of the step it tells
   function noted(db: Database, s: Session, about: string, what: string, text: string): Effect[] {
-    const wake = { id: "session " + s.id + " " + about, agent: s.agent, text: wake_text("session", s.name, what + ": " + Wire.clip(text.trim())) };
+    const wake = { id: "session " + s.id + " " + about, agent: s.agent, text: wake_text(Session.kind(s), s.name, what + ": " + Wire.clip(text.trim())) };
     const kept = db.query("insert or ignore into work_wakes (id, agent, text, at) values (?, ?, ?, ?)").run(wake.id, wake.agent, wake.text, Date.now()).changes > 0;
     return kept ? [{ do: "wake", wake }] : [];
   }
@@ -284,6 +311,22 @@ export namespace Session {
   export function again(id: string, prompt: string | null, says: string[] = []): Run | null {
     const db = opened();
     return db.transaction(() => rerun(db, id, prompt, says))();
+  }
+
+  // its latest run tried again on a new holder while it's at work (its
+  // holder gone), unless it waits on someone; null: it can't be now
+  export function retry(id: string): Run | null {
+    const db = opened();
+    return db.transaction(() => {
+      const s = Session.get(id);
+      const run = Session.run(id);
+      if (s === null || run === null || s.status !== "running") {
+        return null;
+      }
+      db.query("update work_sessions set unit = '', sock = '', at = max(at + 1, ?) where id = ?").run(Date.now(), id);
+      db.query("update work_runs set attempts = attempts + 1, why = '' where session = ? and n = ?").run(id, run.n);
+      return Session.run(id);
+    })();
   }
 
   function rerun(db: Database, id: string, prompt: string | null, says: string[]): Run | null {

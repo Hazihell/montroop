@@ -12,9 +12,9 @@ import { Versions } from "./Versions.tsx";
 const Importer = lazy(() => import("./Importer.tsx"));
 
 // an agent as its settings read and save it
-type Agent = { id: string; name: string; about: string; picture: string; prompt: string; own: boolean; template: string; archived: number; leader: boolean; lines: number; manage: boolean; claude: string };
+type Agent = { id: string; name: string; about: string; picture: string; prompt: string; own: boolean; template: string; archived: number; leader: boolean; lines: number; manage: boolean; subagents: boolean; claude: string };
 type All = { agents: Agent[]; template: string; accounts: string[] };
-type Form = Pick<Agent, "name" | "about" | "picture" | "prompt" | "leader" | "manage" | "claude"> & { lines: string };
+type Form = Pick<Agent, "name" | "about" | "picture" | "prompt" | "leader" | "manage" | "subagents" | "claude"> & { lines: string };
 
 const NAME = 24;
 const ABOUT = 120;
@@ -97,6 +97,7 @@ function Fields({ a, all }: { a: Agent | null; all: All }): ReactNode {
     prompt  : a?.prompt ?? all.template.replaceAll("{Name}", ""),
     leader  : a?.leader ?? false,
     manage  : a?.manage ?? false,
+    subagents: a?.subagents ?? false,
     claude  : a?.claude ?? all.accounts[0] ?? "",
     lines   : String(a?.lines ?? View.LINES),
   }));
@@ -203,6 +204,9 @@ function Fields({ a, all }: { a: Agent | null; all: All }): ReactNode {
           )}
           <Set name="Manage agents" about="It may create, edit, archive and restore agents, when you ask it to. None is deleted.">
             <input type="checkbox" role="switch" className="switch" checked={form.manage} onChange={(ev) => set({ manage: ev.target.checked }, true)} />
+          </Set>
+          <Set name="Lasting subagents" about="Its subagents run on their own through restarts, each in its own folder or worktree, and it drives them with one subagent tool in place of spawn, tell, stop and session.">
+            <input type="checkbox" role="switch" className="switch" checked={form.subagents} onChange={(ev) => set({ subagents: ev.target.checked }, true)} />
           </Set>
           <Set name="Leader mode" about="Each turn, the newest lines of every other agent's memory, to zoom into.">
             <input type="checkbox" role="switch" className="switch" checked={form.leader} onChange={(ev) => set({ leader: ev.target.checked }, true)} />

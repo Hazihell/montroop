@@ -35,7 +35,7 @@ test.concurrent("the owner signs in with a code, opens an agent and gets its ans
   await page.getByRole("link", { name: /^Kunumy(?!'s settings)/ }).click();
   await page.getByRole("textbox", { name: "Message Kunumy" }).fill("j1: what's the plan?");
   await page.getByRole("button", { name: "Send" }).click();
-  await page.getByText("The plan is ready.").waitFor();
+  await page.getByText("The plan is ready.").first().waitFor();
   expect(new URL(page.url()).pathname).toBe("/a/" + k.agent);
   await k.kill();
 });

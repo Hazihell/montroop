@@ -67,6 +67,13 @@ export namespace Holders {
     LINKS.forEach((l) => Wire.send(l.sock, { $: "rules", rules: config.ASK, scratch }));
   }
 
+  // every holder linked told the usage limits were reset; how many
+  export function poke(): number {
+    const linked = [...LINKS.values()].filter((l) => l.sock !== null);
+    linked.forEach((l) => Wire.send(l.sock, { $: "poke" }));
+    return linked.length;
+  }
+
   // the unit and socket of a holder's launch n
   export function named(id: string, dir: string, n: number): Holder {
     return { id, dir, unit: "kny-hold-" + id + "-" + n, sock: path.join(dir, "hold-" + n + ".sock") };

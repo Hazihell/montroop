@@ -429,6 +429,12 @@ async function control(req: Request): Promise<Response> {
     QUEUE.push((await req.json()) as Order & { match: string });
     return json(200, { queued: QUEUE.length });
   }
+  // the usage limits that reset at until lifted now, as a reset early
+  if (url.pathname === "/lift") {
+    const until = Number(url.searchParams.get("until"));
+    [...LIMITED].filter(([, at]) => at === until).forEach(([key]) => LIMITED.delete(key));
+    return json(200, {});
+  }
   if (url.pathname === "/clear") {
     QUEUE.length = 0;
     REFUSE.clear();

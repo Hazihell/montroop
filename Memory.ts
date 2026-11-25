@@ -39,7 +39,7 @@ type End = [number, number];
 
 type Kept = { parts: Array<[number, number]>; batch: boolean };
 
-type Saved = Kept & { seen?: Kept; main: End; tree: End; pick: object | null; goal?: string | null; work?: string[]; timers?: Timer[]; talk?: number | null; leader?: boolean; lines?: number; manage?: boolean | null; used?: number | null; used_at?: number; hop?: number; origin?: string | null };
+type Saved = Kept & { seen?: Kept; main: End; tree: End; pick: object | null; goal?: string | null; work?: string[]; timers?: Timer[]; talk?: number | null; leader?: boolean; lines?: number; manage?: boolean | null; subagents?: boolean; used?: number | null; used_at?: number; hop?: number; origin?: string | null };
 
 // main: the run's inbox, as it was last; held: what came for an archived
 // agent, delivered on its restore
@@ -66,6 +66,8 @@ type Chosen = {
   lines  : number;
   // manage: may use the agents tool (null: only the first)
   manage : boolean | null;
+  // subagents: its subagents run on the engine (the subagent tool)
+  subagents: boolean;
   talked : Map<number, number>;
   used   : number | null;
   used_at: number;
@@ -147,7 +149,7 @@ export namespace Memory {
   export function load(dir: string, share: Memory["share"], acted: Memory["acted"] = () => {}): Memory {
     fs.mkdirSync(dir, { recursive: true });
     const mem: Memory = {
-      dir, fds: new Map(), count: 0, open: 0, pick: null, goal: null, talk: null, leader: false, lines: LINES, manage: null, talked: new Map(), used: null, used_at: 0, work: [], timers: [], hop: 0, origin: null, queue: [], held: [], nodes: new Map(), ready: [[], []], ends: { main: [0, 0], tree: [0, 0] },
+      dir, fds: new Map(), count: 0, open: 0, pick: null, goal: null, talk: null, leader: false, lines: LINES, manage: null, subagents: false, talked: new Map(), used: null, used_at: 0, work: [], timers: [], hop: 0, origin: null, queue: [], held: [], nodes: new Map(), ready: [[], []], ends: { main: [0, 0], tree: [0, 0] },
       view: { parts: [], size: 0, batch: false, high: VIEW_HIGH }, seen: { parts: [], size: 0, batch: false, high: config.COMPACTOR_CONTEXT },
       busy: new Map(), sides: new Map(), calls: new Map(), hold: [null, "paused"], done: false, wait: new Set(), share, acted, again: null,
     };
@@ -158,6 +160,7 @@ export namespace Memory {
     mem.leader = saved?.leader ?? false;
     mem.lines = saved?.lines ?? LINES;
     mem.manage = saved?.manage ?? null;
+    mem.subagents = saved?.subagents ?? false;
     mem.used = saved?.used ?? null;
     mem.work = saved?.work ?? [];
     mem.timers = saved?.timers ?? [];
@@ -200,7 +203,7 @@ export namespace Memory {
   export function save(mem: Memory): void {
     const file = mem.dir + "/view.json";
     const [chat, seen] = [mem.view, mem.seen].map((view): Kept => ({ parts: view.parts.map((part) => [part.l, part.i]), batch: view.batch }));
-    fs.writeFileSync(file + ".new", JSON.stringify({ ...chat, seen, pick: mem.pick, goal: mem.goal, talk: mem.talk, leader: mem.leader, lines: mem.lines, manage: mem.manage, used: mem.used, used_at: mem.used_at, work: mem.work, timers: mem.timers, hop: mem.hop, origin: mem.origin, ...mem.ends }));
+    fs.writeFileSync(file + ".new", JSON.stringify({ ...chat, seen, pick: mem.pick, goal: mem.goal, talk: mem.talk, leader: mem.leader, lines: mem.lines, manage: mem.manage, subagents: mem.subagents, used: mem.used, used_at: mem.used_at, work: mem.work, timers: mem.timers, hop: mem.hop, origin: mem.origin, ...mem.ends }));
     move_over(file + ".new", file);
     void Disk.wrote(file);
   }

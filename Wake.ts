@@ -1,15 +1,15 @@
-// "[Tag name] body" from a job, timer, work session or approval, "[name]"
-// from a subagent's report or another agent: the sender is read back from
-// the text, so a message stored before reads the same
+// "[Tag name] body" from a job, timer, work session, subagent or approval,
+// "[name]" from an older subagent's report or another agent: the sender is
+// read back from the text, so a message stored before reads the same
 
 // one to deliver: its id makes it taken once; agent: whose chat it goes to
 export type Wake = { id: string; agent: string; text: string };
 
-type Tagged = "job" | "timer" | "session" | "approval";
+type Tagged = "job" | "timer" | "session" | "subagent" | "approval";
 
 type Kind = Tagged | "sub" | "agent";
 
-const TAGS: Record<Tagged, string> = { job: "Job", timer: "Timer", session: "Session", approval: "Approval" };
+const TAGS: Record<Tagged, string> = { job: "Job", timer: "Timer", session: "Session", subagent: "Subagent", approval: "Approval" };
 
 const READ = /^\[([^\]\n]+)\]\s*([\s\S]*?)\s*$/;
 

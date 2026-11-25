@@ -20,6 +20,17 @@ test("another agent can't read, send to, stop or archive a session", () => {
   expect(Session.says(mine.id)).toEqual([]);
 });
 
+test("the session tool sees an agent's sessions, and the subagent tool its subagents, another agent's none", () => {
+  Session.add({ id: "4567cdef", name: "helper", agent: "owner1", repo: "", base: "", branch: "", worktree: "/scratch/owner1/sessions/helper", provider: "claude", account: "", model: "claude-haiku-5-5", effort: "low", memory: 1, write: 1, device: "", dir: path.join(DIR, "sessions", "4567cdef") }, "the task");
+  expect(Sessions.act("owner1", "subagent", { action: "list" })).toEqual({ text: "helper: running", fail: false });
+  expect(Sessions.tool("owner1", { action: "list" })).toEqual({ text: "mine: running, branch kny/mine", fail: false });
+  expect(Sessions.tool("owner1", { action: "read", name: "helper" })).toEqual({ text: "You have no session \"helper\". Yours: mine.", fail: true });
+  for (const action of ["read", "send", "stop", "archive"]) {
+    expect([action, Sessions.act("other1", "subagent", { action, name: "helper", text: "hello", request: "r-1" })]).toEqual([action, { text: "You have no subagent \"helper\". Yours: none.", fail: true }]);
+  }
+  expect(Session.get("4567cdef")).toMatchObject({ status: "running", archived: 0 });
+});
+
 test("a message sent with the session tool needs a request, so a retry sends it once", () => {
   expect(Sessions.tool("owner1", { action: "send", name: "mine", text: "hello" })).toEqual({ text: "send needs a request: an id of your own for this message (any new text); on a retry, the same one, so it's sent once.", fail: true });
 });

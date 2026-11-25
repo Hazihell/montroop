@@ -12,7 +12,8 @@
 // start names its driver; 3: a start may give a whole job to the driver
 // its provider picks, a run tells a usage limit it waits out, the server
 // runs Kunumy's tools for holders, and the devices' scratch folders the
-// rules read).
+// rules read; 4: a start may run a subagent, whose question tool is ask,
+// and the server pokes holders when the usage limits were reset).
 
 import type * as net from "node:net";
 import type { Out } from "./Agent.ts";
@@ -71,7 +72,7 @@ export type Ev =
 
 export type Told = { seq: number; at: number; ev: Ev };
 
-export const VERSION = 3;
+export const VERSION = 4;
 
 // the first version whose server runs Kunumy's tools for holders
 export const TOOLS = 3;
@@ -80,14 +81,17 @@ const CLIP = 2000;
 
 // rules: the ask rules or the scratch folders changed; say: a message for
 // the run (answer: the answer to its first question waiting, if one still
-// waits); result: what a call did, kept by the server till the holder took it
+// waits); result: what a call did, kept by the server till the holder took
+// it; poke: the owner says the usage limits were reset, so a wait for one
+// asks again
 export type ToHold =
   | { $: "hello"; v: number; ack: number; rules: Rule[]; scratch: Scratch }
   | { $: "ack"; seq: number }
   | { $: "rules"; rules: Rule[]; scratch: Scratch }
   | { $: "answer"; id: string; ok: boolean; note: string }
   | { $: "say"; id: string; text: string; answer: boolean }
-  | { $: "result"; id: string; out: Out };
+  | { $: "result"; id: string; out: Out }
+  | { $: "poke" };
 
 // call: told when made and again after each welcome till its result comes;
 // took: a result is in, the server forgets it

@@ -2,7 +2,8 @@
 // ========
 // A work session's own branch and worktree of a repo: made from a base ref
 // when it starts, kept when it ends, removed when it's archived, but not
-// while it holds work found nowhere else (unless forced).
+// while it holds work found nowhere else (unless forced); or a worktree on
+// no branch, for work that keeps nothing.
 
 import * as fs from "node:fs";
 import { output, run } from "./Service.ts";
@@ -56,6 +57,16 @@ export namespace Worktree {
       return dir + " exists already";
     }
     const r = git(repo, ["worktree", "add", "-b", branch, dir, base]);
+    return r.ok ? null : "git worktree add failed: " + r.out;
+  }
+
+  // a worktree at base on no branch, for work that keeps nothing (a
+  // review); null: made, else why not
+  export function detach(repo: string, base: string, dir: string): string | null {
+    if (fs.existsSync(dir)) {
+      return dir + " exists already";
+    }
+    const r = git(repo, ["worktree", "add", "--detach", dir, base]);
     return r.ok ? null : "git worktree add failed: " + r.out;
   }
 

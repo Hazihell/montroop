@@ -33,6 +33,7 @@ import { Brief } from "./Brief.ts";
 import { Gate, type Asked } from "./Gate.ts";
 import { Session } from "./Session.ts";
 import { Sessions } from "./Sessions.ts";
+import { Subagents } from "./Subagents.ts";
 import { SEARCHES, Tools, type Seat, type Subs } from "./Tools.ts";
 import { ACTIVE, ASKS, FRAME, IDLE, IMAGES, limit_note, LINES, LINES_MOST, live_push, PING, QUIT, SUMMARIES, TICK, TURN, WIRE, type Answer, type Live, type Part, type Pending, type Queued, type Server as Out, type Sums, type Talk as Meter, TOKEN, type Wait, type Mate } from "./View.ts";
 import * as Web from "./Web.ts";
@@ -186,7 +187,7 @@ export namespace Chat {
       id, who: id, mem, tools, pick, socks: new Set(), acts: new Map(), main, model: "", check: null, asked: false,
       eye: { parts: [], from: 0 }, after: Promise.resolve(), batch: null, writes: Promise.resolve(), held: null, sums: null, resume: null, limits: null, bell: undefined, fresh: true, told: false, gist: -1, stopped: false, subs: new Map(), gone: new Map(), leader: null,
     };
-    const seat: Seat = { mem, note: (text) => Chat.note(chat, text), report: (text) => Chat.report(chat, text, true), timed: () => Chat.timed(chat), message: (to, text) => Chat.message(chat, to, text), subs: Chat.subs_of(chat) , agents: { on: () => Main.manages(chat), run: (args) => Main.agents_tool(chat, args) } };
+    const seat: Seat = { mem, note: (text) => Chat.note(chat, text), report: (text) => Chat.report(chat, text, true), timed: () => Chat.timed(chat), message: (to, text) => Chat.message(chat, to, text), subs: Chat.subs_of(chat), agents: { on: () => Main.manages(chat), run: (args) => Main.agents_tool(chat, args) }, subagents: () => chat.mem.subagents };
     tools.seats.set(id, seat);
     Main.chats.set(id, chat);
     Main.keep_picks();
@@ -2177,8 +2178,9 @@ export namespace Main {
     Main.lead_set(chat, knobs);
     if (get(x, "manage") === true) {
       chat.mem.manage = true;
-      Memory.save(chat.mem);
     }
+    chat.mem.subagents = get(x, "subagents") === true;
+    Memory.save(chat.mem);
     const agent = Team.set(made.id, { ...fields, picture: Main.own_picture(chat, fields.picture) }, null) ?? made;
     Main.team_soon();
     return { agent };
@@ -2212,7 +2214,7 @@ export namespace Main {
     const agents = Team.all().map((a) => {
       const mem = Main.chats.get(a.id)?.mem;
       const chat = Main.chats.get(a.id);
-      return { ...a, claude: a.claude || config.PERSONAL, prompt: Team.prompt(a), own: a.prompt !== null, template: Main.template(), leader: mem?.leader ?? false, lines: mem?.lines ?? LINES, manage: chat === undefined ? false : Main.manages(chat) };
+      return { ...a, claude: a.claude || config.PERSONAL, prompt: Team.prompt(a), own: a.prompt !== null, template: Main.template(), leader: mem?.leader ?? false, lines: mem?.lines ?? LINES, manage: chat === undefined ? false : Main.manages(chat), subagents: mem?.subagents ?? false };
     });
     return Response.json({ agents, template: Main.template(), accounts: config.claude_accounts() });
   }
@@ -2260,6 +2262,11 @@ export namespace Main {
     const manage = get(x, "manage");
     if (typeof manage === "boolean" && manage !== Main.manages(chat)) {
       chat.mem.manage = manage;
+      Memory.save(chat.mem);
+    }
+    const subagents = get(x, "subagents");
+    if (typeof subagents === "boolean" && subagents !== chat.mem.subagents) {
+      chat.mem.subagents = subagents;
       Memory.save(chat.mem);
     }
     Main.chats.forEach((c) => Chat.change(c));
@@ -2611,6 +2618,10 @@ export namespace Main {
       const chat = Main.chats.get(w.agent);
       return chat !== undefined && (await Chat.wake(chat, w)).error === undefined;
     }, () => Main.team_soon());
+    Subagents.boot(Main.tools, async (agent) => {
+      const chat = Main.chats.get(agent);
+      return chat === undefined ? "No agent " + agent + "." : await Chat.sub_view(chat);
+    }, (agent) => Main.chats.get(agent)?.pick ?? null);
     Chat.copies();
     Main.watch();
     setInterval(() => void Main.scratch_sweep(null), SCRATCH_SWEEP).unref();

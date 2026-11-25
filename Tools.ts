@@ -9,7 +9,9 @@ import { clip_page } from "./Clip.ts";
 import { Mcp, NAME_MOST, type Held, type Servers } from "./Mcp.ts";
 import { Memory } from "./Memory.ts";
 import { Search } from "./Search.ts";
+import { Holders } from "./Holders.ts";
 import { Sessions } from "./Sessions.ts";
+import { Subagents } from "./Subagents.ts";
 import * as Prompts from "./Prompts.ts";
 import { Team } from "./Team.ts";
 import * as Timer from "./Timer.ts";
@@ -55,6 +57,9 @@ export type Seat = {
   // the agents tool, for an agent whose Manage agents setting is on
   agents?: { on: () => boolean; run: (args: Record<string, unknown>) => Out };
   mcp?   : boolean;
+  // whether its subagents run on the engine (its Lasting subagents
+  // setting): the subagent tool in place of spawn, tell, stop and session
+  subagents?: () => boolean;
 };
 
 // an agent's subagents
@@ -157,8 +162,35 @@ const boss = (): Spec[] => [
     n       : INT,
     force   : { type: "boolean" },
   }, ["action"]),
+  SUBAGENT(),
   spec("resume", "Wake every call on this server waiting for an AI service's usage limit (other turns, summaries), when the user says a limit was reset early. Each asks again once; one still limited waits again.", {}, []),
 ];
+// the subagent tool, for an agent whose subagents run on the engine
+const SUBAGENT = (): Spec => spec("subagent", "Subagents: workers of your own, each on one task, that run on their own for as long as it takes, through server restarts, each in its own folder on this server's computer (with a repo, its own worktree), with that computer's tools of its provider (files, shell, web) and Kunumy's device tools. start: tasks, started at once, their names returned at once. It never waits on you while it runs: you get one message \"[Subagent name] done|failed|stopped|waiting|question: …\" when its run ends (done: with its last reply, its result), it waits on the user's approval of a call (only the user can give it, in the app) or on a usage limit, or it asks you something; that message starts your turn, so don't wait for it, read it to check, or schedule a check. send: a message (text) to it, by name: mode steer (default: into its work now; to one that asked you something, the answer) or queue (for its next run, once this one ends); to one done or stopped it starts a new run where it left off; request: an id of yours for this message, the same on a retry, so it's sent once. read: its state, what it waits on, its result and its latest lines; after (a line's number) and n for its log from there. stop: stop it at once (why: for its record; its folder stays). list: your subagents. archive: remove its folder, worktree and branch once its work is merged or not wanted (force: even with commits or changes found nowhere else).", {
+  action  : { type: "string", enum: ["start", "send", "read", "stop", "list", "archive"] },
+  tasks   : { type: "array", items: { type: "object", properties: {
+    task   : { type: "string", description: "Its whole brief: it knows only this, what the other options give it, and the pins." },
+    name   : { type: "string", description: "1 to 40 lowercase letters, digits and dashes, none of your other subagents' or sessions'; by default a new one." },
+    model  : { type: "string", description: "Its model, one offered here; by default, yours. Set it only when the user asks for that model or vendor, since another vendor may cost more. A repo needs a Claude plan's model." },
+    effort : { type: "string", description: "How hard it thinks, one of its model's own levels (" + Sub.efforts() + "); by default, as hard as you, or its model's default level if it has no level of that name." },
+    memory : { type: "boolean", description: "Whether it starts with your view and can zoom, search and date your memory; by default true without a repo, false with one." },
+    repo   : { type: "string", description: "A git repo's folder on this server's computer (~ is the home folder): it works in its own worktree, on a new branch kny/<name> from base. Without, in a folder of its own." },
+    base   : { type: "string", description: "The ref its worktree starts from; by default the repo's HEAD." },
+    write  : { type: "boolean", description: "false: a worktree at base on no branch, its edit tools denied, removed when its run ends: for reviews and research. Default true." },
+    mcp    : { type: "boolean", description: "Whether it gets the devices' MCP tools; default true." },
+    browser: { type: "boolean", description: "Whether it gets a headless browser of its own (when agent-browser is on this server's computer); default true." },
+  }, required: ["task"] } },
+  name    : { type: "string", description: "The subagent's name, for send, read, stop and archive." },
+  text    : STR,
+  mode    : { type: "string", enum: ["steer", "queue"] },
+  request : STR,
+  after   : INT,
+  n       : INT,
+  why     : STR,
+  force   : { type: "boolean" },
+}, ["action"]);
+// what the subagent tool replaces
+const REPLACED = new Set(["spawn", "tell", "stop", "session"]);
 const AGENTS = spec("agents", "Manage the team's agents: list them (archived ones too), show one's settings by name, its system prompt included, create one (name, about: one line for the chat list and the other agents, prompt: its system prompt, by default the standard one), edit one by name, yourself too (only the fields given change; the answer says what changed), archive one by name (its chat and memory stay, and Settings or restore brings it back) or restore an archived one. No agent is ever deleted here. Create, edit, archive or restore only when the user asked for that change, or agreed to what you proposed; to brief a new agent, message it after creating it.", {
   action : { type: "string", enum: ["list", "show", "create", "edit", "archive", "restore"] },
   name   : STR,
@@ -177,6 +209,8 @@ const KIT: Spec[] = TOOLS.map((t) => {
   const info = t.info + " It runs on the device named; a relative path is in your scratch folder there, and ~ is the home folder.";
   return spec(t.name, info, { ...DEVICE, ...schema.properties }, ["device", ...schema.required]);
 });
+// the devices' tools that change a file
+const EDITS = ["write", "edit"];
 const SKILL: Spec = spec("skill", "Load a skill listed under Skills: its SKILL.md, with the folder its other files are in on that device (read or run them there with your other tools).", { ...DEVICE, name: STR }, ["device", "name"]);
 
 export namespace Tools {
@@ -424,15 +458,17 @@ export namespace Tools {
     Mcp.forget(tools.mcp, who);
   }
 
-  // the same for every agent, so one cached copy serves them all, and the
-  // same for every subagent
-  export function list(sub = false, manage = false): Spec[] {
-    return sub ? [...OWN, ...KIT, SKILL] : [...OWN, ...boss(), ...(manage ? [AGENTS] : []), ...KIT, SKILL];
+  // the same for every agent of the same settings, so one cached copy
+  // serves them all, and the same for every subagent; subagents: its
+  // subagents run on the engine
+  export function list(sub = false, manage = false, subagents = false): Spec[] {
+    const own = boss().filter((t) => (subagents ? !REPLACED.has(t.name) : t.name !== "subagent"));
+    return sub ? [...OWN, ...KIT, SKILL] : [...OWN, ...own, ...(manage ? [AGENTS] : []), ...KIT, SKILL];
   }
 
   export function listed(tools: Tools, who: string): Spec[] {
     const seat = tools.seats.get(who);
-    return Tools.list(seat?.subs === null, seat?.agents?.on() === true);
+    return Tools.list(seat?.subs === null, seat?.agents?.on() === true, seat?.subagents?.() === true);
   }
 
   export function off(tools: Tools): string[] {
@@ -521,6 +557,9 @@ export namespace Tools {
       case "session": {
         return seat.subs === null ? { text: "A subagent starts no sessions.", fail: true } : Sessions.tool(who, args);
       }
+      case "subagent": {
+        return seat.subs === null ? { text: "A subagent starts none.", fail: true } : seat.subagents?.() !== true ? { text: "Your subagents don't run on the engine: use spawn, tell, stop and session.", fail: true } : await Subagents.tool(who, args);
+      }
       case "spawn": {
         const tasks = Sub.spawns(args);
         return typeof tasks === "string" ? { text: tasks, fail: true } : seat.subs === null ? { text: "A subagent spawns none.", fail: true } : await seat.subs.spawn(tasks);
@@ -533,7 +572,9 @@ export namespace Tools {
       }
       case "resume": {
         const n = Limit.resume();
-        return { text: n === 0 ? "No call was waiting for a usage limit." : "Woke " + n + " call" + (n === 1 ? "" : "s") + " waiting for a usage limit; any still limited waits again.", fail: false };
+        const held = Holders.poke();
+        const woke = "Woke " + n + " call" + (n === 1 ? "" : "s") + " waiting for a usage limit" + (held === 0 ? "" : ", and told " + held + " running work session" + (held === 1 ? "" : "s") + " or subagent" + (held === 1 ? "" : "s") + " to ask again if one waits") + "; any still limited waits again.";
+        return { text: n + held === 0 ? "No call was waiting for a usage limit." : woke, fail: false };
       }
       default: {
         const at = job_of(who, name, args);
@@ -551,13 +592,15 @@ export namespace Tools {
     return { device: String(device), job: { name, input, cwd: who } };
   }
 
-  // Kunumy's tools a work session of who's is offered: a subagent's (who's
-  // memory, the devices' tools and skills), and the devices' MCP tools as
-  // last listed, each with the device it runs on
-  export function kit(tools: Tools, who: string): Kit[] {
-    const servers = tools.seats.get(who)?.mcp === false ? [] : [...Tools.held(tools, who).values()].sort((a, b) => Mcp.by_name(a.conf.name, b.conf.name));
+  // Kunumy's tools a work session or subagent of who's is offered: the
+  // memory tools on who's memory, the devices' tools and skills, and the
+  // devices' MCP tools as last listed, each with the device it runs on;
+  // a subagent's as its options say (write false: none that edits a file)
+  export function kit(tools: Tools, who: string, as = { memory: true, mcp: true, write: true }): Kit[] {
+    const servers = !as.mcp || tools.seats.get(who)?.mcp === false ? [] : [...Tools.held(tools, who).values()].sort((a, b) => Mcp.by_name(a.conf.name, b.conf.name));
     const mcp = servers.flatMap((s) => (Mcp.kept(s) ?? []).map((t) => ({ ...t, device: s.conf.device })));
-    return [...Tools.list(true).map((t) => ({ ...t, device: null })), ...mcp.filter((t) => t.name.length <= NAME_MOST - HELD.length)];
+    const own = Tools.list(true).filter((t) => (as.memory || !OWN.includes(t)) && (as.write || !EDITS.includes(t.name)));
+    return [...own.map((t) => ({ ...t, device: null })), ...mcp.filter((t) => t.name.length <= NAME_MOST - HELD.length)];
   }
 
   // each open device's scratch folder

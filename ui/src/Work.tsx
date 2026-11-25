@@ -204,7 +204,7 @@ function SayBox({ id, name, live, sent }: { id: string; name: string; live: bool
 // came; its media under the entry that names it, the rest at the end; then
 // what waits on someone now
 function Log({ d, log, id, agent, live, earlier }: { d: View.SessionPage; log: Told[]; id: string; agent: string; live: boolean; earlier: () => void }): ReactNode {
-  const asks = useKunumy((s) => s.asks).filter((a) => a.from === "session" && a.who === View.SESSION + d.name);
+  const asks = useKunumy((s) => s.asks).filter((a) => a.from === "session" && a.who === d.who);
   const results = new Map(log.flatMap((t) => (t.ev.k === "result" ? [[t.ev.id, { text: t.ev.text, error: t.ev.error }] as const] : [])));
   const placed = new Map<number, string[]>();
   const rest = d.media.filter((m) => {

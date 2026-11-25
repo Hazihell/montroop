@@ -11,6 +11,10 @@
 // one message that starts its turn ("[Session name] done: …"), kept in
 // the record till it's in the agent's chat, so a restart neither loses
 // nor repeats it. Agents drive their own sessions with the session tool.
+// A subagent of the engine (Subagents) is a session too, run on its
+// provider's driver as its job file says, in its worktree or a folder of
+// its own; a holder of one that died is tried again by the server itself,
+// and siblings started together launch once the first has begun to answer.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -26,12 +30,14 @@ import { get, rec, str, text_of } from "./Json.ts";
 import { Machine } from "./Machine.ts";
 import { Owner } from "./Owner.ts";
 import { Brief } from "./Brief.ts";
+import type { Job } from "./Driver.ts";
 import { transients } from "./Service.ts";
-import { LIVE, Session, type Effect, type Mode, type Parked, type Run } from "./Session.ts";
+import { LIVE, Session, type Effect, type Kind, type Mode, type Parked, type Run } from "./Session.ts";
 import type { Wake } from "./Wake.ts";
 import { Team } from "./Team.ts";
 import { Tools } from "./Tools.ts";
-import { clock, PICTURE, SESSION, VIDEO, type SessionPage, type SessionRow, type Waits } from "./View.ts";
+import * as Prompts from "./Prompts.ts";
+import { clock, PICTURE, VIDEO, type SessionPage, type SessionRow, type Waits } from "./View.ts";
 import { Wire, type Ev, type Told } from "./Wire.ts";
 import { Worktree } from "./Worktree.ts";
 
@@ -46,9 +52,16 @@ type Begin = { agent: string; repo: string; base: string; branch: string; name: 
 // (one with its request id came already)
 type Sent = "steered" | "queued" | "answered" | "started" | "again";
 
-const DIR = path.join(config.DIR, "sessions");
+// a subagent's job, fixed at its start: the job its holders run (its
+// context's resume and its tools set at each launch), whether it gets the
+// devices' MCP tools
+type Sub = { job: Omit<Job, "dir" | "tools">; mcp: boolean };
 
-const NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
+export const DIR = path.join(config.DIR, "sessions");
+
+const SUB = "sub.json";
+
+export const NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
 
 const PAGE = 100;
 const PAGE_MOST = 1000;
@@ -67,15 +80,30 @@ const AGAIN = "Your process was stopped before you were done, so the outcome of 
 
 const GONE = "its holder ended before the run did";
 
+// a subagent's holder that died is tried again, this many times in this
+// long at most
+const RETRIES = 3;
+const RETRIES_IN = 5 * 60e3;
+
+// how many seconds, at most, a stopped holder is waited for before its
+// worktree is removed
+const TIDY = 60;
+
+// how long siblings wait, at most, for the first to begin to answer
+const LEAD = 60e3;
+
+// what a run tells once its model has begun to answer
+const ANSWERED = new Set<Ev["k"]>(["text", "tool", "turn", "ask", "question", "limit", "end"]);
+
 // a stop doesn't wait for the unit to end, which takes up to its
 // TimeoutStopSec; nothing new starts in the worktree till it has
 const STOPPING = "Its holder is still stopping: try again in a few seconds.";
 
 const SENT: Record<Sent, string> = {
-  steered  : "Sent: it reaches the session at its next step.",
-  queued   : "Queued: it starts the session's next run once this one ends.",
+  steered  : "Sent: it reaches the {kind} at its next step.",
+  queued   : "Queued: it starts the {kind}'s next run once this one ends.",
   answered : "Sent as the answer to its question: it goes on.",
-  started  : "Sent: the session runs again on it, where it left off.",
+  started  : "Sent: the {kind} runs again on it, where it left off.",
   again    : "A message with this request was sent already: not sent twice.",
 };
 
@@ -92,6 +120,11 @@ const LATEST = new Map<string, string>();
 const SENDING = new Set<string>();
 // the calls of Kunumy's tools running here, by id, with their session
 const CALLS = new Map<string, { session: string; stop: AbortController }>();
+// the times each subagent's holder was tried again lately
+const TRIED = new Map<string, number[]>();
+// the siblings started with a subagent, launched once it has begun to
+// answer
+const FOLLOW = new Map<string, string[]>();
 // the server's: its tools, with the owner's cards; wake, a message into an
 // agent's chat once (id: its act), false if it didn't take it; change, a
 // session's row changed
@@ -123,7 +156,12 @@ export namespace Sessions {
     HOOKS.change = change;
     Holders.boot({ held, told: (id, t) => {
       const fx = take(id, t);
-      return () => after(id, fx);
+      return () => {
+        after(id, fx);
+        if (ANSWERED.has(t.ev.k)) {
+          release(id);
+        }
+      };
     }, welcome, gone, call, took: (_, c) => Session.took(c), scratch: () => Tools.scratch(tools) });
     Session.unsent().forEach(deliver);
     for (const s of Session.list(null)) {
@@ -193,8 +231,9 @@ export namespace Sessions {
     const h = Holders.named(s.id, s.dir, launches);
     Session.set(s.id, { launches, unit: h.unit, sock: h.sock });
     const first = s.launches > 0 && s.sdk === "" ? Session.runs(s.id)[0]?.prompt ?? prompt : prompt;
+    const text = first === prompt ? prompt : first + "\n\n" + prompt;
     const t = HOOKS.tools;
-    const why = Holders.launch(h, "Kunumy work session " + s.name, { driver: "claude-code", prompt: first === prompt ? prompt : first + "\n\n" + prompt, resume: s.sdk, rules: config.ASK, scratch: t === null ? {} : Tools.scratch(t), tools: t === null ? [] : Tools.kit(t, s.agent) });
+    const why = Session.kind(s) === "subagent" ? launch_sub(s, h, text) : Holders.launch(h, "Kunumy work session " + s.name, { driver: "claude-code", prompt: text, resume: s.sdk, rules: config.ASK, scratch: t === null ? {} : Tools.scratch(t), tools: t === null ? [] : Tools.kit(t, s.agent) });
     if (why !== null) {
       after(s.id, Session.move(s.id, "failed", why, about === null ? null : { about, text: why }) ?? []);
       return why;
@@ -203,19 +242,88 @@ export namespace Sessions {
     return null;
   }
 
+  // a subagent's holder on its job, in its folder (a worktree on no
+  // branch made again if its last run's end removed it). null: started;
+  // else why not
+  function launch_sub(s: Session, h: Holder, prompt: string): string | null {
+    let sub: Sub;
+    try {
+      sub = JSON.parse(fs.readFileSync(path.join(s.dir, SUB), "utf8")) as Sub;
+    } catch (err) {
+      return "its job can't be read: " + err_why(err);
+    }
+    if (place(s) === "folder") {
+      fs.mkdirSync(s.worktree, { recursive: true });
+    }
+    const why = place(s) === "detached" && !fs.existsSync(s.worktree) ? Worktree.detach(s.repo, s.base, s.worktree) : null;
+    if (why !== null) {
+      return why;
+    }
+    const t = HOOKS.tools;
+    const tools = t === null ? [] : Tools.kit(t, s.agent, { memory: s.memory === 1, mcp: sub.mcp, write: s.write === 1 });
+    const c = sub.job.context;
+    const job = { ...sub.job, context: c.kind === "native" ? { ...c, resume: s.sdk } : c, tools: [] };
+    return Holders.launch(h, "Kunumy subagent " + s.name, { driver: "provider", job, sub: true, prompt, resume: s.sdk, rules: config.ASK, scratch: t === null ? {} : Tools.scratch(t), tools });
+  }
+
+  // a subagent made (Subagents), its job written in its folder
+  export function subagent(s: Parameters<typeof Session.add>[0], sub: Sub, task: string): Session {
+    fs.mkdirSync(s.dir, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(path.join(s.dir, SUB), JSON.stringify(sub) + "\n", { mode: 0o600 });
+    return Session.add(s, task);
+  }
+
+  // subagents made together launched: the first now, the rest once it has
+  // begun to answer, so they find its view in the prompt cache; the first
+  // that can't start lets the rest go at once
+  export function begin(ids: string[]): void {
+    const [lead, ...rest] = ids;
+    const s = lead === undefined ? null : Session.get(lead);
+    if (s === null) {
+      return;
+    }
+    FOLLOW.set(s.id, rest);
+    setTimeout(() => release(s.id), LEAD).unref();
+    const run = Session.run(s.id);
+    if (launch(s, run?.prompt ?? "", null) !== null) {
+      release(s.id);
+    }
+  }
+
+  // the siblings that waited for id launched
+  function release(id: string): void {
+    const rest = FOLLOW.get(id) ?? [];
+    FOLLOW.delete(id);
+    rest.forEach(next_run);
+  }
+
+  // whether a subagent's holder may be tried again now, counted if so
+  function retry(id: string): boolean {
+    const now = Date.now();
+    const tried = (TRIED.get(id) ?? []).filter((at) => now - at < RETRIES_IN);
+    TRIED.set(id, tried.length < RETRIES ? [...tried, now] : tried);
+    return tried.length < RETRIES;
+  }
+
   // the holder is gone, its log taken in: a run it left unfinished
-  // failed, to resume; a run the record started whose holder never
-  // launched (the server stopped first) launches
+  // failed, to resume, or a subagent's at work (waiting on no one) tried
+  // again; a run the record started whose holder never launched (the
+  // server stopped first) launches
   function gone(id: string, was: Holder): void {
     const now = Session.get(id);
     const run = Session.run(id);
     if (now !== null && run !== null && LIVE.includes(now.status)) {
+      const again = now.unit === was.unit && now.unit !== "" && Session.kind(now) === "subagent" && now.status === "running" && retry(id) ? Session.retry(id) : null;
+      const s = again === null ? null : Session.get(id);
       if (now.unit === "") {
         next_run(id);
+      } else if (s !== null && again !== null) {
+        launch(s, prompt_of(s, again), "launch " + attempt(again));
       } else if (now.unit === was.unit) {
         after(id, Session.move(id, "failed", GONE, { about: "gone " + attempt(run), text: GONE + ": send it a message to go on" }) ?? []);
       }
     }
+    release(id);
     HOOKS.change();
   }
 
@@ -240,6 +348,12 @@ export namespace Sessions {
     }
     if (kept !== null && kept.out !== null) {
       Holders.send(id, { $: "result", id: c, out: Wire.out(JSON.parse(kept.out)) });
+      return;
+    }
+    // a tool a subagent's options leave out is refused here too
+    const offered = Session.kind(s) === "session" || Tools.kit(HOOKS.tools, s.agent, { memory: s.memory === 1, mcp: true, write: s.write === 1 }).some((t) => t.name === tool);
+    if (!offered) {
+      Holders.send(id, { $: "result", id: c, out: { text: "No tool " + tool + ".", fail: true } });
       return;
     }
     if (kept === null && !Session.calling({ id: c, session: id, tool, input: JSON.stringify(input), at: Date.now() })) {
@@ -291,7 +405,37 @@ export namespace Sessions {
         next_run(id);
       }
     }
+    tidy(id, 0);
     HOOKS.change();
+  }
+
+  // a worktree on no branch removed once its run is over and its holder
+  // has ended (a stop doesn't wait for that)
+  function tidy(id: string, tries: number): void {
+    const s = Session.get(id);
+    if (s === null || LIVE.includes(s.status) || place(s) !== "detached" || !fs.existsSync(s.worktree)) {
+      return;
+    }
+    if (!Holders.alive(holder(s))) {
+      unmake(s, true);
+    } else if (tries < TIDY) {
+      setTimeout(() => tidy(id, tries + 1), 1000).unref();
+    }
+  }
+
+  // where it works: a folder of its own, a worktree on no branch, or one
+  // on its own branch
+  function place(s: Session): "folder" | "detached" | "branch" {
+    return s.repo === "" ? "folder" : s.branch === "" ? "detached" : "branch";
+  }
+
+  // its folder or worktree (and branch) removed; null: done, else why not
+  function unmake(s: Session, force: boolean): string | null {
+    if (place(s) === "folder") {
+      fs.rmSync(s.worktree, { recursive: true, force: true });
+      return null;
+    }
+    return Worktree.remove(s.repo, s.base, s.branch, s.worktree, force);
   }
 
   // the holder of the run the record started on the messages the last
@@ -319,7 +463,7 @@ export namespace Sessions {
     }
     const stop = new AbortController();
     waits.set(p.id, stop);
-    void Gate.wait(HOOKS.tools.gate, s.agent, SESSION + s.name, "session", p.tool, args_of(p.input), p.what, stop.signal, HOOKS.asked).then((said) => {
+    void Gate.wait(HOOKS.tools.gate, s.agent, Session.label(s), "session", p.tool, args_of(p.input), p.what, stop.signal, HOOKS.asked).then((said) => {
       waits.delete(p.id);
       if (said !== null) {
         Session.answer(p.id, said.ok, said.note);
@@ -385,7 +529,7 @@ export namespace Sessions {
       }
       return as === "answer" ? "answered" : as === "steer" ? "steered" : "queued";
     }
-    const why = Session.again(id, text, [key]) === null ? "Session " + s.name + " can't take a message now." : launch(s, text, null);
+    const why = Session.again(id, text, [key]) === null ? Session.label(s) + " can't take a message now." : launch(s, text, null);
     if (why !== null) {
       Session.unsay(key);
     }
@@ -401,27 +545,28 @@ export namespace Sessions {
       return "No session " + id + ".";
     }
     if (s.status === "done" || LIVE.includes(s.status)) {
-      return "Session " + s.name + " is " + s.status + ": nothing to resume.";
+      return Session.label(s) + " is " + s.status + ": nothing to resume.";
     }
     if (Holders.alive(holder(s))) {
       return STOPPING;
     }
     const run = Session.again(id, null);
-    return run === null ? "Session " + s.name + " can't be resumed now." : launch(s, prompt_of(s, run), null);
+    return run === null ? Session.label(s) + " can't be resumed now." : launch(s, prompt_of(s, run), null);
   }
 
   // its holder and everything it started killed (the whole unit), its
   // browser closed; the messages it didn't take in are dropped with it.
-  // wake: its agent is told (the user stopped it, not the agent)
-  function stop(id: string, wake: boolean): string | null {
+  // wake: its agent is told (the user stopped it, not the agent); why: for
+  // its record
+  function stop(id: string, wake: boolean, why = ""): string | null {
     const s = Session.get(id);
     const run = Session.run(id);
     if (s === null || run === null) {
       return "No session " + id + ".";
     }
-    const fx = Session.move(id, "stop", "", wake ? { about: "stop " + attempt(run), text: "by the user. Its worktree and branch stay: send it a message to go on." } : null);
+    const fx = Session.move(id, "stop", why, wake ? { about: "stop " + attempt(run), text: "by the user. " + kept(s) + ": send it a message to go on." } : null);
     if (fx === null) {
-      return "Session " + s.name + " is " + s.status + " already.";
+      return Session.label(s) + " is " + s.status + " already.";
     }
     Holders.stop(holder(s));
     void Browser.close(s.dir);
@@ -440,12 +585,13 @@ export namespace Sessions {
       return "No session " + id + ".";
     }
     if (LIVE.includes(s.status)) {
-      return "Session " + s.name + " is " + s.status + ": stop it first.";
+      return Session.label(s) + " is " + s.status + ": stop it first.";
     }
     if (Holders.alive(holder(s))) {
       return STOPPING;
     }
-    const why = Worktree.remove(s.repo, s.base, s.branch, s.worktree, force);
+    // a folder of its own, or a worktree on no branch, holds nothing to keep
+    const why = unmake(s, force || place(s) !== "branch");
     if (why !== null) {
       return why;
     }
@@ -454,6 +600,7 @@ export namespace Sessions {
     Holders.forget(holder(s));
     CARDS.delete(id);
     LATEST.delete(id);
+    TRIED.delete(id);
     HOOKS.change();
     return null;
   }
@@ -475,7 +622,7 @@ export namespace Sessions {
     const run = Session.run(s.id);
     const waits: Waits = Session.parked(s.id).length > 0 ? "approval" : Session.questions(s.id).length > 0 ? "answer" : null;
     const ended = run?.ended ?? null;
-    return { id: s.id, name: s.name, agent: s.agent, branch: s.branch, status: s.status, waits, last: LATEST.get(s.id) ?? "", started: run?.started ?? s.made, ended, at: s.at, unseen: ended !== null && ended > s.seen };
+    return { id: s.id, name: s.name, who: Session.label(s), agent: s.agent, branch: s.branch, status: s.status, waits, last: LATEST.get(s.id) ?? "", started: run?.started ?? s.made, ended, at: s.at, unseen: ended !== null && ended > s.seen };
   }
 
   // the session's page, with a page of its log (log)
@@ -504,26 +651,33 @@ export namespace Sessions {
   // the session tool: an agent starts and drives its own sessions, by name
   export function tool(agent: string, args: Record<string, unknown>): Out {
     const arg = (k: string) => (args[k] === undefined || args[k] === null ? "" : text_of(args[k]).trim());
+    if (arg("action") !== "start") {
+      return Sessions.act(agent, "session", args);
+    }
+    const had = Session.list(agent).map(row).find((x) => x.name === arg("name"));
+    if (had !== undefined) {
+      return { text: "You have a session " + had.name + " already (" + state(had) + "): read it, or pick another name.", fail: true };
+    }
+    const brief = arg("brief");
+    const s = start({ agent, repo: Machine.home(arg("repo")), base: arg("base"), branch: arg("branch"), name: arg("name"), brief, prompt: brief, model: arg("model") });
+    const bare = typeof s === "string" || fs.existsSync(Browser.script(s.dir)) ? "" : " It has no browser: agent-browser is neither on this computer's PATH nor set as agent_browser in Kunumy's config.";
+    return typeof s === "string" ? { text: s, fail: true } : { text: "Started session " + s.name + " on branch " + s.branch + " (from " + s.base + "), in " + s.worktree + "." + bare + " It works on its own: you get one message \"[Session " + s.name + "] …\" when it's done, fails, waits on the user's approval or asks you something. Don't wait for it or read it to check: go on with other work, or end your turn.", fail: false };
+  }
+
+  // what the session or subagent tool does but start: on the agent's own
+  // sessions, or subagents, by name
+  export function act(agent: string, kind: Kind, args: Record<string, unknown>): Out {
+    const arg = (k: string) => (args[k] === undefined || args[k] === null ? "" : text_of(args[k]).trim());
     const ok = (text: string): Out => ({ text, fail: false });
     const no = (text: string): Out => ({ text, fail: true });
-    const mine = Session.list(agent).map(row);
+    const mine = Session.list(agent).filter((x) => Session.kind(x) === kind).map(row);
     const action = arg("action");
     if (action === "list") {
-      return ok(mine.length === 0 ? "You have no sessions." : mine.map((x) => x.name + ": " + state(x) + ", branch " + x.branch + (x.last === "" ? "" : ", last: " + line(x.last, 80))).join("\n"));
-    }
-    if (action === "start") {
-      const had = mine.find((x) => x.name === arg("name"));
-      if (had !== undefined) {
-        return no("You have a session " + had.name + " already (" + state(had) + "): read it, or pick another name.");
-      }
-      const brief = arg("brief");
-      const s = start({ agent, repo: Machine.home(arg("repo")), base: arg("base"), branch: arg("branch"), name: arg("name"), brief, prompt: brief, model: arg("model") });
-      const bare = typeof s === "string" || fs.existsSync(Browser.script(s.dir)) ? "" : " It has no browser: agent-browser is neither on this computer's PATH nor set as agent_browser in Kunumy's config.";
-      return typeof s === "string" ? no(s) : ok("Started session " + s.name + " on branch " + s.branch + " (from " + s.base + "), in " + s.worktree + "." + bare + " It works on its own: you get one message \"[Session " + s.name + "] …\" when it's done, fails, waits on the user's approval or asks you something. Don't wait for it or read it to check: go on with other work, or end your turn.");
+      return ok(mine.length === 0 ? "You have no " + kind + "s." : mine.map((x) => x.name + ": " + state(x) + (x.branch === "" ? "" : ", branch " + x.branch) + (x.last === "" ? "" : ", last: " + line(x.last, 80))).join("\n"));
     }
     const s = mine.find((x) => x.name === arg("name"));
     if (s === undefined) {
-      return no("You have no session " + JSON.stringify(arg("name")) + ". Yours: " + (mine.map((x) => x.name).join(", ") || "none") + ".");
+      return no("You have no " + kind + " " + JSON.stringify(arg("name")) + ". Yours: " + (mine.map((x) => x.name).join(", ") || "none") + ".");
     }
     switch (action) {
       case "send": {
@@ -535,22 +689,29 @@ export namespace Sessions {
           return no("mode is steer or queue.");
         }
         const sent = say(s.id, arg("text"), arg("request"), mode);
-        return typeof sent !== "string" ? no(sent.why) : ok(SENT[sent] + " You get a message when it's done or needs you: don't wait for it.");
+        return typeof sent !== "string" ? no(sent.why) : ok(Prompts.fill(SENT[sent], { kind }) + " You get a message when it's done or needs you: don't wait for it.");
       }
       case "read": {
         const record = Session.get(s.id);
-        return record === null ? no("No session " + s.name + ".") : ok(read(record, args.after === undefined ? null : Number(args.after) || 0, Number(args.n) || LINES));
+        return record === null ? no("No " + kind + " " + s.name + ".") : ok(read(record, args.after === undefined ? null : Number(args.after) || 0, Number(args.n) || LINES));
       }
       case "stop": {
-        const why = stop(s.id, false);
-        return why === null ? ok("Stopped " + s.name + ". Its worktree and branch stay: send it a message to go on, or archive it.") : no(why);
+        const why = stop(s.id, false, arg("why"));
+        const record = Session.get(s.id);
+        return why !== null || record === null ? no(why ?? "No " + kind + " " + s.name + ".") : ok("Stopped " + s.name + ". " + kept(record) + ": send it a message to go on, or archive it.");
       }
       case "archive": {
         const why = archive(s.id, args.force === true);
-        return why === null ? ok("Archived " + s.name + ": its worktree and branch are removed, its record kept.") : no(why);
+        const record = Session.get(s.id);
+        return why !== null || record === null ? no(why ?? "No " + kind + " " + s.name + ".") : ok("Archived " + s.name + ": " + ({ folder: "its folder is", detached: "its worktree is", branch: "its worktree and branch are" }[place(record)]) + " removed, its record kept.");
       }
     }
     return no("action is start, send, read, stop, list or archive.");
+  }
+
+  // what a stopped one keeps
+  function kept(s: Session): string {
+    return { folder: "Its folder stays", detached: "Its worktree goes with its run (a new run makes it again)", branch: "Its worktree and branch stay" }[place(s)];
   }
 
   // its status, with what it waits on
@@ -594,12 +755,14 @@ export namespace Sessions {
     const all = p.log.filter((t) => !["began", "heard", "replied", "compacted", "dropped"].includes(t.ev.k));
     const shown = after === null ? all.slice(-TAIL) : all.filter((t) => t.seq > after).slice(0, Math.min(Math.max(1, n), LINES_MOST));
     const more = after !== null && shown.length > 0 && all.at(-1) !== shown.at(-1);
-    const head = "Session " + p.name + ": " + state(p) + (run === null ? "" : ", run " + run.n + (run.attempts > 1 ? " (attempt " + run.attempts + ")" : "")) + ". Branch " + p.branch + " from " + p.base + ", worktree " + p.worktree + ", media " + path.join(s.dir, MEDIA) + ".";
+    const where = { folder: "Folder " + p.worktree, detached: "Worktree " + p.worktree + " at " + p.base + ", on no branch", branch: "Branch " + p.branch + " from " + p.base + ", worktree " + p.worktree }[place(s)];
+    const how = Session.kind(s) === "subagent" ? " Model " + s.model + (s.effort === "" ? "" : ", effort " + s.effort) + "." : "";
+    const head = Session.label(s) + ": " + state(p) + (run === null ? "" : ", run " + run.n + (run.attempts > 1 ? " (attempt " + run.attempts + ")" : "")) + ". " + where + ", media " + path.join(s.dir, MEDIA) + "." + how;
     const lines = [
       head,
       ...p.parked.map((c) => "Waits on the user's approval, in the app (you can't give it): " + c.what + " (" + c.tool + " " + line(c.input, 200) + ")"),
       ...p.questions.map((q) => "Asks you (answer with send): " + q.text),
-      ...(run !== null && run.report !== "" ? ["Report: " + run.report] : run !== null && run.why !== "" ? ["Why it " + run.status + ": " + run.why] : []),
+      ...(run !== null && run.report !== "" ? [(Session.kind(s) === "session" ? "Report: " : "Result: ") + run.report] : run !== null && run.why !== "" ? ["Why it " + run.status + ": " + run.why] : []),
       "",
       (after === null ? "Its latest lines" : "Its lines after " + after) + ":",
       ...(shown.length === 0 ? ["(none)"] : shown.map(said)),
@@ -656,7 +819,8 @@ export namespace Sessions {
     switch (act) {
       case "say": {
         const sent = say(id, text("text"), text("request") || crypto.randomUUID(), text("mode") === "queue" ? "queue" : "steer");
-        return typeof sent === "string" ? out(null, { sent: SENT[sent] }) : out(sent.why);
+        const s = Session.get(id);
+        return typeof sent === "string" ? out(null, { sent: Prompts.fill(SENT[sent], { kind: s === null ? "session" : Session.kind(s) }) }) : out(sent.why);
       }
       case "seen": {
         const s = Session.get(id);

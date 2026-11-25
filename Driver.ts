@@ -22,7 +22,8 @@ type Account = { provider: string; id: string } & ({ kind: "plan"; dir: string }
 // shares (it ends a cache entry) and its own; its context, given whole
 // (blocks: a main agent's turn, its view) or kept by the provider
 // (native: the session it resumes, "" for a new one, and the blocks a new
-// one's first message starts with, before the holder's first message);
+// one's first message starts with, before the holder's first message,
+// and the brief it's told again after each compaction, "" for none);
 // the folder the provider's own tools work in (null: none); write: false
 // denies its edit tools; Kunumy's tools, each run through io.call; the
 // web searches a request may make
@@ -34,7 +35,7 @@ export type Job = {
   speed   : string;
   system  : string;
   own     : string;
-  context : { kind: "given"; blocks: Block[]; imgs: Img[] } | { kind: "native"; resume: string; first: Block[] };
+  context : { kind: "given"; blocks: Block[]; imgs: Img[] } | { kind: "native"; resume: string; first: Block[]; brief: string };
   cwd     : string | null;
   write   : boolean;
   tools   : Spec[];

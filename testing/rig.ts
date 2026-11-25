@@ -7,6 +7,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Hold } from "../Hold.ts";
+import { wake_text } from "../Wake.ts";
 import type { Order } from "./fake/server.ts";
 
 export const ROOT = path.resolve(import.meta.dir, "..");
@@ -15,6 +16,11 @@ const CONTROL = "http://127.0.0.1:9999";
 type Json = Record<string, unknown>;
 
 type Told = { seq: number; at: number; ev: Json & { k: string } };
+
+// how a test starts its work: a work session (the app's form, the session
+// tool's start), or a subagent its agent starts with the subagent tool
+type Via = "session" | "subagent";
+export const VIAS: Via[] = ["session", "subagent"];
 
 // the servers and devices a test file started, killed after it
 // (afterAll(down)), so a failed test leaves none running
@@ -53,15 +59,19 @@ export const fake = {
   // the requests whose newest message (a connector's: its tool call) has
   // match, with the first 120 characters of it and the tools offered;
   // model "" for a connector's
-  async seen(match: string): Promise<Array<{ at: string; model: string; latest: string; tools: string[] }>> {
+  async seen(match: string): Promise<Array<{ at: string; vendor: string; model: string; latest: string; tools: string[] }>> {
     const res = await fetch(CONTROL + "/log?match=" + encodeURIComponent(match));
-    return ((await res.json()) as { log: Array<{ at: string; model: string; latest: string; tools: string[] }> }).log;
+    return ((await res.json()) as { log: Array<{ at: string; vendor: string; model: string; latest: string; tools: string[] }> }).log;
   },
   // what the latest model call whose newest message has match was sent,
   // message by message
   async last(match: string): Promise<Array<{ role: string; text: string }>> {
     const r = (await (await fetch(CONTROL + "/last?match=" + encodeURIComponent(match))).json()) as { log: Array<{ said: Array<{ role: string; text: string }> }> };
     return r.log[0]?.said ?? [];
+  },
+  // the usage limits a test's order set to reset at until reset now
+  async lift(until: number): Promise<void> {
+    await fetch(CONTROL + "/lift?until=" + until);
   },
   // the whole body of the latest model call whose newest message has match
   async body(match: string): Promise<unknown> {
@@ -100,15 +110,18 @@ export class Kny {
   }
 
   // more: config.json's settings beyond the suite's own; root: the checkout
-  // the server runs from
-  static async up(more: Json = {}, root = ROOT): Promise<Kny> {
+  // the server runs from; keys: its API keys (keys.json)
+  static async up(more: Json = {}, root = ROOT, keys: Json = {}): Promise<Kny> {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "kny-"));
     const k = new Kny(path.join(home, ".kunumy"), port(), root);
     UP.push(k);
     fs.mkdirSync(path.join(k.dir, "claude-sub"), { recursive: true });
     const model = "claude-sub:haiku-5.5:low:slow";
     fs.writeFileSync(path.join(k.dir, "config.json"), JSON.stringify({ owner: "tester@example.com", vendors: "claude-sub", pick: model, compactor: model, agents: model, ...more }));
-    fs.writeFileSync(path.join(k.dir, "claude-sub", ".credentials.json"), JSON.stringify({ claudeAiOauth: { accessToken: "sk-ant-oat01-test-fake", refreshToken: "sk-ant-ort01-test-fake", expiresAt: 4102444800000, scopes: ["user:inference", "user:profile", "user:sessions:claude_code", "user:mcp_servers"], subscriptionType: "max" } }));
+    fs.writeFileSync(path.join(k.dir, "keys.json"), JSON.stringify(keys));
+    // a sign-in of its own, as the fake keeps a usage limit per credential
+    const own = tag();
+    fs.writeFileSync(path.join(k.dir, "claude-sub", ".credentials.json"), JSON.stringify({ claudeAiOauth: { accessToken: "sk-ant-oat01-test-" + own, refreshToken: "sk-ant-ort01-test-" + own, expiresAt: 4102444800000, scopes: ["user:inference", "user:profile", "user:sessions:claude_code", "user:mcp_servers"], subscriptionType: "max" } }));
     await k.start();
     await k.login();
     const agents = (await k.api("GET", "/api/agents")).json as { agents: Array<{ id: string }> };
@@ -208,9 +221,30 @@ export class Kny {
     if (r.status !== 200) {
       throw new Error("start " + name + ": " + JSON.stringify(r.json));
     }
-    const s = new Session(this, String(r.json.id), name);
+    const s = new Session(this, String(r.json.id), name, "session");
     s.worktree = (await s.page()).worktree;
     return s;
+  }
+
+  // a subagent or several its agent starts in one call of the subagent
+  // tool (its setting turned on first), each on its task's options
+  async subagents(...tasks: Json[]): Promise<Session[]> {
+    await this.api("POST", "/api/agents/" + this.agent, { subagents: true });
+    const t = tag();
+    await fake.next(t + ": start", { what: "tool", calls: [["subagent", { action: "start", tasks }]] });
+    await this.tell(t + ": start");
+    return await Promise.all(tasks.map(async (task) => {
+      const row = await until("subagent " + String(task.name), async () => ((await this.api("GET", "/api/sessions?agent=" + this.agent)).json as unknown as Array<{ id: string; name: string }>).find((x) => x.name === task.name));
+      const s = new Session(this, row.id, row.name, "subagent");
+      s.worktree = (await s.page()).worktree;
+      return s;
+    }));
+  }
+
+  // a work session, or a subagent its agent starts on the same repo,
+  // from main
+  async work(via: Via, name: string, prompt: string, repo: string, more: Json = {}): Promise<Session> {
+    return via === "session" ? await this.session(name, prompt, repo, more) : (await this.subagents({ task: prompt, name, repo, base: "main", ...more }))[0];
   }
 }
 
@@ -235,7 +269,12 @@ class Device {
 class Session {
   worktree = "";
 
-  constructor(readonly k: Kny, readonly id: string, readonly name: string) {}
+  constructor(readonly k: Kny, readonly id: string, readonly name: string, readonly via: Via) {}
+
+  // the start of a wake it sends its agent
+  woke(body: string): string {
+    return wake_text(this.via, this.name, body);
+  }
 
   get dir(): string {
     return path.join(this.k.dir, "sessions", this.id);

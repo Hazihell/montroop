@@ -16,6 +16,12 @@ function session(name = "s" + ++made): Session {
   return Session.add({ id, name, agent: "agent1", repo: "/repo", base: "main", branch: "kny/" + name, worktree: "/repo-" + name, account: "", model: "", dir: path.join(DIR, "sessions", id) }, "the first message");
 }
 
+// a subagent's record, as the subagent tool makes it
+function subagent(name: string): Session {
+  const id = crypto.randomUUID().slice(0, 8);
+  return Session.add({ id, name, agent: "agent1", repo: "", base: "", branch: "", worktree: "/scratch/agent1/sessions/" + name, provider: "claude", account: "", model: "claude-haiku-5-5", effort: "low", memory: 1, write: 1, device: "", dir: path.join(DIR, "sessions", id) }, "the task");
+}
+
 function told(s: Session, seq: number, ev: Ev): Effect[] {
   return Session.apply(s.id, { seq, at: 1000 + seq, ev });
 }
@@ -46,6 +52,27 @@ test("a run that ends badly fails, saying why", () => {
   const s = session("broke");
   expect(woke(told(s, 1, { k: "end", ok: false, text: "Claude Code process terminated by signal SIGKILL" }))).toEqual([wake_text("session", "broke", "failed: Claude Code process terminated by signal SIGKILL")]);
   expect(Session.run(s.id)).toMatchObject({ status: "failed", why: "Claude Code process terminated by signal SIGKILL" });
+});
+
+test("a subagent's run that ends well has its last reply as its result, and wakes its agent as a subagent", () => {
+  const s = subagent("scout");
+  told(s, 1, { k: "text", text: "Looking." });
+  expect(woke(told(s, 2, { k: "end", ok: true, text: "Found 3 files." }))).toEqual([wake_text("subagent", "scout", "done: Found 3 files.")]);
+  expect(Session.run(s.id)).toMatchObject({ status: "done", report: "Found 3 files." });
+});
+
+test("a subagent's question wakes its agent to answer with the subagent tool", () => {
+  const s = subagent("asker");
+  expect(woke(told(s, 1, { k: "question", id: crypto.randomUUID(), text: "Which one?" }))).toEqual([wake_text("subagent", "asker", "question: Which one?\n\nIt waits for your answer: give it with subagent send. If only the user knows, ask them first.")]);
+});
+
+test("a run at work is tried again on a new holder, its attempts counted, unless it waits on someone", () => {
+  const s = subagent("again");
+  expect(Session.retry(s.id)).toMatchObject({ n: 1, status: "running", attempts: 2 });
+  expect(Session.get(s.id)?.status).toBe("running");
+  told(s, 1, push());
+  expect(Session.retry(s.id)).toBeNull();
+  expect(Session.run(s.id)?.attempts).toBe(2);
 });
 
 test("an event told again, or one older than the last taken, changes nothing", () => {
@@ -167,7 +194,7 @@ test("a record from an earlier version's tables opens with today's columns, its 
   const read = "import { Session } from './Session.ts'; console.log(JSON.stringify({ s: Session.get('a1d5e551'), runs: Session.runs('a1d5e551'), questions: Session.questions('a1d5e551') }))";
   const out = Bun.spawnSync(["bun", "-e", read], { cwd: path.resolve(import.meta.dir, "../.."), env: { ...process.env, KNY_DIR: dir } });
   const got = JSON.parse(out.stdout.toString()) as { s: Record<string, unknown>; runs: Record<string, unknown>[]; questions: unknown[] };
-  expect(got.s).toMatchObject({ name: "old", status: "done", ack: 3, launches: 2, archived: 0, legacy: 7 });
+  expect(got.s).toMatchObject({ name: "old", status: "done", ack: 3, launches: 2, archived: 0, legacy: 7, provider: "", effort: "", memory: 0, write: 1, device: "" });
   expect(got.runs).toMatchObject([{ n: 1, prompt: "the old prompt", report: "" }]);
   expect(got.questions).toEqual([]);
 });

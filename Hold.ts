@@ -16,7 +16,8 @@ import type { Out } from "./Agent.ts";
 import type { Call, End, Gated, Inbox, Io, Job } from "./Driver.ts";
 import { err_why } from "./Err.ts";
 import { rec, str, text_of } from "./Json.ts";
-import { spec, STR, type Spec as Tool } from "./Machine.ts";
+import { Machine, SCRATCH, spec, STR, type Spec as Tool } from "./Machine.ts";
+import { Limit } from "./Limit.ts";
 import { Providers } from "./Providers.ts";
 import { Rules, type Rule } from "./Rules.ts";
 import { reap } from "./Service.ts";
@@ -29,15 +30,17 @@ export type Spec = { cwd: string; claude: string; model: string; append: string 
 
 // what one holder starts with: the driver that runs it (claude-code: a
 // work session's, on its spec and the provider's session it resumes, ""
-// for a new one; provider: the one the job's provider picks), its first
-// message, the rules that ask the owner first and the devices' scratch
-// folders they read, the kit of Kunumy's tools a work session is offered
-// (a provider job's is its job's tools), the socket it listens on
-export type Start = { driver: "claude-code" | "provider"; job?: Omit<Job, "dir">; prompt: string; resume: string; rules: Rule[]; scratch: Scratch; tools: Kit[]; sock: string };
+// for a new one; provider: the one the job's provider picks), whether it
+// runs a subagent (its question is ask, its result its last reply), its
+// first message, the rules that ask the owner first and the devices'
+// scratch folders they read, the kit of Kunumy's tools it's offered (none
+// given: a provider job's own tools, run on the device they name), the
+// socket it listens on
+export type Start = { driver: "claude-code" | "provider"; job?: Omit<Job, "dir">; sub?: boolean; prompt: string; resume: string; rules: Rule[]; scratch: Scratch; tools?: Kit[]; sock: string };
 
 // a start written before drivers were named runs Claude Code; one before
 // the server ran tools for holders offers none
-type Written = Omit<Start, "driver" | "scratch" | "tools"> & { driver?: string; scratch?: Scratch; tools?: Kit[] };
+type Written = Omit<Start, "driver" | "scratch"> & { driver?: string; scratch?: Scratch };
 
 type Parked = { ask: Ask; done: (g: Gated) => void };
 
@@ -74,6 +77,9 @@ export const HOLDS: Tool[] = [
   spec("ask_owner", "Ask the agent that started this session a question, when you can't go on without its answer (a decision, missing information). The call waits for the answer, which can take a while; it comes back as this call's result.", { question: STR }, ["question"]),
   spec("report", "Give your result to the agent that started this session, once, when you're done: what you did, where (branch, commits, files), how you checked it, what is left. Then end your turn.", { result: STR }, ["result"]),
 ];
+
+// a subagent's: its last reply is its result
+const ASK: Tool[] = [spec("ask", "Ask the agent that started you a question, when you can't go on without its answer (a decision, missing information). The call waits for the answer, which can take a while; it comes back as this call's result.", { question: STR }, ["question"])];
 
 // what a call of Kunumy's gets while an older server, which runs none,
 // owns the holder
@@ -167,6 +173,8 @@ export namespace Hold {
       Wire.ack(h.out, Number(msg.seq) || 0);
     } else if (msg.$ === "rules") {
       ruled(h, msg);
+    } else if (msg.$ === "poke") {
+      Limit.resume();
     } else if (msg.$ === "result" && typeof msg.id === "string") {
       const sent = h.calls.get(msg.id);
       h.calls.delete(msg.id);
@@ -255,7 +263,7 @@ export namespace Hold {
   // the scratch folder of the device it runs on), then sent to the server,
   // and again after each hello till its result comes
   async function call(h: Held, kit: Kit[], c: Call): Promise<Out> {
-    if (c.tool === "ask_owner") {
+    if (c.tool === "ask_owner" || c.tool === "ask") {
       return { text: "The answer: " + await ask(h, text_of(c.args.question)), fail: false };
     }
     if (c.tool === "report") {
@@ -306,7 +314,7 @@ export namespace Hold {
       speed   : "",
       system  : "",
       own     : spec.append,
-      context : { kind: "native", resume: start.resume, first: [] },
+      context : { kind: "native", resume: start.resume, first: [], brief: "" },
       cwd     : spec.cwd,
       write   : true,
       tools   : [],
@@ -346,11 +354,13 @@ export namespace Hold {
 
     const name = start.driver ?? "claude-code";
     const given = name === "claude-code" ? sessions(dir, start) : name === "provider" ? start.job ?? null : null;
-    const kit: Kit[] = name === "provider" ? (given?.tools ?? []).map((t) => ({ device: null, ...t })) : start.tools ?? [];
-    const job: Job | null = given === null ? null : { ...given, dir, tools: [...HOLDS, ...kit] };
+    const kit: Kit[] = start.tools ?? (name === "provider" ? (given?.tools ?? []).map((t) => ({ device: null, ...t })) : []);
+    const job: Job | null = given === null ? null : { ...given, dir, tools: [...(start.sub === true ? ASK : HOLDS), ...kit] };
     const driver = job === null ? null : Providers.driver(job);
-    const cwd = job?.cwd ?? null;
-    const own = (call: Call) => Rules.match(h.rules, call.tool, call.args, cwd);
+    // the provider's own tools work on this computer: its scratch folder
+    // is the one the rules read their arguments with
+    const scratch = Machine.home(SCRATCH);
+    const own = (call: Call) => Rules.match(h.rules, call.tool, call.args, scratch);
     const io: Io = { emit: h.emit, inbox: inbox(h.box), parks: (call) => own(call) !== null, gate: (call, stop) => gate(h, own(call), call, stop), call: (c) => call(h, kit, c) };
     let end: End;
     try {

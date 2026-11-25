@@ -39,10 +39,11 @@ export type Mate = { id: string; name: string; about: string; picture: string; u
 // or its agent's answer to its question
 export type Waits = "approval" | "answer" | null;
 
-// a work session as the app lists it: last, its latest line; started and
-// ended, its latest run's; at, when its record last changed; unseen, its
-// run ended since the owner last looked
-export type SessionRow = { id: string; name: string; agent: string; branch: string; status: Status; waits: Waits; last: string; started: number; ended: number | null; at: number; unseen: boolean };
+// a work session or subagent as the app lists it: who, the name its cards
+// are asked by; last, its latest line; started and ended, its latest
+// run's; at, when its record last changed; unseen, its run ended since the
+// owner last looked
+export type SessionRow = { id: string; name: string; who: string; agent: string; branch: string; status: Status; waits: Waits; last: string; started: number; ended: number | null; at: number; unseen: boolean };
 
 // a work session's page: its runs, the calls and questions it waits on,
 // the messages sent to it (heard: 1 taken in, 0 not yet, -1 dropped as it

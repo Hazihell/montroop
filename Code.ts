@@ -9,10 +9,13 @@
 // way Kunumy's tools (Job.tools) are an MCP server in it, each call run by
 // the holder (io.call), which gates them; every other call it makes passes
 // the holder's gate first. A usage limit is waited out (Limit), then the
-// turn it cut goes on.
+// turn it cut goes on. Both read the owner's own instructions for Claude
+// Code (instructions).
 
+import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
-import type { CanUseTool, HookCallback, McpSdkServerConfigWithInstance, Options, Query, SDKMessage, SDKRateLimitInfo, SDKResultMessage, SDKUserMessage, SyncHookJSONOutput } from "@anthropic-ai/claude-agent-sdk";
+import type { CanUseTool, HookCallback, HookInput, McpSdkServerConfigWithInstance, Options, Query, SDKMessage, SDKRateLimitInfo, SDKResultMessage, SDKUserMessage, SyncHookJSONOutput } from "@anthropic-ai/claude-agent-sdk";
 import { Agent, BUSY } from "./Agent.ts";
 import { Anthropic } from "./Anthropic.ts";
 import { AskAI } from "./AskAI.ts";
@@ -48,6 +51,9 @@ const SETTINGS = {
 
 const HOUR = { type: "ephemeral", ttl: "1h" };
 
+// what a brief told again after a compaction starts with
+const AGAIN = "Your task, as you were first given it:\n\n";
+
 // a failed turn's errors that say the service was busy (ClaudeSub.turn)
 const BUSY_ERRORS = ["server_error", "overloaded"];
 
@@ -71,7 +77,9 @@ export namespace Code {
     }
     const sdk = await ClaudeSub.sdk();
     const dir = signed_in(job);
+    instructions(dir);
     const c = job.context;
+    const brief = c.kind === "native" ? c.brief : "";
     const first = c.kind === "native" && c.resume === "" ? c.first.filter((b) => b.text !== "") : [];
     const marked = first.findLastIndex((b) => b.mark);
     const env = Object.fromEntries(Object.entries(ClaudeSub.bare_env()).filter(([k]) => k !== "DISABLE_AUTO_COMPACT"));
@@ -111,6 +119,7 @@ export namespace Code {
         PreToolUse    : [{ hooks: [gates.pre], onFailure: "block" }],
         PostToolUse   : [{ hooks: [gates.post] }],
         PostToolBatch : [{ hooks: [() => Promise.resolve(cut(watch, false))] }],
+        SessionStart  : [{ hooks: [(input) => Promise.resolve(again(input, brief))] }],
       },
     } });
     for await (const msg of q) {
@@ -149,6 +158,7 @@ export namespace Code {
     const sdk = await ClaudeSub.sdk();
     const bin = await ClaudeSub.bin_on_disk();
     const dir = signed_in(job);
+    instructions(dir);
     const ask = Loop.asked(job, "claude-sub");
     const limit = Limit.make(ask, Loop.limits(io), new AbortController().signal);
     const base = ClaudeSub.options(ask, new AbortController(), sdk.BUILTIN_TOOL_NAMES, sdk.SYSTEM_PROMPT_DYNAMIC_BOUNDARY);
@@ -163,6 +173,10 @@ export namespace Code {
       env             : { ...base.env, CLAUDE_CONFIG_DIR: dir },
       cwd             : dir,
       pathToClaudeCodeExecutable: bin,
+      settingSources  : ["user"],
+      // the account folder is read for the owner's instructions only: hooks
+      // its settings name don't run (the holder's own still do)
+      settings        : { ...(base.settings as object), disableAllHooks: true },
       permissionMode  : "default",
       allowedTools    : [...own, "mcp__" + MCP],
       mcpServers      : { [MCP]: kunumy(io, job.tools) },
@@ -227,6 +241,35 @@ export namespace Code {
       throw new Error("Claude Code runs on a plan's sign-in, not an API key.");
     }
     return job.account.dir;
+  }
+
+  // Claude Code reads its user memory, and the files it imports, from its
+  // config folder (CLAUDE_CONFIG_DIR, the account's): a link there to the
+  // owner's ~/.claude/CLAUDE.md, unless the folder has one of its own
+  function instructions(dir: string): void {
+    const own = path.join(os.homedir(), ".claude", "CLAUDE.md");
+    const at = path.join(dir, "CLAUDE.md");
+    if (fs.existsSync(own) && !exists(at)) {
+      try {
+        fs.symlinkSync(own, at);
+      } catch {}
+    }
+  }
+
+  // a file there, even a link to none
+  function exists(file: string): boolean {
+    try {
+      fs.lstatSync(file);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // after a compaction, the brief told again: what the compaction summed
+  // up keeps nothing of a brief given once
+  function again(input: HookInput, brief: string): SyncHookJSONOutput {
+    return input.hook_event_name === "SessionStart" && input.source === "compact" && brief !== "" ? { hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: AGAIN + brief } } : {};
   }
 
   // texts as a message's blocks, the one at mark (-1: none) ending an

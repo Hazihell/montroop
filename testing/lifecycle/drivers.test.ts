@@ -8,6 +8,7 @@ import * as config from "../../Config.ts";
 import type { Job } from "../../Driver.ts";
 import { Hold, HOLDS } from "../../Hold.ts";
 import type { Spec } from "../../Machine.ts";
+import { Rules, type Rule } from "../../Rules.ts";
 import { Tools } from "../../Tools.ts";
 import type { Ev, Told } from "../../Wire.ts";
 import { fake, ROOT, tag, until } from "../rig.ts";
@@ -32,27 +33,28 @@ config.config_reload();
 // the job of each driver, on a data folder's accounts: a given one's
 // blocks end with the text the fake matches
 const DRIVERS: Record<string, (home: string, text: string) => Omit<Job, "dir">> = {
-  "claude-code, native": (home) => ({ ...base(home, "claude", "plan", "claude-haiku-5-5"), context: { kind: "native", resume: "", first: [] }, cwd: fs.mkdtempSync(path.join(os.tmpdir(), "cwd-")) }),
+  "claude-code, native": (home) => ({ ...base(home, "claude", "plan", "claude-haiku-5-5"), context: { kind: "native", resume: "", first: [], brief: "" }, cwd: fs.mkdtempSync(path.join(os.tmpdir(), "cwd-")) }),
   "claude-code, given" : (home, text) => ({ ...base(home, "claude", "plan", "claude-haiku-5-5"), context: { kind: "given", blocks: [{ text, mark: false }], imgs: [] } }),
-  "anthropic api"      : (home) => ({ ...base(home, "claude", "key", "claude-haiku-5-5"), context: { kind: "native", resume: "", first: [] } }),
-  "openai api"         : (home) => ({ ...base(home, "openai", "key", "gpt-6-luna"), context: { kind: "native", resume: "", first: [] } }),
-  "chatgpt plan"       : (home) => ({ ...base(home, "openai", "plan", "gpt-6-luna"), context: { kind: "native", resume: "", first: [] } }),
+  "anthropic api"      : (home) => ({ ...base(home, "claude", "key", "claude-haiku-5-5"), context: { kind: "native", resume: "", first: [], brief: "" } }),
+  "openai api"         : (home) => ({ ...base(home, "openai", "key", "gpt-6-luna"), context: { kind: "native", resume: "", first: [], brief: "" } }),
+  "chatgpt plan"       : (home) => ({ ...base(home, "openai", "plan", "gpt-6-luna"), context: { kind: "native", resume: "", first: [], brief: "" } }),
 };
 
 function base(home: string, provider: string, kind: "plan" | "key", model: string): Omit<Job, "dir"> {
   const account = kind === "plan" ? { provider, id: "personal", kind, dir: path.join(home, "claude-sub") } : { provider, id: "key", kind, dir: null };
-  return { account, model, effort: "low", speed: "slow", system: "You are a test agent.", own: "", context: { kind: "native", resume: "", first: [] }, cwd: null, write: true, tools: [], web: 0 };
+  return { account, model, effort: "low", speed: "slow", system: "You are a test agent.", own: "", context: { kind: "native", resume: "", first: [], brief: "" }, cwd: null, write: true, tools: [], web: 0 };
 }
 
 // a holder run on job by hand, its first message prompt (given: none, the
 // job's blocks are its context), no server linked to it but what
 // meanwhile does: what it told, each with when, once its run is over; dir:
-// the folder of a holder before it, whose run it goes on with
-async function hold(home: string, job: Omit<Job, "dir">, prompt: string, meanwhile = (_dir: string) => Promise.resolve(), dir = fs.mkdtempSync(path.join(os.tmpdir(), "hold-"))): Promise<Told[]> {
+// the folder of a holder before it, whose run it goes on with; env: its
+// variables beyond the suite's; more: its start's fields beyond these
+async function hold(home: string, job: Omit<Job, "dir">, prompt: string, meanwhile = (_dir: string) => Promise.resolve(), dir = fs.mkdtempSync(path.join(os.tmpdir(), "hold-")), env: Record<string, string> = {}, more: object = {}): Promise<Told[]> {
   const ends = () => Hold.told(dir).filter((x) => x.ev.k === "end").length;
   const before = ends();
-  fs.writeFileSync(path.join(dir, "start.json"), JSON.stringify({ driver: "provider", job, prompt: job.context.kind === "given" ? "" : prompt, resume: "", rules: [], sock: path.join(dir, "hold.sock") }));
-  const p = Bun.spawn(["bun", path.join(ROOT, "Cli.ts"), "hold", dir], { env: { ...process.env, KNY_DIR: home }, stdio: ["ignore", "ignore", "ignore"] });
+  fs.writeFileSync(path.join(dir, "start.json"), JSON.stringify({ driver: "provider", job, prompt: job.context.kind === "given" ? "" : prompt, resume: "", rules: [], sock: path.join(dir, "hold.sock"), ...more }));
+  const p = Bun.spawn(["bun", path.join(ROOT, "Cli.ts"), "hold", dir], { env: { ...process.env, KNY_DIR: home, ...env }, stdio: ["ignore", "ignore", "ignore"] });
   await meanwhile(dir);
   // with no server to take what it told, it would wait a minute to exit
   await until("its run over", () => ends() > before, 25000);
@@ -129,7 +131,7 @@ for (const name of ["claude-code, native", "anthropic api"]) {
   test.concurrent(name + ": a new conversation's first message starts with the job's first blocks, a marked one ending a cache entry", async () => {
     const t = tag();
     const home = signed(fs.mkdtempSync(path.join(os.tmpdir(), "home-")));
-    const job = { ...DRIVERS[name](home, ""), context: { kind: "native" as const, resume: "", first: [{ text: "The view " + t + ".\n", mark: true }, { text: "Devices: none.\n", mark: false }] } };
+    const job = { ...DRIVERS[name](home, ""), context: { kind: "native" as const, resume: "", first: [{ text: "The view " + t + ".\n", mark: true }, { text: "Devices: none.\n", mark: false }], brief: "" } };
 
     expect(evs(await hold(home, job, t + ": work")).at(-1)).toEqual({ k: "end", ok: true, text: "ok" });
     const first = ((await fake.body(t + ": work")) as { messages: Array<{ content: Array<{ text?: string; cache_control?: unknown }> }> }).messages[0].content.filter((b) => !(b.text ?? "").startsWith("<system-reminder>"));
@@ -137,6 +139,87 @@ for (const name of ["claude-code, native", "anthropic api"]) {
     expect(first[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
   });
 }
+
+// the owner's ~/.claude/CLAUDE.md, with what it imports, as Claude Code's
+// user memory, the account's folder holding none of its own
+for (const name of ["claude-code, native", "claude-code, given"]) {
+  test.concurrent(name + ": the owner's own instructions for Claude Code, and the files they import, are in its request", async () => {
+    const t = tag();
+    const home = signed(fs.mkdtempSync(path.join(os.tmpdir(), "home-")));
+    const user = fs.mkdtempSync(path.join(os.tmpdir(), "user-"));
+    fs.mkdirSync(path.join(user, ".claude"));
+    fs.writeFileSync(path.join(user, ".claude", "CLAUDE.md"), "Owner's rule " + t + ".\n\n@more.md\n");
+    fs.writeFileSync(path.join(user, ".claude", "more.md"), "Imported rule " + t + ".\n");
+
+    expect(evs(await hold(home, DRIVERS[name](home, t + ": work"), t + ": work", undefined, undefined, { HOME: user })).at(-1)).toEqual({ k: "end", ok: true, text: "ok" });
+    const body = JSON.stringify(await fake.body(t + ": work"));
+    expect(body).toContain("Owner's rule " + t + ".");
+    expect(body).toContain("Imported rule " + t + ".");
+  });
+}
+
+test.concurrent("claude-code, given: the account folder's own settings run no hook and let no call past the gate", async () => {
+  const t = tag();
+  const home = signed(fs.mkdtempSync(path.join(os.tmpdir(), "home-")));
+  const ran = path.join(home, "hook-ran");
+  fs.writeFileSync(path.join(home, "claude-sub", "settings.json"), JSON.stringify({ permissions: { allow: ["mcp__claude_ai_Gmail__send_message"] }, hooks: { PreToolUse: [{ matcher: "*", hooks: [{ type: "command", command: "touch " + ran }] }], UserPromptSubmit: [{ hooks: [{ type: "command", command: "touch " + ran }] }] } }));
+  await fake.next(t + ": work", { what: "tool", calls: [["mcp__claude_ai_Gmail__send_message", { to: t + "@example.com", body: "hi" }]] });
+  const rules = Rules.read(undefined) as Rule[];
+
+  const told = evs(await hold(home, DRIVERS["claude-code, given"](home, t + ": work"), "", (dir) => serve(dir, rules, {}, () => ""), undefined, {}, { rules }));
+  expect(told.filter((e) => e.k === "ask").map((e) => e.k === "ask" && e.tool)).toEqual(["mcp__claude_ai_Gmail__send_message"]);
+  expect(fs.existsSync(ran)).toBe(false);
+});
+
+test.concurrent("claude-code, native: a brief is told again after a compaction", async () => {
+  const t = tag();
+  const home = signed(fs.mkdtempSync(path.join(os.tmpdir(), "home-")));
+  const job = { ...DRIVERS["claude-code, native"](home, ""), context: { kind: "native" as const, resume: "", first: [], brief: "The brief " + t + "." } };
+  await fake.next(t + ": work", { what: "stall", ms: 2000 });
+
+  const told = evs(await hold(home, job, t + ": work", async (dir) => {
+    await tell(dir, { $: "say", id: t + "-1", text: "/compact", answer: false }, { $: "say", id: t + "-2", text: t + ": after", answer: false });
+  }));
+  expect(told).toContainEqual({ k: "compacted" });
+  expect(JSON.stringify(await fake.body(t + ": after"))).toContain("Your task, as you were first given it:\\n\\nThe brief " + t + ".");
+});
+
+// a server of the test's own for a holder: each call of Kunumy's tools
+// answered with what out makes of its input, each call parked denied
+async function serve(dir: string, rules: Rule[], scratch: Record<string, string>, out: (input: Record<string, unknown>) => string): Promise<void> {
+  const sock = path.join(dir, "hold.sock");
+  await until("its socket", () => fs.existsSync(sock));
+  const send = (c: { write: (s: string) => unknown }, msg: object) => c.write(JSON.stringify(msg) + "\n");
+  let rest = "";
+  await Bun.connect({ unix: sock, socket: {
+    open: (c) => void send(c, { $: "hello", v: 4, ack: 0, rules, scratch }),
+    data: (c, d) => {
+      const lines = (rest + d.toString()).split("\n");
+      rest = lines.pop() ?? "";
+      for (const msg of lines.map((l) => JSON.parse(l) as { $: string; id: string; input: Record<string, unknown>; ev?: { k: string; id: string } })) {
+        if (msg.$ === "call") {
+          send(c, { $: "result", id: msg.id, out: { text: out(msg.input), fail: false } });
+        } else if (msg.$ === "ev" && msg.ev?.k === "ask") {
+          send(c, { $: "answer", id: msg.ev.id, ok: false, note: "" });
+        }
+      }
+    },
+  } });
+}
+
+test.concurrent("anthropic api: a device's tool a start offers keeps its device, whose scratch folder the rules read, and each call is answered by the server", async () => {
+  const t = tag();
+  const home = signed(fs.mkdtempSync(path.join(os.tmpdir(), "home-")));
+  const tools = [{ name: "box_files__delete_file", info: "Delete a file.", schema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] }, device: "box" }];
+  await fake.next(t + ": work", { what: "tool", calls: [["box_files__delete_file", { path: "/box/scratch/a-" + t }]] });
+  await fake.next("deleted /box/scratch/a-" + t, { what: "tool", calls: [["box_files__delete_file", { path: "/elsewhere/b-" + t }]] });
+  const [rules, scratch] = [Rules.read(undefined) as Rule[], { box: "/box/scratch" }];
+
+  const told = evs(await hold(home, DRIVERS["anthropic api"](home, ""), t + ": work", (dir) => serve(dir, rules, scratch, (input) => "deleted " + String(input.path)), undefined, {}, { tools, rules, scratch }));
+  expect(told.filter((e) => e.k === "result").map((e) => e.k === "result" && [e.text.split("\n")[0], e.error])).toEqual([["deleted /box/scratch/a-" + t, false], [expect.stringContaining("The user denied this"), true]]);
+  expect(told.filter((e) => e.k === "ask").map((e) => e.k === "ask" && e.input.path)).toEqual(["/elsewhere/b-" + t]);
+  expect(told.at(-1)).toEqual({ k: "end", ok: true, text: "ok" });
+});
 
 test.concurrent("anthropic api: a later holder resumes the conversation from its transcript", async () => {
   const t = tag();
@@ -147,7 +230,7 @@ test.concurrent("anthropic api: a later holder resumes the conversation from its
   const began = evs(await hold(home, job, t + ": one", undefined, dir)).find((e) => e.k === "began");
   await fake.next(t + ": two", { what: "reply", text: t + " second answer" });
 
-  const told = evs(await hold(home, { ...job, context: { kind: "native", resume: String(began?.sdk), first: [] } }, t + ": two", undefined, dir));
+  const told = evs(await hold(home, { ...job, context: { kind: "native", resume: String(began?.sdk), first: [], brief: "" } }, t + ": two", undefined, dir));
   expect(told.at(-1)).toEqual({ k: "end", ok: true, text: t + " second answer" });
   expect((await fake.last(t + ": two")).map((m) => [m.role, m.text])).toEqual([["user", t + ": one"], ["assistant", t + " first answer"], ["user", t + ": two"]]);
 });
