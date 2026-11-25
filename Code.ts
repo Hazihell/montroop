@@ -91,6 +91,7 @@ export namespace Code {
     const gates = gated(io);
     let id = c.kind === "native" ? c.resume : "";
     let tasks = 0;
+    const asked = { id: "" };
     let end: End = { ok: false, text: "Claude Code ended before its turn did." };
     let opening = first;
     const box = feed(io.inbox, (text) => {
@@ -132,6 +133,7 @@ export namespace Code {
       }
       seen(watch, msg);
       told_of(msg).forEach(io.emit);
+      used_of(msg, asked).forEach(io.emit);
       if (msg.type === "result") {
         end = outcome(msg);
         const until = limited(watch, end.ok);
@@ -167,6 +169,7 @@ export namespace Code {
     const own = (base.tools ?? []) as string[];
     const signin = ClaudeSub.sign_in(ClaudeSub.account(ask));
     const watch: Limits = { info: null, hit: false, over: false, cut: null };
+    const asked = { id: "" };
     const gates = gated(io);
     const options: Options = {
       ...base,
@@ -206,7 +209,7 @@ export namespace Code {
           code.box.put(Anthropic.content(said.length === 0 ? [labeled(Prompts.prompt("continue"))] : said, []));
         }
         const said = { v: false };
-        const got = await turn(code.q, io, watch, own, signin, said, (v) => (acted ||= v));
+        const got = await turn(code.q, io, watch, asked, own, signin, said, (v) => (acted ||= v));
         if ("died" in got) {
           if (said.v || tries > 0) {
             return { ok: false, text: got.died };
@@ -452,8 +455,8 @@ export namespace Code {
 
   // one given turn's messages till its result (ClaudeSub.turn); signin:
   // what an expired sign-in ends it with; said: it told something; acted:
-  // it called a tool not its own
-  async function turn(q: Query, io: Io, watch: Limits, own: string[], signin: string, said: { v: boolean }, acted: (v: boolean) => void): Promise<Turn> {
+  // it called a tool not its own; asked: as used_of's
+  async function turn(q: Query, io: Io, watch: Limits, asked: { id: string }, own: string[], signin: string, said: { v: boolean }, acted: (v: boolean) => void): Promise<Turn> {
     let err: string | undefined;
     for (;;) {
       let r: IteratorResult<SDKMessage>;
@@ -470,6 +473,7 @@ export namespace Code {
       const evs = told_of(msg);
       said.v ||= evs.length > 0;
       evs.forEach(io.emit);
+      used_of(msg, asked).forEach(io.emit);
       if (msg.type === "assistant" && msg.error === undefined) {
         acted(msg.message.content.some((b) => b.type === "tool_use" && !own.includes(b.name)));
       }
@@ -535,6 +539,20 @@ export namespace Code {
       return [{ k: "turn", ...outcome(msg) }];
     }
     return [];
+  }
+
+  // the tokens of a request of the run's own, once (Claude Code tells each
+  // block of an answer as a message of its own, all with its usage; one it
+  // makes up itself, as for a usage limit, has none); asked: the latest
+  // request's message id
+  function used_of(msg: SDKMessage, asked: { id: string }): Ev[] {
+    if (msg.type !== "assistant" || msg.parent_tool_use_id !== null || msg.message.id === asked.id) {
+      return [];
+    }
+    asked.id = msg.message.id;
+    const used = Anthropic.used(msg.message.usage);
+    const tokens = used === null ? 0 : used.read + used.write + used.input;
+    return tokens === 0 ? [] : [{ k: "used", tokens }];
   }
 
 }

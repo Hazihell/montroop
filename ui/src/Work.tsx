@@ -11,11 +11,12 @@ import { note, show, useKunumy } from "./Kunumy.ts";
 import { Blocks } from "./Markdown.tsx";
 import { Ask, CallBody, ToolIcon } from "./Rows.tsx";
 import { viewer_open } from "./Viewer.tsx";
-import { useNow, useWorks, work_act, work_live, work_span, work_stop, STATES, WorkFace, WorkState } from "./Works.tsx";
+import { useNow, useWorks, work_act, work_live, work_span, work_stop, STATES, WorkFace, WorkHow, WorkState } from "./Works.tsx";
 
-// one work session's page: what it is and does now, its log as it comes
-// (newest at the bottom, followed while at the bottom), the calls and
-// questions it waits on, its report and media, and a box to message it
+// one work session's or subagent's page: what it is and does now, how it
+// runs, its log as it comes (newest at the bottom, followed while at the
+// bottom), the calls and questions it waits on, its report and media, and
+// a box to message it
 
 // log entries a page brings
 const PAGE = 100;
@@ -25,7 +26,7 @@ const TOUCH = matchMedia("(pointer: coarse)").matches;
 // what Claude Code calls the tools the chat has icons for
 const AS: Record<string, string> = { Bash: "shell", Read: "read", Write: "write", Edit: "edit", MultiEdit: "edit", Grep: "search", Glob: "search" };
 // what a log line for each kind of entry never shows
-const QUIET = new Set(["began", "heard", "replied", "dropped", "result"]);
+const QUIET = new Set(["began", "heard", "replied", "dropped", "result", "used"]);
 
 // the session as the server has it; "gone": it has none such; null: it
 // could not be reached
@@ -140,6 +141,7 @@ function Entry({ t, result, media, id, agent }: { t: Told; result: { text: strin
     : ev.k === "report" ? <Report text={ev.text} />
     : ev.k === "compacted" ? <p className="cap">Its context was compacted.</p>
     : ev.k === "turn" ? (ev.ok ? null : <p className="cap text-bad">Its turn failed: {ev.text}</p>)
+    : ev.k === "limit" ? <p className="cap">Hit a usage limit: it goes on by itself at {View.clock(ev.until)}.</p>
     : ev.k === "end" ? <p className={"cap end" + (ev.ok ? "" : " text-bad")}>{ev.ok ? "The run ended." : "The run failed: " + ev.text}</p>
     : null;
   return (
@@ -204,6 +206,7 @@ function SayBox({ id, name, live, sent }: { id: string; name: string; live: bool
 // came; its media under the entry that names it, the rest at the end; then
 // what waits on someone now
 function Log({ d, log, id, agent, live, earlier }: { d: View.SessionPage; log: Told[]; id: string; agent: string; live: boolean; earlier: () => void }): ReactNode {
+  const working = live && d.waits !== "limit";
   const asks = useKunumy((s) => s.asks).filter((a) => a.from === "session" && a.who === d.who);
   const results = new Map(log.flatMap((t) => (t.ev.k === "result" ? [[t.ev.id, { text: t.ev.text, error: t.ev.error }] as const] : [])));
   const placed = new Map<number, string[]>();
@@ -227,7 +230,9 @@ function Log({ d, log, id, agent, live, earlier }: { d: View.SessionPage; log: T
   const reported = log.some((t) => t.ev.k === "report" && t.ev.text === report);
   const flow: Array<{ key: string; node: ReactNode }> = [];
   let k = 0;
-  for (const t of log.filter((x) => !QUIET.has(x.ev.k))) {
+  // a turn a usage limit cut shows as the limit only
+  const shown = log.filter((x) => !QUIET.has(x.ev.k));
+  for (const t of shown.filter((x, i) => !(x.ev.k === "turn" && !x.ev.ok && shown[i + 1]?.ev.k === "limit"))) {
     for (; k < sent.length && sent[k].at <= t.at; k++) {
       flow.push({ key: sent[k].key, node: <Sent text={sent[k].text} why={sent[k].why} /> });
     }
@@ -243,7 +248,7 @@ function Log({ d, log, id, agent, live, earlier }: { d: View.SessionPage; log: T
       {waiting.map((m) => <div key={m.id} className="row"><Sent text={m.text} why={m.mode === "queue" ? "Queued for its next run" : "Goes in at its next step"} /></div>)}
       {d.questions.map((q) => <div key={q.id} className="row"><p className="cap">Waits for {agent || "its agent"} to answer “{Md.md_flat(q.text)}”. A message here answers it too.</p></div>)}
       {asks.map((a) => <div key={a.id} className="row"><Ask row={View.ask_row(a)} /></div>)}
-      {live && asks.length === 0 && d.questions.length === 0 ? <div className="row"><p className="wait" role="status" aria-label="Working"><i /><i /><i /></p></div> : null}
+      {working && asks.length === 0 && d.questions.length === 0 ? <div className="row"><p className="wait" role="status" aria-label="Working"><i /><i /><i /></p></div> : null}
     </>
   );
 }
@@ -333,7 +338,8 @@ export function WorkPage({ agent, id }: { agent: string; id: string }): ReactNod
         {row === undefined ? null : <WorkFace w={row} size={44} />}
         <div className="min-w-0 flex-1 pl-0.5">
           <h1 className="truncate">{name}</h1>
-          <p className="work-sub">{row === undefined ? d === null ? "" : d.archived ? "Archived" : STATES[d.status] : <><WorkState w={row} agent={named} /> · <span className="tabular-nums">{work_span(row, now)}</span></>}</p>
+          <p className="work-sub">{row === undefined ? d === null ? "" : d.archived ? "Archived" : STATES[d.status] : <><WorkState w={row} agent={named} now={now} /> · <span className="tabular-nums">{work_span(row, now)}</span></>}</p>
+          {row === undefined ? null : <WorkHow w={row} long />}
         </div>
       </header>
       <div className="work-acts">

@@ -97,10 +97,12 @@ export function mood_of(m: View.Mate, s: { agent: string; loaded: boolean; mood:
   return (m.asks ?? 0) > 0 ? "asking" : m.busy ? "working" : m.unread > 0 ? "done" : "idle";
 }
 
-// a work session's mood: at work, waiting on the owner or on its agent,
-// or ended and not yet seen by the owner; null once it ended and was seen
+// a work session's or subagent's mood: at work, asleep till a usage
+// limit's reset, waiting on the owner or on its agent, or ended and not
+// yet seen by the owner; null once it ended and was seen
 export function work_mood(w: View.SessionRow): Mood | null {
-  return w.status === "running" ? "working"
+  return w.waits === "limit" ? "sleeping"
+    : w.status === "running" ? "working"
     : w.status === "waiting" ? (w.waits === "answer" ? "listening" : "asking")
     : !w.unseen ? null
     : w.status === "done" ? "done"
@@ -108,24 +110,28 @@ export function work_mood(w: View.SessionRow): Mood | null {
     : "sleeping";
 }
 
-// how a screen reader hears how many work sessions are in each mood
-const WORK_SAID: Partial<Record<Mood, [string, string]>> = {
-  working  : ["working", "working"],
-  asking   : ["needs you", "need you"],
-  listening: ["waits on its agent", "wait on their agent"],
+// how a screen reader hears how many work sessions and subagents are in
+// each state, or wait on each thing
+const WORK_SAID: Record<View.SessionRow["status"] | NonNullable<View.Waits>, [string, string]> = {
+  running  : ["working", "working"],
+  waiting  : ["waits", "wait"],
+  approval : ["needs you", "need you"],
+  answer   : ["waits on its agent", "wait on their agent"],
+  limit    : ["waits on a usage limit", "wait on a usage limit"],
   done     : ["done", "done"],
-  error    : ["failed", "failed"],
-  sleeping : ["stopped", "stopped"],
+  failed   : ["failed", "failed"],
+  stopped  : ["stopped", "stopped"],
 };
 
-// the work sessions that matter now, in one sentence for a screen reader
+// the work sessions and subagents that matter now, in one sentence for a
+// screen reader
 export function works_said(works: View.SessionRow[]): string {
-  const moods = works.map(work_mood).filter((m) => m !== null);
-  const counts = [...new Set(moods)].map((m) => {
-    const n = moods.filter((x) => x === m).length;
-    return n + " " + (WORK_SAID[m]?.[n === 1 ? 0 : 1] ?? m);
+  const states = works.filter((w) => work_mood(w) !== null).map((w) => w.waits ?? w.status);
+  const counts = [...new Set(states)].map((k) => {
+    const n = states.filter((x) => x === k).length;
+    return n + " " + WORK_SAID[k][n === 1 ? 0 : 1];
   });
-  return moods.length === 0 ? "" : moods.length + " work session" + (moods.length === 1 ? "" : "s") + ": " + counts.join(", ");
+  return states.length === 0 ? "" : "Its work: " + counts.join(", ");
 }
 
 export const MOODS: Record<Mood, string> = {

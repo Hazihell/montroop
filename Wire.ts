@@ -52,7 +52,8 @@ export type Asking = { id: string; text: string };
 // heard: a message the server sent went in; replied: a question got its
 // answer; report: the run's result; turn: the model finished a turn;
 // limit: a usage limit stopped it, till until (ms since 1970), when it
-// goes on by itself; end: the holder's run is over and it exits
+// goes on by itself; used: the tokens of its latest request; end: the
+// holder's run is over and it exits
 export type Ev =
   | { k: "began"; sdk: string }
   | { k: "text"; text: string }
@@ -68,6 +69,7 @@ export type Ev =
   | { k: "compacted" }
   | { k: "turn"; ok: boolean; text: string }
   | { k: "limit"; until: number }
+  | { k: "used"; tokens: number }
   | { k: "end"; ok: boolean; text: string };
 
 export type Told = { seq: number; at: number; ev: Ev };

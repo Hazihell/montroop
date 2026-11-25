@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import * as path from "node:path";
 import { chromium, type Browser, type Page } from "playwright-core";
-import { fake, Kny, repo, until } from "../rig.ts";
+import { fake, Kny, repo, ROOT, tag, until } from "../rig.ts";
 
 let browser: Browser;
 
@@ -59,5 +59,27 @@ test.concurrent("the owner opens a work session from what runs, reads its report
   await page.getByRole("button", { name: "Send" }).click();
   await page.getByText("Fixed the other one too.").waitFor();
   expect((await s.page()).runs.map((r) => r.status)).toEqual(["done", "done"]);
+  await k.kill();
+});
+
+// its agent on another vendor, which the limit doesn't stop
+test.concurrent("the owner sees in what runs a subagent's task and model, and that it waits on a usage limit till its reset, and opens it", async () => {
+  const model = "openai-api:gpt-6-luna:low:slow";
+  const k = await Kny.up({ vendors: "claude-sub,openai-api", pick: model, compactor: model, agents: model }, ROOT, { openai: "sk-proj-test-" + tag() });
+  await fake.next("j3: tally the herons", { what: "error", kind: "usage-limit", reset: Date.now() + 3600e3 });
+  const [s] = await k.subagents({ task: "j3: tally the herons", name: "tally", model: "haiku-5.5", memory: false });
+  await until("it waits on the limit", async () => (await s.page()).waits === "limit");
+  const page = await phone(k, true);
+  await page.goto(k.url + "/a/" + k.agent + "/running");
+
+  const row = page.getByRole("link", { name: /^tally/ });
+  await row.getByText("j3: tally the herons").waitFor();
+  await row.getByText(/^haiku-5\.5/).waitFor();
+  await row.getByText(/^Usage limit · resets .*\d\d:\d\d$/).waitFor();
+  await row.click();
+  await page.getByRole("heading", { name: "tally" }).waitFor();
+  await page.getByText(/^Hit a usage limit: it goes on by itself at .*\d\d:\d\d\.$/).waitFor();
+  expect(await page.getByText(/^Its turn failed/).count()).toBe(0);
+  await k.api("POST", "/api/sessions/" + s.id + "/stop", {});
   await k.kill();
 });

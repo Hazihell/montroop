@@ -6,8 +6,9 @@ import * as View from "../../View.ts";
 import { Face } from "./Avatar.tsx";
 import { note, useKunumy, work_mood } from "./Kunumy.ts";
 
-// an agent's work sessions as the app shows them: in its list of what runs
-// (each opens its page, one at work stops from there), and what they do
+// an agent's work sessions and subagents as the app shows them, one kind:
+// in its list of what runs (each opens its page, one at work stops from
+// there), and what they do
 
 const NO_WORKS: View.SessionRow[] = [];
 
@@ -51,9 +52,38 @@ export const STATES: Record<View.SessionRow["status"], string> = { running: "Run
 
 // what it does, in words, tinted by it; agent: its agent's name, whom its
 // question waits on
-export function WorkState({ w, agent }: { w: View.SessionRow; agent: string }): ReactNode {
-  const said = w.waits === "approval" ? "Needs your approval" : w.waits === "answer" ? "Asks " + (agent || "its agent") : STATES[w.status];
+export function WorkState({ w, agent, now }: { w: View.SessionRow; agent: string; now: number }): ReactNode {
+  const said = w.waits === "approval" ? "Needs your approval"
+    : w.waits === "answer" ? "Asks " + (agent || "its agent")
+    : w.waits === "limit" ? "Usage limit · " + (w.until === null || w.until <= now ? "trying again" : "resets " + View.clock(w.until, now))
+    : STATES[w.status];
   return <span className={"state " + (w.waits === null ? w.status : "waiting")}>{said}</span>;
+}
+
+// how full its context was at its latest request, as a small bar
+function WorkMeter({ m }: { m: View.Meter }): ReactNode {
+  const full = Math.ceil((m.tokens * 100) / m.window);
+  return (
+    <span className="gauge" role="meter" aria-label="Context used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={full}>
+      <i><b style={{ width: Math.min(100, full) + "%" }} /></i>{full}%
+    </span>
+  );
+}
+
+// how it runs: its model and effort, and how full its context is; long:
+// the tokens too, in words
+export function WorkHow({ w, long = false }: { w: View.SessionRow; long?: boolean }): ReactNode {
+  const how = [w.model, w.effort].filter((x) => x !== "").join(" · ");
+  if (how === "" && w.meter === null) {
+    return null;
+  }
+  return (
+    <small className="how">
+      {how === "" ? null : <span>{how}</span>}
+      {w.meter === null ? null : <WorkMeter m={w.meter} />}
+      {long && w.meter !== null ? <span>{View.tokens_said(w.meter.tokens) + " of " + View.tokens_said(w.meter.window) + " tokens"}</span> : null}
+    </small>
+  );
 }
 
 // the server's answer, or null when it refused (said in a note)
@@ -82,8 +112,10 @@ export function WorkRows({ agent }: { agent: string }): ReactNode {
         <WorkFace w={w} size={32} />
         <p>
           <b className="font-semibold">{w.name}</b>
-          <small><WorkState w={w} agent={name} /> · <span className="tabular-nums">{work_span(w, now)}</span></small>
+          <small><WorkState w={w} agent={name} now={now} /> · <span className="tabular-nums">{work_span(w, now)}</span></small>
+          {w.task === "" ? null : <small className="task">{w.task}</small>}
           {w.last === "" ? null : <small className="said">{w.last}</small>}
+          <WorkHow w={w} />
         </p>
         {work_live(w) ? null : <CaretRightIcon size={16} className="self-center" />}
       </Link>

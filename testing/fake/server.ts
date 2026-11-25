@@ -3,7 +3,7 @@ import { get, list, str } from "../../Json.ts";
 import { CASES, type Kind, type Vendor } from "./cases.ts";
 
 export type Order =
-  | { what: "reply"; text: string; think?: string }
+  | { what: "reply"; text: string; think?: string; used?: Used }
   | { what: "tool"; calls: Array<[string, unknown]>; pace?: number }
   | { what: "error"; kind: Kind; reset: number }
   | { what: "stall"; ms: number }
@@ -419,7 +419,7 @@ async function model(req: Request, vendor: Vendor, url: URL): Promise<Response> 
     ? order.calls.map(([n, input]) => ({ id: claude ? id("toolu_01") : id("call_"), name: named(n), json: JSON.stringify(input) }))
     : [...(order.what === "reply" && order.think !== undefined ? [{ think: order.think }] : []), { text: order.what === "reply" ? order.text : "ok" }];
   const sent: Sent = { blocks, stall: order.what === "stall" ? order.ms : 0, cut: order.what === "cut", pace: order.what === "tool" ? order.pace ?? 0 : 0 };
-  const used = cache(got.segs, got.marks, claude ? 20 : Infinity);
+  const used = order.what === "reply" && order.used !== undefined ? order.used : cache(got.segs, got.marks, claude ? 20 : Infinity);
   return claude ? anthropic(vendor, name, sent, used) : openai(vendor, name, sent, used);
 }
 
