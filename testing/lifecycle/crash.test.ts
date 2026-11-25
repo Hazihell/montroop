@@ -13,6 +13,7 @@ test.concurrent("a holder killed mid-run fails the run once, leaves nothing of i
 
   expect((await s.status("failed")).runs[0].why).toBe(GONE);
   await until("nothing of the holder left", () => procs().every((p) => p.group !== holder));
+  expect(running(/^sleep 41$/)).toEqual([]);
   expect((await k.api("POST", "/api/sessions/" + s.id + "/resume", {})).status).toBe(200);
   expect((await s.status("done")).runs).toMatchObject([{ n: 1, status: "done", attempts: 2 }]);
   await until("the done wake", async () => await said(k, "[Session hk] done:") === 1);
@@ -30,6 +31,7 @@ test.concurrent("Claude Code killed under its holder fails the run, its holder e
 
   expect((await s.status("failed")).runs[0].why).toBe("Claude Code process terminated by signal SIGKILL");
   await until("nothing of the holder left", () => procs().every((p) => p.group !== holder));
+  expect(running(/^sleep 42$/)).toEqual([]);
   expect((await k.api("POST", "/api/sessions/" + s.id + "/resume", {})).status).toBe(200);
   await s.status("done");
   await until("the done wake", async () => await said(k, "[Session cc] done:") === 1);

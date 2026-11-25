@@ -46,12 +46,19 @@ export const fake = {
   },
 };
 
-let servers = 0;
-
-// a port of this test file's own, below the range connections take theirs
-// from: each runs in a process of its own
+// a port no other test server takes (claimed with a folder in the suite's
+// temp folder, which every test file shares), below the range connections
+// take theirs from
 function port(): number {
-  return 20000 + (process.pid % 1200) * 10 + (servers++ % 10);
+  const claimed = path.join(os.tmpdir(), "ports");
+  fs.mkdirSync(claimed, { recursive: true });
+  for (let p = 20000; p < 32768; p++) {
+    try {
+      fs.mkdirSync(path.join(claimed, String(p)));
+      return p;
+    } catch {}
+  }
+  throw new Error("no port left");
 }
 
 // a Kunumy server on a data folder of its own, with fake sign-ins to Claude

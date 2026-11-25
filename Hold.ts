@@ -54,6 +54,10 @@ type Held = {
   emit  : (ev: Ev) => void;
 };
 
+// a detached holder's (Sessions) own variable: the name of its unit, which
+// it and all it starts carry, as a unit's processes are in its cgroup
+export const MARK = "KNY_HOLD";
+
 export const SPEC = "spec.json";
 export const START = "start.json";
 const LOG = "log.jsonl";
@@ -108,6 +112,28 @@ export namespace Hold {
       }
     }
     return kept.told;
+  }
+
+  // a process that runs, not a zombie, of the detached holder of unit (so
+  // not one that took the id of one since)
+  export function marked(pid: number, unit: string): boolean {
+    try {
+      const stat = fs.readFileSync("/proc/" + pid + "/stat", "utf8");
+      return !stat.slice(stat.lastIndexOf(")") + 2).startsWith("Z") && fs.readFileSync("/proc/" + pid + "/environ", "utf8").split("\0").includes(MARK + "=" + unit);
+    } catch {
+      return false;
+    }
+  }
+
+  // every process of unit's but this one, signalled
+  export function sweep(unit: string, signal: "SIGTERM" | "SIGKILL"): void {
+    for (const pid of fs.readdirSync("/proc").filter((d) => /^\d+$/.test(d)).map(Number)) {
+      if (pid !== process.pid && Hold.marked(pid, unit)) {
+        try {
+          process.kill(pid, signal);
+        } catch {}
+      }
+    }
   }
 
   // a log no longer read
@@ -332,6 +358,11 @@ export namespace Hold {
     server.close();
     fs.rmSync(start.sock, { force: true });
     fs.closeSync(log);
+    // what it leaves running ends with it, as with a unit's end
+    const unit = process.env[MARK];
+    if (unit !== undefined) {
+      Hold.sweep(unit, "SIGKILL");
+    }
     process.exit(0);
   }
 

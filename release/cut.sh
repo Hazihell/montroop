@@ -10,8 +10,9 @@
 #     in ~/Projects/kunumy-wt/rc, published as a pre-release, never Latest,
 #     so nothing installs it but its own install line.
 #   1. checks: worktree clean; to publish, = origin/main (origin/rc) and tag $VER unused
-#   2. `bun install --frozen-lockfile` then `bun run check` (tsc, eslint, knip) if package.json has a check
-#      script, else strict tsc (no errors beyond base's)
+#   2. `bun install --frozen-lockfile` then `bun run lint` (tsc, eslint, knip) in the dev container and
+#      `bun run test` here (its namespaces need this host) if package.json has them; else `bun run check`
+#      if it has that; else strict tsc (no errors beyond base's)
 #   3. builds 6 targets into work-release/a$N/b$N, checks the linux-x64
 #      binary says "kny $VER", writes dist/: archives (tar.gz; zip for
 #      Windows), SHA256SUMS, install.sh (from install.sh.in, sums and the
@@ -59,9 +60,15 @@ if [ "${1:-}" = "--publish" ]; then
 fi
 HEAD=$(git rev-parse HEAD)
 
-if python3 -I -c 'import json, sys; sys.exit(0 if "check" in json.load(open(sys.argv[1])).get("scripts", {}) else 1)' "$REL/package.json"; then
+script() { python3 -I -c 'import json, sys; sys.exit(0 if sys.argv[2] in json.load(open(sys.argv[1])).get("scripts", {}) else 1)' "$REL/package.json" "$1"; }
+if script check; then
   flock $DEV/heavy.lock $PODMAN run --rm --memory 3g -v "$REL:/src:z" -w /src localhost/kunumy-dev:latest bash -lc 'bun install --frozen-lockfile' || { echo "check: bun install --frozen-lockfile failed"; exit 1; }
-  flock $DEV/heavy.lock $PODMAN run --rm --memory 3g -v "$REL:/src:ro,z" -w /src localhost/kunumy-dev:latest bash -lc 'bun run check' || { echo "check: bun run check failed"; exit 1; }
+  if script lint && script test; then
+    flock $DEV/heavy.lock $PODMAN run --rm --memory 3g -v "$REL:/src:ro,z" -w /src localhost/kunumy-dev:latest bash -lc 'bun run lint' || { echo "check: bun run lint failed"; exit 1; }
+    flock $DEV/heavy.lock bun run test || { echo "check: bun run test failed"; exit 1; }
+  else
+    flock $DEV/heavy.lock $PODMAN run --rm --memory 3g -v "$REL:/src:ro,z" -w /src localhost/kunumy-dev:latest bash -lc 'bun run check' || { echo "check: bun run check failed"; exit 1; }
+  fi
   echo "check: passed"
 else
   T=$(REL=$REL flock $DEV/heavy.lock $DEV/work-release/tsc.sh); echo "$T"

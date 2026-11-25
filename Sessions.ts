@@ -22,7 +22,7 @@ import { call_gist, call_parse } from "./Call.ts";
 import * as config from "./Config.ts";
 import { err_why } from "./Err.ts";
 import { Gate, type Asked } from "./Gate.ts";
-import { Hold, SPEC, START, type Spec, type Start } from "./Hold.ts";
+import { Hold, MARK, SPEC, START, type Spec, type Start } from "./Hold.ts";
 import { get, rec, str, text_of } from "./Json.ts";
 import { Machine } from "./Machine.ts";
 import { Owner } from "./Owner.ts";
@@ -71,9 +71,12 @@ const RETRY = 5000;
 // didn't take
 const REDELIVER = 60e3;
 
-// the variables a holder's Claude Code works with, from the server's (a
-// unit starts with none; a detached holder has them all)
-const ENV = ["PATH", "LANG", "SHELL", "SSH_AUTH_SOCK", "XDG_CONFIG_HOME", "XDG_DATA_HOME"];
+// the variables a holder's Claude Code works with, from the server's
+const ENV = ["PATH", "LANG", "SHELL", "SSH_AUTH_SOCK", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "NODE_EXTRA_CA_CERTS"];
+
+// and those a unit has from the user's systemd, which a detached holder
+// takes from the server
+const OWN = ["HOME", "USER", "LOGNAME", "TMPDIR", "XDG_RUNTIME_DIR"];
 
 const AGAIN = "Your process was stopped before you were done, so the outcome of your last calls is unknown. Check what they did before doing any again, then go on with the task. The message you were working on:\n\n";
 
@@ -99,7 +102,7 @@ const FILE = /^[\w][\w.-]{0,200}$/;
 // how long a holder told to stop has before it's killed
 const STOP_MS = 10e3;
 
-// whether holders run as systemd units, once asked
+// whether new holders run as systemd units, once asked
 let SYSTEMD: boolean | null = null;
 
 const LINKS = new Map<string, Link>();
@@ -119,12 +122,15 @@ export namespace Sessions {
     return output(r);
   }
 
+  // holders run as systemd units where the user's systemd answers; on
+  // Linux without it (a container), detached
   function systemd(): boolean {
     SYSTEMD ??= Bun.which("systemd-run") !== null && run(["systemctl", "--user", "show-environment"]).code === 0;
     return SYSTEMD;
   }
 
-  // a detached holder's process id, kept under its unit's name
+  // a detached holder's process id, kept under its unit's name: a holder
+  // with none ran as a unit
   function pid_file(s: { dir: string; unit: string }): string {
     return path.join(s.dir, s.unit + ".pid");
   }
@@ -135,20 +141,6 @@ export namespace Sessions {
       return Number(fs.readFileSync(pid_file(s), "utf8")) || 0;
     } catch {
       return 0;
-    }
-  }
-
-  // the detached holder still runs: not a process that took its id since,
-  // nor its zombie
-  function runs(pid: number, s: Session): boolean {
-    if (pid <= 0 || !Machine.alive(pid)) {
-      return false;
-    }
-    try {
-      const stat = fs.readFileSync("/proc/" + pid + "/stat", "utf8");
-      return !stat.slice(stat.lastIndexOf(")") + 2).startsWith("Z") && fs.readFileSync("/proc/" + pid + "/cmdline", "utf8").includes(s.dir);
-    } catch {
-      return true;
     }
   }
 
@@ -182,34 +174,27 @@ export namespace Sessions {
     if (s.unit === "") {
       return false;
     }
-    if (systemd()) {
-      return ["active", "activating", "deactivating"].includes(systemctl(["is-active", s.unit]));
+    if (!fs.existsSync(pid_file(s))) {
+      return systemd() && ["active", "activating", "deactivating"].includes(systemctl(["is-active", s.unit]));
     }
-    const pid = pid_of(s);
-    if (runs(pid, s)) {
+    if (Hold.marked(pid_of(s), s.unit)) {
       return true;
     }
-    if (pid > 0) {
-      Machine.kill(-pid);
-      fs.rmSync(pid_file(s), { force: true });
-    }
+    Hold.sweep(s.unit, "SIGKILL");
+    fs.rmSync(pid_file(s), { force: true });
     return false;
   }
 
   // its holder and everything it started ended, as a unit's stop does:
-  // asked first, killed after TimeoutStopSec
+  // asked first, killed after TimeoutStopSec (or, the server restarted
+  // first, once it finds the holder gone)
   function halt(s: Session): void {
-    if (systemd()) {
+    if (!fs.existsSync(pid_file(s))) {
       systemctl(["stop", "--no-block", s.unit]);
       return;
     }
-    const pid = pid_of(s);
-    if (runs(pid, s)) {
-      try {
-        process.kill(-pid, "SIGTERM");
-      } catch {}
-      setTimeout(() => Machine.kill(-pid), STOP_MS).unref();
-    }
+    Hold.sweep(s.unit, "SIGTERM");
+    setTimeout(() => Hold.sweep(s.unit, "SIGKILL"), STOP_MS).unref();
   }
 
   function link_of(id: string): Link {
@@ -260,6 +245,9 @@ export namespace Sessions {
     if (b.prompt.trim() === "") {
       return "A session starts with a message.";
     }
+    if (process.platform !== "linux" && !systemd()) {
+      return "Work sessions run as systemd user units, and systemd-run isn't here.";
+    }
     const top = Worktree.top(b.repo);
     if ("why" in top) {
       return top.why;
@@ -306,21 +294,28 @@ export namespace Sessions {
     return null;
   }
 
+  // the server's variables of these keys, and its data folder
+  function env_of(keys: string[]): Record<string, string> {
+    return { ...Object.fromEntries(keys.flatMap((k) => (process.env[k] ? [[k, process.env[k]]] : []))), KNY_DIR: config.DIR };
+  }
+
   function unit_run(s: Session, unit: string): string | null {
-    const env = Object.entries({ ...Object.fromEntries(ENV.flatMap((k) => (process.env[k] ? [[k, process.env[k]]] : []))), KNY_DIR: config.DIR });
-    const r = run(["systemd-run", "--user", "--collect", "--quiet", "--unit=" + unit, "--description=Kunumy work session " + s.name, "-p", "TimeoutStopSec=" + STOP_MS / 1000, ...env.map(([k, v]) => "--setenv=" + k + "=" + v), "--", ...command(), "hold", s.dir]);
+    const env = Object.entries(env_of(ENV)).map(([k, v]) => "--setenv=" + k + "=" + v);
+    const r = run(["systemd-run", "--user", "--collect", "--quiet", "--unit=" + unit, "--description=Kunumy work session " + s.name, "-p", "TimeoutStopSec=" + STOP_MS / 1000, ...env, "--", ...command(), "hold", s.dir]);
     return r.code === 0 ? null : "systemd-run failed: " + output(r);
   }
 
   // its output in a log beside its pid
   function detach(s: Session, unit: string): string | null {
     const log = fs.openSync(path.join(s.dir, unit + ".log"), "a");
+    let held: Bun.Subprocess | null = null;
     try {
-      const proc = Bun.spawn([...command(), "hold", s.dir], { env: { ...process.env, KNY_DIR: config.DIR }, stdio: ["ignore", log, log], detached: true });
-      proc.unref();
-      fs.writeFileSync(pid_file({ dir: s.dir, unit }), String(proc.pid));
+      held = Bun.spawn([...command(), "hold", s.dir], { env: { ...env_of([...ENV, ...OWN]), [MARK]: unit }, stdio: ["ignore", log, log], detached: true });
+      held.unref();
+      fs.writeFileSync(pid_file({ dir: s.dir, unit }), String(held.pid));
       return null;
     } catch (err) {
+      held?.kill("SIGKILL");
       return "its holder didn't start: " + err_why(err);
     } finally {
       fs.closeSync(log);

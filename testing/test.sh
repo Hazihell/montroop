@@ -13,12 +13,11 @@ if [ "${KNY_TEST_DIR:-}" = "" ] || [ $$ != 1 ]; then
     exit 1
   }
   KNY_TEST_DIR=$(mktemp -d -t kny-test.XXXXXX)
+  trap 'rmdir "$KNY_TEST_DIR"' EXIT
   export KNY_TEST_DIR KNY_TEST_BUN="${KNY_TEST_BUN:-$(bun -e "console.log(process.execPath)")}"
   export PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}"
-  status=0
-  "${NS[@]}" "$0" "$@" || status=$?
-  rmdir "$KNY_TEST_DIR"
-  exit $status
+  "${NS[@]}" "$0" "$@"
+  exit
 fi
 
 T=$KNY_TEST_DIR

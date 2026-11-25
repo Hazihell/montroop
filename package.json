@@ -4,7 +4,8 @@
   "scripts": {
     "build": "bun Build.ts",
     "ui": "vite build",
-    "check": "tsc && bun --bun eslint && knip && bun Seams.ts && bun run test",
+    "lint": "tsc && bun --bun eslint && knip && bun Seams.ts",
+    "check": "bun run lint && bun run test",
     "test": "testing/test.sh"
   },
   "dependencies": {
