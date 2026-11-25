@@ -558,7 +558,7 @@ export namespace Tools {
         return seat.subs === null ? { text: "A subagent starts no sessions.", fail: true } : Sessions.tool(who, args);
       }
       case "subagent": {
-        return seat.subs === null ? { text: "A subagent starts none.", fail: true } : seat.subagents?.() !== true ? { text: "Your subagents don't run on the engine: use spawn, tell, stop and session.", fail: true } : await Subagents.tool(who, args);
+        return seat.subs === null ? { text: "A subagent starts none.", fail: true } : seat.subagents?.() !== true ? { text: "Your Lasting subagents setting is off: use spawn, tell, stop and session.", fail: true } : await Subagents.tool(who, args);
       }
       case "spawn": {
         const tasks = Sub.spawns(args);

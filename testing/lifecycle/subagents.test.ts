@@ -84,6 +84,18 @@ test.concurrent("a review with write false works on a worktree on no branch, its
   await until("the done wake", async () => await said(k, s.woke("done:")) === 1);
 });
 
+test.concurrent("a review stopped mid-run has its worktree removed once its holder has ended", async () => {
+  const k = await Kny.up();
+  const t = tag();
+  await fake.next(t + ": review", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
+  const [s] = await k.subagents({ task: t + ": review", name: "rs", repo: repo(), base: "main", write: false });
+  await until("the command running", () => waiting(t));
+  expect((await k.api("POST", "/api/sessions/" + s.id + "/stop", {})).status).toBe(200);
+
+  await until("its worktree removed", () => !fs.existsSync(s.worktree));
+  expect(waiting(t)).toBe(false);
+});
+
 test.concurrent("a usage limit is waited out in its holder, and it goes on by itself at the reset", async () => {
   const k = await Kny.up();
   const t = tag();

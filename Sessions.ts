@@ -85,10 +85,6 @@ const GONE = "its holder ended before the run did";
 const RETRIES = 3;
 const RETRIES_IN = 5 * 60e3;
 
-// how many seconds, at most, a stopped holder is waited for before its
-// worktree is removed
-const TIDY = 60;
-
 // how long siblings wait, at most, for the first to begin to answer
 const LEAD = 60e3;
 
@@ -122,6 +118,8 @@ const SENDING = new Set<string>();
 const CALLS = new Map<string, { session: string; stop: AbortController }>();
 // the times each subagent's holder was tried again lately
 const TRIED = new Map<string, number[]>();
+// the subagents whose worktree waits for their holder to end, to be removed
+const TIDYING = new Set<string>();
 // the siblings started with a subagent, launched once it has begun to
 // answer
 const FOLLOW = new Map<string, string[]>();
@@ -171,6 +169,9 @@ export namespace Sessions {
         Holders.adopt(s.id);
       } else if (s.status === "stopped" && Holders.alive(holder(s))) {
         Holders.stop(holder(s));
+      }
+      if (!LIVE.includes(s.status)) {
+        tidy(s.id, true);
       }
     }
   }
@@ -246,11 +247,9 @@ export namespace Sessions {
   // branch made again if its last run's end removed it). null: started;
   // else why not
   function launch_sub(s: Session, h: Holder, prompt: string): string | null {
-    let sub: Sub;
-    try {
-      sub = JSON.parse(fs.readFileSync(path.join(s.dir, SUB), "utf8")) as Sub;
-    } catch (err) {
-      return "its job can't be read: " + err_why(err);
+    const sub = job_of(s);
+    if (typeof sub === "string") {
+      return sub;
     }
     if (place(s) === "folder") {
       fs.mkdirSync(s.worktree, { recursive: true });
@@ -264,6 +263,15 @@ export namespace Sessions {
     const c = sub.job.context;
     const job = { ...sub.job, context: c.kind === "native" ? { ...c, resume: s.sdk } : c, tools: [] };
     return Holders.launch(h, "Kunumy subagent " + s.name, { driver: "provider", job, sub: true, prompt, resume: s.sdk, rules: config.ASK, scratch: t === null ? {} : Tools.scratch(t), tools });
+  }
+
+  // a subagent's job, or why it can't be read
+  function job_of(s: Session): Sub | string {
+    try {
+      return JSON.parse(fs.readFileSync(path.join(s.dir, SUB), "utf8")) as Sub;
+    } catch (err) {
+      return "its job can't be read: " + err_why(err);
+    }
   }
 
   // a subagent made (Subagents), its job written in its folder
@@ -324,6 +332,7 @@ export namespace Sessions {
       }
     }
     release(id);
+    tidy(id, false);
     HOOKS.change();
   }
 
@@ -351,7 +360,8 @@ export namespace Sessions {
       return;
     }
     // a tool a subagent's options leave out is refused here too
-    const offered = Session.kind(s) === "session" || Tools.kit(HOOKS.tools, s.agent, { memory: s.memory === 1, mcp: true, write: s.write === 1 }).some((t) => t.name === tool);
+    const sub = Session.kind(s) === "session" ? null : job_of(s);
+    const offered = sub === null || (typeof sub !== "string" && Tools.kit(HOOKS.tools, s.agent, { memory: s.memory === 1, mcp: sub.mcp, write: s.write === 1 }).some((t) => t.name === tool));
     if (!offered) {
       Holders.send(id, { $: "result", id: c, out: { text: "No tool " + tool + ".", fail: true } });
       return;
@@ -405,21 +415,27 @@ export namespace Sessions {
         next_run(id);
       }
     }
-    tidy(id, 0);
+    tidy(id, true);
     HOOKS.change();
   }
 
   // a worktree on no branch removed once its run is over and its holder
-  // has ended (a stop doesn't wait for that)
-  function tidy(id: string, tries: number): void {
+  // has ended; wait: a holder still ending (a stop doesn't wait for it) is
+  // looked at again each second till it has
+  function tidy(id: string, wait: boolean): void {
     const s = Session.get(id);
     if (s === null || LIVE.includes(s.status) || place(s) !== "detached" || !fs.existsSync(s.worktree)) {
       return;
     }
     if (!Holders.alive(holder(s))) {
+      TIDYING.delete(id);
       unmake(s, true);
-    } else if (tries < TIDY) {
-      setTimeout(() => tidy(id, tries + 1), 1000).unref();
+    } else if (wait && !TIDYING.has(id)) {
+      TIDYING.add(id);
+      setTimeout(() => {
+        TIDYING.delete(id);
+        tidy(id, true);
+      }, 1000).unref();
     }
   }
 
@@ -570,6 +586,7 @@ export namespace Sessions {
     }
     Holders.stop(holder(s));
     void Browser.close(s.dir);
+    tidy(id, true);
     if (wake) {
       Session.set(id, { seen: Date.now() });
     }

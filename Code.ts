@@ -176,7 +176,7 @@ export namespace Code {
       settingSources  : ["user"],
       // the account folder is read for the owner's instructions only: hooks
       // its settings name don't run (the holder's own still do)
-      settings        : { ...(base.settings as object), disableAllHooks: true },
+      settings        : { ...(typeof base.settings === "object" ? base.settings : {}), disableAllHooks: true },
       permissionMode  : "default",
       allowedTools    : [...own, "mcp__" + MCP],
       mcpServers      : { [MCP]: kunumy(io, job.tools) },
