@@ -10,6 +10,7 @@
 import type { Database } from "bun:sqlite";
 import { Owner } from "./Owner.ts";
 import { Wire, type Told } from "./Wire.ts";
+import { wake_text, type Wake } from "./Wake.ts";
 
 export type Status = "running" | "waiting" | "done" | "failed" | "stopped";
 
@@ -41,9 +42,6 @@ export type Mode = "queue" | "steer" | "answer";
 type Say = { id: string; session: string; text: string; mode: Mode; at: number };
 
 type Question = { id: string; session: string; text: string; at: number };
-
-// a message for the session's agent, sent once it's in that agent's chat
-export type Wake = { id: string; agent: string; text: string };
 
 // what the server does once a change to the record is in: deliver a wake;
 // show a parked call's card; take a card down (null: every one of the
@@ -263,7 +261,7 @@ export namespace Session {
 
   // a wake message kept to send, in the transaction of the step it tells
   function noted(db: Database, s: Session, about: string, what: string, text: string): Effect[] {
-    const wake = { id: "session " + s.id + " " + about, agent: s.agent, text: "[Session " + s.name + "] " + what + ": " + Wire.clip(text.trim()) };
+    const wake = { id: "session " + s.id + " " + about, agent: s.agent, text: wake_text("session", s.name, what + ": " + Wire.clip(text.trim())) };
     const kept = db.query("insert or ignore into work_wakes (id, agent, text, at) values (?, ?, ?, ?)").run(wake.id, wake.agent, wake.text, Date.now()).changes > 0;
     return kept ? [{ do: "wake", wake }] : [];
   }

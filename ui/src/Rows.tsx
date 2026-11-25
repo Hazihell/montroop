@@ -8,6 +8,7 @@ import { create } from "zustand";
 import * as Call from "../../Call.ts";
 import * as Md from "../../Md.ts";
 import * as View from "../../View.ts";
+import { wake_read } from "../../Wake.ts";
 import { Face } from "./Avatar.tsx";
 import { act, answer, useKunumy } from "./Kunumy.ts";
 import { Blocks, Copy } from "./Markdown.tsx";
@@ -141,7 +142,7 @@ export function CallBody({ call }: { call: Call.Call }): ReactNode {
 
 function Said({ row }: { row: Of<"Msg"> }): ReactNode {
   const mate = useKunumy((s) => s.team.find((m) => m.id === row.from));
-  const gist = Md.md_flat(Call.report_read(row.text)?.text ?? row.text);
+  const gist = Md.md_flat(wake_read(row.text)?.text ?? row.text);
   return (
     <details className="said card gl">
       <summary className="who">

@@ -4,11 +4,12 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { Out } from "./Agent.ts";
 import * as Client from "./Client.ts";
-import { JOB, JOBS, Machine, SCRATCH, WIN, type Job } from "./Machine.ts";
+import { JOBS, Machine, SCRATCH, WIN, type Job } from "./Machine.ts";
 import { Mcp } from "./Mcp.ts";
 import { err_code, err_why } from "./Err.ts";
 import { get, text_of } from "./Json.ts";
 import * as Service from "./Service.ts";
+import { wake_text } from "./Wake.ts";
 import { FRAME, media_kind, PING, QUIT, RETRY, SLOW, TICK, WIRE, type Server } from "./View.ts";
 
 const LOCAL = process.platform === "darwin" ? child.spawnSync("scutil", ["--get", "LocalHostName"]).stdout?.toString().trim() : "";
@@ -119,7 +120,7 @@ export async function run(given: string | undefined): Promise<void> {
   };
   JOBS.changed = () => send({ $: "running", id: crypto.randomUUID(), jobs: [...JOBS.running.values()] });
   JOBS.ended = (job, text) => {
-    const done = { $: "done" as const, id: crypto.randomUUID(), agent: job.agent, text: JOB + job.id + "] " + name + ": " + text };
+    const done = { $: "done" as const, id: crypto.randomUUID(), agent: job.agent, text: wake_text("job", job.id, name + ": " + text) };
     outs.set(done.id, done);
     send(done);
   };

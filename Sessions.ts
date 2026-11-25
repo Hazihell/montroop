@@ -25,10 +25,10 @@ import { Hold, SPEC, START, type Spec, type Start } from "./Hold.ts";
 import { get, rec, str, text_of } from "./Json.ts";
 import { Machine } from "./Machine.ts";
 import { Owner } from "./Owner.ts";
-import * as Pins from "./Pins.ts";
-import * as Prompts from "./Prompts.ts";
+import { Brief } from "./Brief.ts";
 import { command, output, run } from "./Service.ts";
-import { LIVE, Session, type Effect, type Mode, type Parked, type Run, type Wake } from "./Session.ts";
+import { LIVE, Session, type Effect, type Mode, type Parked, type Run } from "./Session.ts";
+import type { Wake } from "./Wake.ts";
 import { Team } from "./Team.ts";
 import { PICTURE, SESSION, VIDEO, type SessionPage, type SessionRow, type Waits } from "./View.ts";
 import { VERSION, Wire, type Ev, type Told } from "./Wire.ts";
@@ -205,8 +205,8 @@ export namespace Sessions {
     }
     const dir = path.join(DIR, id);
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    const own = Prompts.prompt("session", { agent: agent.name }) + (Browser.make(dir, id) ? "\n" + Prompts.prompt("session-browser", { media: path.join(dir, MEDIA) }) : "");
-    const spec: Spec = { cwd: worktree, claude: config.claude_dir(agent.claude), model: b.model, append: [own, b.brief.trim(), Pins.block(false).text.trim()].filter((t) => t !== "").join("\n\n") };
+    const media = Browser.make(dir, id) ? path.join(dir, MEDIA) : null;
+    const spec: Spec = { cwd: worktree, claude: config.claude_dir(agent.claude), model: b.model, append: Brief.append(agent.name, media, b.brief) };
     fs.writeFileSync(path.join(dir, SPEC), JSON.stringify(spec, null, 1) + "\n", { mode: 0o600 });
     const s = Session.add({ id, name: b.name, agent: b.agent, repo: top.dir, base, branch, worktree, account: agent.claude, model: b.model, dir }, b.prompt);
     const why = launch(s, b.prompt, null);

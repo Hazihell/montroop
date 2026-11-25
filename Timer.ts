@@ -1,4 +1,5 @@
 import { text_of } from "./Json.ts";
+import { wake_text } from "./Wake.ts";
 
 export type Timer = { id: string; text: string; at: string; cron: string | null; zone: string };
 
@@ -208,7 +209,7 @@ export function timer_after(t: Timer, now: number): Timer | null {
 export function timer_say(t: Timer, now: number): string {
   const due = Date.parse(t.at);
   const late = now - due > LATE ? "\n\n(Due " + wall_show(due, t.zone) + " " + t.zone + "; it came late, at " + wall_show(now, t.zone) + ".)" : "";
-  return "[Timer " + t.id + "]\n" + t.text + late;
+  return wake_text("timer", t.id, t.text + late);
 }
 
 export function timer_when(t: Timer): string {
