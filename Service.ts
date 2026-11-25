@@ -247,7 +247,7 @@ async function mac_start(part: Part, args: string[], env: Record<string, string>
   const was = read(file);
   const loaded = run(["launchctl", "print", job]).code === 0;
   if ((was !== null && !was.includes(MARK)) || (was === null && loaded)) {
-    fail(n + " isn't Montroop's: " + (was === null ? "a launchd job by that name" : file) + " isn't one troop made, so troop leaves it as it is. To use troop " + part + " -d, remove it (launchctl bootout " + job + ", then its plist); or keep using it.");
+    fail(n + " isn't Montroop's: " + (was === null ? "a launchd job by that name" : file) + " isn't one Montroop made, so Montroop leaves it as it is. To use troop " + part + " -d, remove it (launchctl bootout " + job + ", then its plist); or keep using it.");
   }
   const x = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const strings = (list: string[]) => list.map((a) => "<string>" + x(a) + "</string>").join("");
@@ -294,7 +294,7 @@ function mac_stop(part: Part): void {
     return;
   }
   if (!was.includes(MARK)) {
-    fail(n + " isn't Montroop's: " + file + " isn't one troop made, so troop leaves it as it is.");
+    fail(n + " isn't Montroop's: " + file + " isn't one Montroop made, so Montroop leaves it as it is.");
   }
   const step = clock(part, "stop");
   fs.rmSync(file);
@@ -312,7 +312,7 @@ async function win_start(part: Part, args: string[], admin: boolean): Promise<vo
   const had = win_task(n);
   step("task looked up");
   if (had !== null && !had.includes(MARK)) {
-    fail(n + " isn't Montroop's: that Scheduled Task isn't one troop made, so troop leaves it as it is. To use troop " + part + " -d, remove it (schtasks /delete /tn " + n + "); or keep using it.");
+    fail(n + " isn't Montroop's: that Scheduled Task isn't one Montroop made, so Montroop leaves it as it is. To use troop " + part + " -d, remove it (schtasks /delete /tn " + n + "); or keep using it.");
   }
   win_admin_check(part, had, "-d");
   const line = ["--headless", ...command(), part, "--service", ...args].map(winq).join(" ");
@@ -349,7 +349,7 @@ function win_task_troop_made(part: Part, n: string, had: string | null): boolean
     return false;
   }
   if (!had.includes(MARK)) {
-    fail(n + " isn't Montroop's: that Scheduled Task isn't one troop made, so troop leaves it as it is.");
+    fail(n + " isn't Montroop's: that Scheduled Task isn't one Montroop made, so Montroop leaves it as it is.");
   }
   return true;
 }
@@ -385,7 +385,7 @@ async function win_stop(part: Part): Promise<void> {
   schtasks("/delete", "/tn", "\\" + n, "/f");
   step("task removed");
   await win_quit(part, all[0], mine);
-  step("its troop ended");
+  step("its Montroop ended");
   console.log("troop " + part + " stopped: its background service " + n + " is removed.");
 }
 
@@ -623,7 +623,7 @@ function alone(): void {
   const theirs = (pid: number) => (WIN || MAC ? service.includes(pid) : (read("/proc/" + pid + "/cgroup") ?? "").includes("/" + name("device") + ".service"));
   const found = procs("CommandLine LIKE '%device%'").filter(([pid, line]) => pid !== process.pid && runs(line, "device", '(\\s+"?https?://[^\\s"]*"?)?\\s*$') && !theirs(pid));
   if (found.length > 0) {
-    console.error("troop: warning: a troop device runs here in the foreground already (pid " + found.map(([pid]) => pid).join(", ") + "). With the same sign-in (device.json) the two take turns as one device: stop it.");
+    console.error("troop: warning: a Montroop device runs here in the foreground already (pid " + found.map(([pid]) => pid).join(", ") + "). With the same sign-in (device.json) the two take turns as one device: stop it.");
   }
 }
 

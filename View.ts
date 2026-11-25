@@ -69,6 +69,11 @@ export type SessionPage = SessionRow & {
 // who a work session's calls are asked by, on the owner's cards
 export const SESSION = "Session ";
 
+// who asked, as the owner reads it: a work session or subagent is a submon
+export function asker(a: { who: string; from: string }): string {
+  return a.from === "agent" ? a.who : "Submon " + a.who.slice(a.who.indexOf(" ") + 1);
+}
+
 // a work session's media files the app shows inline, by name
 export const PICTURE = /\.(png|jpe?g|gif|webp|avif)$/i;
 export const VIDEO = /\.(mp4|webm|mov)$/i;
@@ -294,7 +299,7 @@ const SUMS = "compressing earlier messages…";
 
 const UNSENT = "Sends once connected.";
 const OLDER  = "This troop is older than the server: run `troop update`.";
-const NEWER  = "The server runs an older troop than this one: run `troop update` there. Trying again every " + SLOW / 1000 + " s.";
+const NEWER  = "The server runs an older Montroop than this one: run `troop update` there. Trying again every " + SLOW / 1000 + " s.";
 
 const MARKS: Array<[string, number, string]> = [
   ["image/png", 0, "\x89PNG"],

@@ -1,6 +1,6 @@
 // The installers run this every time, with the new troop as bun (BUN_BE_BUN=1):
 // it brings the data in DIR to this version's layout, and then writes
-// DIR/layout, without which a troop finding agents there won't start. A step done is
+// DIR/layout, without which a Montroop finding agents there won't start. A step done is
 // skipped. `check DIR` changes nothing: it exits 3 if a step is due, which
 // the installers run only with no Montroop server on the data, else 0.
 import fs from "node:fs";

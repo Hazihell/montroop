@@ -254,7 +254,7 @@ function Cap({ row }: { row: Of<"Cap"> }): ReactNode {
 // who asked: a work session's name opens its page
 function AskedBy({ ask }: { ask: Of<"Ask">["ask"] }): ReactNode {
   const work = useMontroop((s) => s.team.find((m) => m.id === ask.agent)?.works?.find((w) => ask.from === "session" && w.who === ask.who));
-  return work === undefined ? ask.who : <Link to="/a/$agent/w/$id" params={{ agent: ask.agent, id: work.id }} className="underline underline-offset-2">{ask.who}</Link>;
+  return work === undefined ? View.asker(ask) : <Link to="/a/$agent/w/$id" params={{ agent: ask.agent, id: work.id }} className="underline underline-offset-2">{View.asker(ask)}</Link>;
 }
 
 export function Ask({ row }: { row: Of<"Ask"> }): ReactNode {

@@ -136,7 +136,7 @@ export const MCP_ENV_NOTE: string | null = config_mcp_some(MCP_VAR)
   ? "TROOP_MCP is set, but troop serve runs no MCP servers, so they are left out: put them in the mcp of a device's own ~/.montroop/config.json (for this computer, run troop device beside the server)."
   : null;
 export const MCP_FILE_STARTUP_NOTE: string | null = config_mcp_some(FILE.mcp)
-  ? "troop serve runs no MCP servers: the mcp in " + FILE_PATH + " runs only on a troop device that reads this file (troop device beside the server)."
+  ? "troop serve runs no MCP servers: the mcp in " + FILE_PATH + " runs only on a Montroop device that reads this file (troop device beside the server)."
   : null;
 
 function config_env_taken(name: string): string | undefined {

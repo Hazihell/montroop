@@ -73,7 +73,7 @@
       }
     }
 
-    # a troop device or server running (a troop.exe, or one by $bin's name or
+    # a Montroop device or server running (a troop.exe, or one by $bin's name or
     # path) that no service runs: it would keep the old version, and its
     # data must not change under it. One whose command line Windows doesn't
     # show (CIM failing, another user's, an elevated one) counts as
@@ -145,7 +145,7 @@
     }
     if ($upgrading) {
       if ($mine -match '\s"?serve"?(\s|$)') {
-        throw "your data must change with no troop server running, and this runs in a shell of troop-serve, which stopping would end. Nothing changed, and Montroop $Ver was not installed: run this installer in a terminal."
+        throw "your data must change with no Montroop server running, and this runs in a shell of troop-serve, which stopping would end. Nothing changed, and Montroop $Ver was not installed: run this installer in a terminal."
       }
       $halted = @(& $task 'troop-serve' | Where-Object { $_ -and ([string]$_.Description -match 'troop-made') -and ([string]$_.State -eq 'Running') })
       # the tasks stopped, started again: "Nothing changed", else which
@@ -242,15 +242,15 @@
     # such installs)
     $made = @()
     try { $made = @('serve', 'device' | ForEach-Object { & $task "troop-$_" } | Where-Object { $_ -and ([string]$_.Description -match 'troop-made') -and ([string]$_.State -eq 'Running') }) } catch {}
-    $made = @($made | Sort-Object { $mine -match ('\s"?' + $_.TaskName.Substring(4) + '"?\s') }, { $_.TaskName -eq 'troop-device' })
+    $made = @($made | Sort-Object { $mine -match ('\s"?' + ($_.TaskName -replace '^troop-', '') + '"?\s') }, { $_.TaskName -eq 'troop-device' })
     $stopped = @()
     foreach ($t in $halted) {
       Write-Host ("  Starting " + $t.TaskName + " again, on Montroop $Ver.")
-      try { Start-ScheduledTask -TaskName $t.TaskName -TaskPath '\' -ErrorAction Stop } catch { Write-Host ("  Could not start " + $t.TaskName + ": run troop " + $t.TaskName.Substring(4) + " -d to.") }
+      try { Start-ScheduledTask -TaskName $t.TaskName -TaskPath '\' -ErrorAction Stop } catch { Write-Host ("  Could not start " + $t.TaskName + ": run troop " + ($t.TaskName -replace '^troop-', '') + " -d to.") }
     }
     foreach ($t in $made) {
       Write-Host ("  Restarting " + $t.TaskName + " on Montroop $Ver.")
-      try { Start-ScheduledTask -TaskName $t.TaskName -TaskPath '\' -ErrorAction Stop } catch { Write-Host ("  Could not restart " + $t.TaskName + ": run " + $(if ([string]$t.Principal.RunLevel -eq 'Highest') { 'sudo ' } else { '' }) + "troop " + $t.TaskName.Substring(4) + " -d to.") }
+      try { Start-ScheduledTask -TaskName $t.TaskName -TaskPath '\' -ErrorAction Stop } catch { Write-Host ("  Could not restart " + $t.TaskName + ": run " + $(if ([string]$t.Principal.RunLevel -eq 'Highest') { 'sudo ' } else { '' }) + "troop " + ($t.TaskName -replace '^troop-', '') + " -d to.") }
     }
   } catch {
     Write-Host ("troop: " + $_.Exception.Message) -ForegroundColor Red

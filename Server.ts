@@ -35,7 +35,7 @@ import { Session } from "./Session.ts";
 import { Sessions } from "./Sessions.ts";
 import { Subagents } from "./Subagents.ts";
 import { SEARCHES, Tools, type Seat, type Subs } from "./Tools.ts";
-import { ACTIVE, ASKS, FRAME, IDLE, IMAGES, limit_note, LINES, LINES_MOST, live_push, PING, QUIT, SUMMARIES, TICK, TURN, WIRE, type Answer, type Live, type Part, type Pending, type Queued, type Server as Out, type Sums, type Talk as Meter, TOKEN, type Wait, type Mate } from "./View.ts";
+import { ACTIVE, asker, ASKS, FRAME, IDLE, IMAGES, limit_note, LINES, LINES_MOST, live_push, PING, QUIT, SUMMARIES, TICK, TURN, WIRE, type Answer, type Live, type Part, type Pending, type Queued, type Server as Out, type Sums, type Talk as Meter, TOKEN, type Wait, type Mate } from "./View.ts";
 import * as Web from "./Web.ts";
 import * as config from "./Config.ts";
 import { err_stack, err_why } from "./Err.ts";
@@ -123,7 +123,7 @@ const AGENTS     = config.DIR + "/agents";
 const TALK_FULL  = "Conversation mode switched itself off: it was full.";
 const TALK_SMALL = "Conversation mode switched itself off: too long for {model}.";
 const TALK_LONG  = "Conversation mode switched itself off: {model} refused the turn as too long.";
-const TALK_BIG   = "Conversation mode can't start: the messages since message {id} already fill its space in the agent's view.";
+const TALK_BIG   = "Conversation mode can't start: the messages since message {id} already fill its space in the mon's view.";
 const TALK_IMP   = "Conversation mode switched itself off: the import filled it.";
 const TALK_OFF_AT = 0.9;
 // the user's Stop: no note in the chat; the next turn starts with it
@@ -1991,7 +1991,7 @@ export namespace Main {
   // notifications on, its agent's chat in view or not
   export function asked(a: Asked): void {
     const agent = Team.get(a.agent);
-    const by = a.who === "" ? agent?.name ?? "" : a.who;
+    const by = a.who === "" ? agent?.name ?? "" : asker(a);
     Push.notify(Owner.open(), ASKS + ": " + a.what.toLowerCase() + ": " + Gate.line(a), { title: by, url: "/a/" + a.agent, tag: "ask-" + a.id });
   }
 
@@ -2194,7 +2194,7 @@ export namespace Main {
     const keep = !leader || given === undefined || given === "";
     const lines = keep ? now.lines : typeof given === "number" || (typeof given === "string" && /^\s*\d+\s*$/.test(given)) ? Number(given) : NaN;
     if (!Number.isInteger(lines) || lines < 1 || lines > LINES_MOST) {
-      return "Lines per agent is a whole number from 1 to " + LINES_MOST + ".";
+      return "Lines per mon is a whole number from 1 to " + LINES_MOST + ".";
     }
     return { leader, lines };
   }
@@ -2314,7 +2314,7 @@ export namespace Main {
         return { text: "You can't archive yourself.", fail: true };
       }
       if (Team.active().every((a) => a.id === them.id)) {
-        return { text: them.name + " is the last active mon, so it can't be archived.", fail: true };
+        return { text: them.name + " is the last active agent, so it can't be archived.", fail: true };
       }
     } else if (them.archived === 0) {
       return { text: them.name + " isn't archived.", fail: true };

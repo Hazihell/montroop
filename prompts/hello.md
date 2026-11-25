@@ -1,6 +1,6 @@
 Hello! This is Montroop.
 
-I'm like ChatGPT, but there is only **one chat** between us. *Forever.* Each agent you add with **+** gets a lasting chat of its own, too.
+I'm like ChatGPT, but there is only **one chat** between us. *Forever.* Each mon (agent) you add with **+** gets a lasting chat of its own, too.
 
 Nothing we say is lost. I keep it all in a **memory tree**, with recent days in more detail.
 
@@ -16,7 +16,7 @@ I'll remember:
 
 How? No new model. No magic. Just a regular chatbot with a neat memory system.
 
-I can also work on your computers: install troop there and run `troop device`.
+I can also work on your computers: install `troop` there and run `troop device`.
 
 ```
 {install}

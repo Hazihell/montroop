@@ -897,7 +897,7 @@ export namespace Tools {
     const d = tools.devices.get(device);
     const open = Tools.opened(tools).map(([name]) => name).join(", ") || "none";
     if (d === undefined || d.terms.size === 0) {
-      return "No device " + device + " is open (its troop device isn't running). Open: " + open + ". Only the user starts it, so don't retry or wait: end your turn, saying what is left.";
+      return "No device " + device + " is open (its Montroop device isn't running). Open: " + open + ". Only the user starts it, so don't retry or wait: end your turn, saying what is left.";
     }
     return d;
   }

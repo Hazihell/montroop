@@ -83,7 +83,7 @@ export async function run(given: string | undefined): Promise<void> {
       } else if (msg.$ === "error" && !joined) {
         const old = (msg.wire ?? 0) > WIRE;
         if (refused !== old) {
-          console.error("troop: " + (old ? "this device's troop is older than the server: run `troop update`; it stops trying till then" : "the server runs an older troop than this device: run `troop update` there; trying again every " + SLOW / 1000 + " s"));
+          console.error("troop: " + (old ? "this device's Montroop is older than the server: run `troop update`; it stops trying till then" : "the server runs an older Montroop than this device: run `troop update` there; trying again every " + SLOW / 1000 + " s"));
         }
         [refused, next] = [old, old ? null : SLOW];
         sock.close();

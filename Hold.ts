@@ -364,7 +364,7 @@ export namespace Hold {
     const io: Io = { emit: h.emit, inbox: inbox(h.box), parks: (call) => own(call) !== null, gate: (call, stop) => gate(h, own(call), call, stop), call: (c) => call(h, kit, c) };
     let end: End;
     try {
-      end = job === null || driver === null ? { ok: false, text: "This holder has no driver " + name + ": a newer troop started it." } : typeof driver === "string" ? { ok: false, text: driver } : await driver(job, io);
+      end = job === null || driver === null ? { ok: false, text: "This holder has no driver " + name + ": a newer Montroop started it." } : typeof driver === "string" ? { ok: false, text: driver } : await driver(job, io);
     } catch (err) {
       end = { ok: false, text: err_why(err) };
     }

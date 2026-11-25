@@ -148,7 +148,7 @@ if [ -n "$upgrading" ]; then
   halt=$(for s in $made; do [ "$s" != troop-serve ] || printf ' %s' "$s"; done)
   for s in $halt; do
     if inside "$s" "$dir"; then
-      fail "your data must change with no troop server running, and this runs in a shell of $s, which stopping would end. Nothing changed, and Montroop $VER was not installed: run this installer in a terminal."
+      fail "your data must change with no Montroop server running, and this runs in a shell of $s, which stopping would end. Nothing changed, and Montroop $VER was not installed: run this installer in a terminal."
     fi
   done
   stopped_list="$halt"
@@ -189,7 +189,7 @@ case ":$PATH:" in
   *":$(dirname "$BIN"):"*) ;;
   *) echo "  $(dirname "$BIN") is not on your PATH; add it to run troop by name.";;
 esac
-# last: run from a troop service's shell (an install an agent runs), its restart ends
+# last: run from a Montroop service's shell (an install an agent runs), its restart ends
 # this, so that one goes last, and the temp dir before
 first="" last=""
 for s in $made; do if inside "$s" "$dir"; then last="$last $s"; else first="$first $s"; fi; done
