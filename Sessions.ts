@@ -26,10 +26,10 @@ import { Hold, MARK, SPEC, START, type Spec, type Start } from "./Hold.ts";
 import { get, rec, str, text_of } from "./Json.ts";
 import { Machine } from "./Machine.ts";
 import { Owner } from "./Owner.ts";
-import * as Pins from "./Pins.ts";
-import * as Prompts from "./Prompts.ts";
+import { Brief } from "./Brief.ts";
 import { command, output, run } from "./Service.ts";
-import { LIVE, Session, type Effect, type Mode, type Parked, type Run, type Wake } from "./Session.ts";
+import { LIVE, Session, type Effect, type Mode, type Parked, type Run } from "./Session.ts";
+import type { Wake } from "./Wake.ts";
 import { Team } from "./Team.ts";
 import { PICTURE, SESSION, VIDEO, type SessionPage, type SessionRow, type Waits } from "./View.ts";
 import { VERSION, Wire, type Ev, type Told } from "./Wire.ts";
@@ -149,25 +149,6 @@ export namespace Sessions {
     return { unit: "kny-hold-" + s.id + "-" + n, sock: path.join(s.dir, "hold-" + n + ".sock") };
   }
 
-  // a session with no unit in the record whose holder of its last launch
-  // runs: an older version (run on this record since) launched it and kept
-  // none, so it is named in the record, not taken for a run whose holder
-  // never launched; unless that holder's run ended and the end is taken
-  // (the server stopped before the next run's launch): it only lingers.
-  // Such versions predate the rename, so its unit has the old name
-  function adopted(s: Session): Session {
-    const named = { unit: "ki-hold-" + s.id + "-" + s.launches, sock: holder(s, s.launches).sock };
-    if (s.unit !== "" || s.launches === 0 || !alive({ ...s, ...named })) {
-      return s;
-    }
-    const last = Hold.told(s.dir).at(-1);
-    if (last !== undefined && last.ev.k === "end" && last.seq <= s.ack) {
-      return s;
-    }
-    Session.set(s.id, named);
-    return { ...s, ...named };
-  }
-
   // a detached holder gone takes what it left running with it, as a
   // unit's end does
   function alive(s: Session): boolean {
@@ -208,8 +189,7 @@ export namespace Sessions {
   // at the server's start, before it takes requests, once the agents'
   // chats are open: the wake messages not yet in a chat are sent again;
   // the cards of calls still parked wait again, so an answer given at once
-  // finds them, and those of a holder gone are taken down; a holder an
-  // older version launched is named in the record (adopted); a stopped
+  // finds them, and those of a holder gone are taken down; a stopped
   // session's holder still running (its server killed midway) is stopped
   export function boot(gate: Gate, asked: (a: Asked) => void, wake: (w: Wake) => Promise<boolean>, change: () => void): void {
     HOOKS.gate = gate;
@@ -218,8 +198,7 @@ export namespace Sessions {
     HOOKS.change = change;
     config.RELOADED.add(() => LINKS.forEach((l) => Wire.send(l.sock, { $: "rules", rules: config.ASK })));
     Session.unsent().forEach(deliver);
-    for (const found of Session.list(null)) {
-      const s = adopted(found);
+    for (const s of Session.list(null)) {
       if (LIVE.includes(s.status)) {
         Session.parked(s.id).forEach((p) => arm(s, p));
         if (alive(s)) {
@@ -265,8 +244,8 @@ export namespace Sessions {
     }
     const dir = path.join(DIR, id);
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    const own = Prompts.prompt("session", { agent: agent.name }) + (Browser.make(dir, id) ? "\n" + Prompts.prompt("session-browser", { media: path.join(dir, MEDIA) }) : "");
-    const spec: Spec = { cwd: worktree, claude: config.claude_dir(agent.claude), model: b.model, append: [own, b.brief.trim(), Pins.block(false).text.trim()].filter((t) => t !== "").join("\n\n") };
+    const media = Browser.make(dir, id) ? path.join(dir, MEDIA) : null;
+    const spec: Spec = { cwd: worktree, claude: config.claude_dir(agent.claude), model: b.model, append: Brief.append(agent.name, media, b.brief) };
     fs.writeFileSync(path.join(dir, SPEC), JSON.stringify(spec, null, 1) + "\n", { mode: 0o600 });
     const s = Session.add({ id, name: b.name, agent: b.agent, repo: top.dir, base, branch, worktree, account: agent.claude, model: b.model, dir }, b.prompt);
     const why = launch(s, b.prompt, null);

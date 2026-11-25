@@ -5,7 +5,7 @@ import * as path from "node:path";
 import type { ServerWebSocket } from "bun";
 import type { Out as Done } from "./Agent.ts";
 import { AskAI, type Ask, type Block, type Call, type End, type Event, type Kind, type Parked, type Said, type Say, type Vendor } from "./AskAI.ts";
-import { call_parse, call_text, report_read, tool_name } from "./Call.ts";
+import { call_parse, call_text, tool_name } from "./Call.ts";
 import { Sub, type How, type Role, type Row as SubRow, type Spawn } from "./Sub.ts";
 import { Diff } from "./Diff.ts";
 import { Disk } from "./Disk.ts";
@@ -29,16 +29,17 @@ import { Run, type Heard } from "./Run.ts";
 import * as Service from "./Service.ts";
 import * as Timer from "./Timer.ts";
 import * as Pins from "./Pins.ts";
+import { Brief } from "./Brief.ts";
 import { Gate, type Asked } from "./Gate.ts";
 import { Session } from "./Session.ts";
 import { Sessions } from "./Sessions.ts";
 import { SEARCHES, Tools, type Seat, type Subs } from "./Tools.ts";
-import { JOB } from "./Machine.ts";
 import { ACTIVE, ASKS, FRAME, IDLE, IMAGES, limit_note, LINES, LINES_MOST, live_push, PING, QUIT, SUMMARIES, TICK, TURN, WIRE, type Answer, type Live, type Part, type Pending, type Queued, type Server as Out, type Sums, type Talk as Meter, TOKEN, type Wait, type Mate } from "./View.ts";
 import * as Web from "./Web.ts";
 import * as config from "./Config.ts";
 import { err_stack, err_why } from "./Err.ts";
 import { get, rec, text_of } from "./Json.ts";
+import { wake_read, wake_relayed, wake_text, type Wake } from "./Wake.ts";
 import hello_md from "./prompts/hello.md" with { type: "text" };
 
 // agent: the chat a browser shows, by its agent's id
@@ -385,8 +386,8 @@ export namespace Chat {
     return Prompts.prompt("leader", { agents: others.join("\n\n") || "No other agents." }) + "\n\n";
   }
 
-  export function leader_block(text: string | null): Block[] {
-    return text === null ? [] : [{ text, mark: false }];
+  function brief_chat(chat: Chat) {
+    return { tools: chat.tools, id: chat.id, dir: chat.mem.dir };
   }
 
   export function ending(chat: Chat): void {
@@ -456,7 +457,7 @@ export namespace Chat {
     const server = Tools.at(chat.tools, chat.who);
     chat.eye = Chat.eye(mem, from);
     chat.socks.forEach((sock) => Chat.show(chat, sock));
-    const blocks = [...view, Pins.block(true), Tools.devices(chat.tools, chat.id, chat.mem.dir), Tools.skills(chat.tools), Tools.at_work(chat.tools, chat.who), ...Chat.leader_block(chat.leader), { text: Prompts.prompt("turn") + "\n\n" + text, mark: true }];
+    const blocks = [...view, ...Brief.blocks({ kind: "agent", chat: brief_chat(chat), who: chat.who, leader: chat.leader }), { text: Prompts.prompt("turn") + "\n\n" + text, mark: true }];
     const model = chat.pick.model;
     const used = (tokens: number) => {
       if (chat.pick.model === model) {
@@ -505,7 +506,7 @@ export namespace Chat {
       const msg = Memory.at(mem, i);
       return Memory.line({ l: 0, i }, msg.kind + ": " + msg.text) + "\n";
     });
-    const blocks = [...Memory.view(mem, at, Memory.fitted(mem)), ...Chat.leader_block(chat.leader), { text: tail.join("") + "\n" + Prompts.prompt("goal-ask") + "\n\n" + goal, mark: true }];
+    const blocks = [...Memory.view(mem, at, Memory.fitted(mem)), ...Brief.blocks({ kind: "goal", leader: chat.leader }), { text: tail.join("") + "\n" + Prompts.prompt("goal-ask") + "\n\n" + goal, mark: true }];
     return { call: AskAI.ask({ ...Chat.share(chat, { system: Prompts.prompt("goal", { Name: Chat.name(chat) }) }), blocks, no_wait: true, limits: Chat.limits(chat), who: "goal" }, () => {}), goal };
   }
 
@@ -537,8 +538,13 @@ export namespace Chat {
   export function said(mem: Memory, a: number, b: number): Said {
     const { kind, text } = Memory.at(mem, a);
     const sender = Memory.at(mem, a).from;
-    const from = kind === "user" ? Prompts.sender("user") : kind !== "work" ? Prompts.sender("app") : sender !== undefined ? Team.get(sender)?.name ?? Prompts.sender("agent") : text.startsWith(JOB) ? Prompts.sender("job") : text.startsWith("[Timer ") ? Prompts.sender("timer") : report_read(text)?.name ?? Prompts.sender("timer");
+    const from = kind === "user" ? Prompts.sender("user") : kind !== "work" ? Prompts.sender("app") : sender !== undefined ? Team.get(sender)?.name ?? Prompts.sender("agent") : wake_sender(text);
     return { ...Memory.say(mem, a, b), from };
+  }
+
+  function wake_sender(text: string): string {
+    const wake = wake_read(text);
+    return wake?.kind === "job" ? Prompts.sender("job") : wake?.kind === "timer" ? Prompts.sender("timer") : wake?.who ?? Prompts.sender("timer");
   }
 
   // another agent's message, as it lands in that one's chat: a turn there,
@@ -558,7 +564,7 @@ export namespace Chat {
       return { text: "hop limit reached, wait for the user", fail: true };
     }
     const there = Main.chats.get(them.id);
-    const why = there === undefined ? "No chat for " + them.name + "." : await Run.take(there.main, { kind: "work", text: "[" + name + "] " + text, images: [], hop, from: chat.id, origin: chat.mem.origin ?? chat.id });
+    const why = there === undefined ? "No chat for " + them.name + "." : await Run.take(there.main, { kind: "work", text: wake_text("agent", name, text), images: [], hop, from: chat.id, origin: chat.mem.origin ?? chat.id });
     return why === null ? { text: "Sent to " + them.name + ". It doesn't answer by itself: a reply comes only if it messages you.", fail: false } : { text: why, fail: true };
   }
 
@@ -761,7 +767,7 @@ export namespace Chat {
 
   export function guess(chat: Chat): number {
     const mem = chat.mem;
-    const blocks = [...Memory.view(mem, mem.count, mem.view.parts, mem.talk), Pins.block(true), Tools.devices(chat.tools, chat.id, chat.mem.dir), Tools.skills(chat.tools), Tools.at_work(chat.tools, chat.who), ...Chat.leader_block(Chat.leader(chat))];
+    const blocks = [...Memory.view(mem, mem.count, mem.view.parts, mem.talk), ...Brief.blocks({ kind: "agent", chat: brief_chat(chat), who: chat.who, leader: Chat.leader(chat) })];
     const texts = [...Object.values(Chat.system(chat)), JSON.stringify(Tools.list()), ...blocks.map((b) => b.text)];
     return Math.ceil(texts.reduce((n, text) => n + Memory.bytes(text), 0) / TOKEN);
   }
@@ -953,7 +959,7 @@ export namespace Chat {
     sub.bytes = (Memory.agent(chat.mem, it) ?? []).reduce((n, root) => n + Chat.sub_bytes(root), 0);
     chat.subs.set(it, sub);
     // a job's report reaches it while it runs, else its spawner
-    const report = (text: string) => (sub.run.busy && sub.why === null ? void Run.take(sub.run, { text, imgs: [] }) : Chat.report(chat, text.replace("] ", "] " + it + "'s job, "), true));
+    const report = (text: string) => (sub.run.busy && sub.why === null ? void Run.take(sub.run, { text, imgs: [] }) : Chat.report(chat, wake_relayed(text, it), true));
     const seat: Seat = { mem: chat.mem, note: (text) => Chat.noted(chat, sub.run, text), report, timed: () => {}, message: () => Promise.resolve({ text: "A subagent messages no one.", fail: true }), subs: null, mcp };
     chat.tools.seats.set(it, seat);
     if (name === null) {
@@ -986,7 +992,7 @@ export namespace Chat {
         Main.team_soon();
         return msg;
       },
-      say    : (say) => ({ ...say, from: say.text.startsWith(JOB) ? Prompts.sender("job") : Chat.name(chat) || "Kunumy" }),
+      say    : (say) => ({ ...say, from: wake_read(say.text)?.kind === "job" ? Prompts.sender("job") : Chat.name(chat) || "Kunumy" }),
       queued : (run) => {
         Memory.agent_held(chat.mem, run.name, run.queue.map((x) => x.q.text));
         Chat.change(chat);
@@ -1066,7 +1072,7 @@ export namespace Chat {
     const log = { text: Prompts.prompt("sub-folder", { Name: sub.name }) + "\n\n" + Memory.agent_show(chat.mem, sub.name) + "\n\n", mark: true };
     const agent = Team.get(chat.id);
     const own = agent === null ? "" : Prompts.prompt("sub-prompt", { prompt: Team.prompt(agent) });
-    const blocks = [...sub.view, Pins.block(false), Tools.devices(chat.tools, chat.id, chat.mem.dir), Tools.skills(chat.tools), Tools.at_work(chat.tools, sub.name), log];
+    const blocks = [...sub.view, ...Brief.blocks({ kind: "sub", chat: brief_chat(chat), who: sub.name }), log];
     const used = (tokens: number) => {
       [sub.used, sub.used_at] = [tokens, sub.bytes];
       Main.team_soon();
@@ -1194,7 +1200,7 @@ export namespace Chat {
   // a device's job report, or a work session's wake message, acked once
   // it's queued, and taken once: a device sends it again until acked, a
   // server's boot sends a wake again till its act is logged
-  export async function job_done(chat: Chat, id: string, agent: string, text: string): Promise<Answer> {
+  export async function wake(chat: Chat, { id, agent, text }: Wake): Promise<Answer> {
     if (chat.main.queue.some((x) => x.q.act === id) || chat.mem.held.some((q) => q.act === id) || Owner.act_get(id) !== null) {
       return {};
     }
@@ -1205,7 +1211,7 @@ export namespace Chat {
       void Run.take(sub.run, { text, imgs: [] });
       return {};
     }
-    text = agent === chat.who ? text : text.replace("] ", "] " + agent + "'s job, ");
+    text = agent === chat.who ? text : wake_relayed(text, agent);
     if (Chat.archived(chat)) {
       Chat.held(chat, { kind: "work", text, images: [], act: id });
       return {};
@@ -1801,7 +1807,7 @@ export namespace Chat {
         return {};
       }
       case "done": {
-        return device === "" ? { error: "Only a device reports jobs." } : Chat.job_done(chat, String(msg.id), typeof msg.agent === "string" ? msg.agent : chat.who, String(msg.text));
+        return device === "" ? { error: "Only a device reports jobs." } : Chat.wake(chat, { id: String(msg.id), agent: typeof msg.agent === "string" ? msg.agent : chat.who, text: String(msg.text) });
       }
       case "unschedule": {
         Tools.unschedule({ mem: chat.mem, timed: () => Chat.timed(chat) }, String(msg.id));
@@ -2528,11 +2534,6 @@ export namespace Main {
   }
 
   export async function http(req: Request, server: Bun.Server<Sock["data"]>): Promise<Response | undefined> {
-    const res = await answer(req, server);
-    return res === undefined ? res : Owner.carried(req, res);
-  }
-
-  async function answer(req: Request, server: Bun.Server<Sock["data"]>): Promise<Response | undefined> {
     const p = new URL(req.url).pathname;
     const away = /^(cross|same)-site$/.test(req.headers.get("sec-fetch-site") ?? "");
     if (away && (req.method !== "GET" || p.startsWith("/api/") || p === "/ws")) {
@@ -2605,7 +2606,7 @@ export namespace Main {
     Team.all().forEach((agent) => Chat.open(agent.id, Main.tools, agent.id === hello));
     Sessions.boot(Main.tools.gate, (a) => Main.asked(a), async (w) => {
       const chat = Main.chats.get(w.agent);
-      return chat !== undefined && (await Chat.job_done(chat, w.id, w.agent, w.text)).error === undefined;
+      return chat !== undefined && (await Chat.wake(chat, w)).error === undefined;
     }, () => Main.team_soon());
     Chat.copies();
     Main.watch();

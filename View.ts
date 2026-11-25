@@ -10,6 +10,7 @@ import type { Asked } from "./Gate.ts";
 import type { Mode, Status } from "./Session.ts";
 import type { Told } from "./Wire.ts";
 import { rec } from "./Json.ts";
+import { wake_read } from "./Wake.ts";
 
 export type Part = [number, number];
 
@@ -1255,11 +1256,11 @@ function entry_of(entry: Entry, before: Entry | undefined): Of {
 
 function entry_rows(id: number | null, kind: Kind, text: string, images: string[] = [], of: Of = { tool: "", apart: false }, from?: string, pair?: string): Row[] {
   const call = kind === "tool" ? Call.call_parse(text) : null;
-  const report = kind === "work" ? Call.report_read(text) : null;
+  const report = kind === "work" ? wake_read(text) : null;
   const label = of.apart ? "↳ " + (of.tool === "" ? "" : Call.tool_name(of.tool) + " ") + "result" : "result";
   const body = call === null ? entry_body(kind, report?.text ?? text, label, of.tool) : [];
   const named = body.some((b) => b.$ === "File" && b.k.startsWith(label));
-  const who = report?.name ?? WHO[kind] ?? (kind === "echo" && of.apart && !named ? label : "");
+  const who = report?.who ?? WHO[kind] ?? (kind === "echo" && of.apart && !named ? label : "");
   const pics = images.filter((name) => !text.includes("/" + name));
   const sent = { ...(from === undefined ? {} : { from }), ...(pair === undefined ? {} : { of: pair }) };
   return call === null && body.length === 0 && pics.length === 0 ? [] : [{ $: "Msg", id, kind, who, text, body, call, images: pics, ...sent }];

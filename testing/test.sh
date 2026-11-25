@@ -23,7 +23,7 @@ fi
 T=$KNY_TEST_DIR
 mount -t tmpfs -o mode=700 tmpfs "$T"
 ip link set lo up
-HOSTS="api.anthropic.com claude.com platform.claude.com console.anthropic.com claude.ai api.openai.com auth.openai.com chatgpt.com"
+HOSTS="api.anthropic.com claude.com platform.claude.com console.anthropic.com mcp-proxy.anthropic.com claude.ai api.openai.com auth.openai.com chatgpt.com"
 echo "127.0.0.1 localhost $HOSTS" > "$T/hosts"
 mount --bind "$T/hosts" /etc/hosts
 

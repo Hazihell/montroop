@@ -6,6 +6,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Owner } from "../../Owner.ts";
 import { Session, type Effect } from "../../Session.ts";
+import { wake_text } from "../../Wake.ts";
 import type { Ev } from "../../Wire.ts";
 
 let made = 0;
@@ -31,19 +32,19 @@ function push(id = crypto.randomUUID()): Ev {
 test("a run that ends well is done, and wakes its agent with its report", () => {
   const s = session("tidy");
   told(s, 1, { k: "report", text: "All set: 3 files changed." });
-  expect(woke(told(s, 2, { k: "end", ok: true, text: "ok" }))).toEqual(["[Session tidy] done: All set: 3 files changed."]);
+  expect(woke(told(s, 2, { k: "end", ok: true, text: "ok" }))).toEqual([wake_text("session", "tidy", "done: All set: 3 files changed.")]);
   expect(Session.get(s.id)?.status).toBe("done");
   expect(Session.run(s.id)).toMatchObject({ n: 1, status: "done", report: "All set: 3 files changed." });
 });
 
 test("a run that ends well with no report wakes its agent with its last words", () => {
   const s = session("quiet");
-  expect(woke(told(s, 1, { k: "end", ok: true, text: "Finished." }))).toEqual(["[Session quiet] done: Finished."]);
+  expect(woke(told(s, 1, { k: "end", ok: true, text: "Finished." }))).toEqual([wake_text("session", "quiet", "done: Finished.")]);
 });
 
 test("a run that ends badly fails, saying why", () => {
   const s = session("broke");
-  expect(woke(told(s, 1, { k: "end", ok: false, text: "Claude Code process terminated by signal SIGKILL" }))).toEqual(["[Session broke] failed: Claude Code process terminated by signal SIGKILL"]);
+  expect(woke(told(s, 1, { k: "end", ok: false, text: "Claude Code process terminated by signal SIGKILL" }))).toEqual([wake_text("session", "broke", "failed: Claude Code process terminated by signal SIGKILL")]);
   expect(Session.run(s.id)).toMatchObject({ status: "failed", why: "Claude Code process terminated by signal SIGKILL" });
 });
 
@@ -60,7 +61,7 @@ test("a call parked makes the session wait, shows its card and wakes its agent",
   const s = session("gate");
   const fx = told(s, 1, push());
   expect(fx.filter((f) => f.do === "card")).toHaveLength(1);
-  expect(woke(fx)).toEqual(["[Session gate] waiting: the user's approval in the app, for: delete files or data outside the scratch folder (shell)"]);
+  expect(woke(fx)).toEqual([wake_text("session", "gate", "waiting: the user's approval in the app, for: delete files or data outside the scratch folder (shell)")]);
   expect(Session.get(s.id)?.status).toBe("waiting");
 });
 
@@ -86,7 +87,7 @@ test("the session is at work again once every call parked is answered", () => {
 test("a question makes the session wait for its agent's answer, and wakes it with the question", () => {
   const s = session("curious");
   const q = crypto.randomUUID();
-  expect(woke(told(s, 1, { k: "question", id: q, text: "Which word?" }))).toEqual(["[Session curious] question: Which word?\n\nIt waits for your answer: give it with session send. If only the user knows, ask them first."]);
+  expect(woke(told(s, 1, { k: "question", id: q, text: "Which word?" }))).toEqual([wake_text("session", "curious", "question: Which word?\n\nIt waits for your answer: give it with session send. If only the user knows, ask them first.")]);
   expect(Session.get(s.id)?.status).toBe("waiting");
   told(s, 2, { k: "replied", id: q });
   expect(Session.get(s.id)?.status).toBe("running");
@@ -98,7 +99,7 @@ test("the messages a run didn't take in start the next run on them when it ends"
   Session.say({ id: s.id + "/r2", session: s.id, text: "And B.", mode: "steer", at: 2 });
   const fx = told(s, 1, { k: "end", ok: true, text: "First part done." });
   expect(fx.map((f) => f.do)).toContain("next");
-  expect(woke(fx)).toEqual(["[Session busy] done: First part done.\n\nIt runs again now, on the messages sent to it it hadn't taken in."]);
+  expect(woke(fx)).toEqual([wake_text("session", "busy", "done: First part done.\n\nIt runs again now, on the messages sent to it it hadn't taken in.")]);
   expect(Session.run(s.id)).toMatchObject({ n: 2, prompt: "Also do A.\n\nAnd B.", status: "running" });
   expect(Session.unheard(s.id)).toEqual([]);
 });
@@ -114,7 +115,7 @@ test("a stop drops the messages not taken in", () => {
 test("the server's own step out of work is taken once", () => {
   const s = session("lost");
   const note = { about: "gone 1.1", text: "its holder ended before the run did: send it a message to go on" };
-  expect(woke(Session.move(s.id, "failed", "its holder ended before the run did", note) ?? [])).toEqual(["[Session lost] failed: its holder ended before the run did: send it a message to go on"]);
+  expect(woke(Session.move(s.id, "failed", "its holder ended before the run did", note) ?? [])).toEqual([wake_text("session", "lost", "failed: its holder ended before the run did: send it a message to go on")]);
   expect(Session.move(s.id, "failed", "its holder ended before the run did", note)).toBeNull();
 });
 
@@ -143,7 +144,7 @@ test("an event and the wake it makes are taken together, or neither is", () => {
   expect(() => told(s, 1, { k: "end", ok: true, text: "ok" })).toThrow("no wake");
   expect(Session.get(s.id)).toMatchObject({ status: "running", ack: 0 });
   db.run("drop trigger no_wake");
-  expect(woke(told(s, 1, { k: "end", ok: true, text: "ok" }))).toEqual(["[Session brink] done: ok"]);
+  expect(woke(told(s, 1, { k: "end", ok: true, text: "ok" }))).toEqual([wake_text("session", "brink", "done: ok")]);
 });
 
 test("a record from an earlier version's tables opens with today's columns, its rows and unknown columns kept", () => {
@@ -159,7 +160,7 @@ test("a record from an earlier version's tables opens with today's columns, its 
   const read = "import { Session } from './Session.ts'; console.log(JSON.stringify({ s: Session.get('a1d5e551'), runs: Session.runs('a1d5e551'), questions: Session.questions('a1d5e551') }))";
   const out = Bun.spawnSync(["bun", "-e", read], { cwd: path.resolve(import.meta.dir, "../.."), env: { ...process.env, KNY_DIR: dir } });
   const got = JSON.parse(out.stdout.toString()) as { s: Record<string, unknown>; runs: Record<string, unknown>[]; questions: unknown[] };
-  expect(got.s).toMatchObject({ name: "old", status: "done", ack: 3, launches: 2, unit: "ki-hold-a1d5e551-2", sock: "/old/hold-2.sock", archived: 0, seen: 1, legacy: 7 });
+  expect(got.s).toMatchObject({ name: "old", status: "done", ack: 3, launches: 2, archived: 0, legacy: 7 });
   expect(got.runs).toMatchObject([{ n: 1, prompt: "the old prompt", report: "" }]);
   expect(got.questions).toEqual([]);
 });

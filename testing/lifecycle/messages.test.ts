@@ -1,4 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
+import { wake_text } from "../../Wake.ts";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -47,8 +48,8 @@ test.concurrent("a stop by the session tool wakes no one, a stop by the user wak
   expect((await k.api("POST", "/api/sessions/" + b.id + "/stop", {})).status).toBe(200);
   await b.status("stopped");
   await until("both commands ended", () => !waiting(ta) && !waiting(tb));
-  await until("the user's stop's wake", async () => await said(k, "[Session st-b] stopped: by the user.") === 1);
-  expect(await said(k, "[Session st-a]")).toBe(0);
+  await until("the user's stop's wake", async () => await said(k, wake_text("session", "st-b", "stopped: by the user.")) === 1);
+  expect(await said(k, wake_text("session", "st-a", ""))).toBe(0);
 });
 
 test.concurrent("a call that asks first waits across a server restart, runs once when approved, and not when denied", async () => {
@@ -81,6 +82,6 @@ test.concurrent("a call that asks first waits across a server restart, runs once
   await s.status("done");
   expect(git(path.join(path.dirname(r), "origin.git"), "rev-list", "--count", "main..kny/ap")).toBe("1");
   expect(fs.existsSync(canary)).toBe(true);
-  await until("the done wake", async () => await said(k, "[Session ap] done:") === 1);
-  expect(await said(k, "[Session ap] waiting:")).toBe(2);
+  await until("the done wake", async () => await said(k, wake_text("session", "ap", "done:")) === 1);
+  expect(await said(k, wake_text("session", "ap", "waiting:"))).toBe(2);
 });

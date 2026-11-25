@@ -64,7 +64,7 @@ type Listed = { tools: { name: string; description: string; inputSchema: object 
 
 type Called = { content: Part[]; isError?: boolean };
 
-type Rpc = { "tools/list": Listed; "tools/call": Called };
+type Rpc = { "tools/list": Listed; "tools/call": Called; gate: { ok: boolean; text: string } };
 
 export type Wire<S, E> = {
   key     : string;

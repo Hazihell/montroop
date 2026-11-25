@@ -1,4 +1,3 @@
-import "./Renamed.ts";
 import { TOP } from "./Based.ts";
 import { RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";

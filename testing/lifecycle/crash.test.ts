@@ -1,4 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
+import { wake_text } from "../../Wake.ts";
 import { chat, down, fake, gate, kill, Kny, procs, repo, said, tag, until, waiting } from "../rig.ts";
 
 const GONE = "its holder ended before the run did";
@@ -18,8 +19,8 @@ test.concurrent("a holder killed mid-run fails the run once, leaves nothing of i
   expect(waiting(t)).toBe(false);
   expect((await k.api("POST", "/api/sessions/" + s.id + "/resume", {})).status).toBe(200);
   expect((await s.status("done")).runs).toMatchObject([{ n: 1, status: "done", attempts: 2 }]);
-  await until("the done wake", async () => await said(k, "[Session hk] done:") === 1);
-  expect(await said(k, "[Session hk] failed: " + GONE)).toBe(1);
+  await until("the done wake", async () => await said(k, wake_text("session", "hk", "done:")) === 1);
+  expect(await said(k, wake_text("session", "hk", "failed: ") + GONE)).toBe(1);
 });
 
 test.concurrent("Claude Code killed under its holder fails the run, and its holder exits leaving nothing running", async () => {
@@ -34,7 +35,7 @@ test.concurrent("Claude Code killed under its holder fails the run, and its hold
   expect((await s.status("failed")).runs[0].why).toBe("Claude Code process terminated by signal SIGKILL");
   await until("its holder gone", () => s.holder() === null);
   expect(waiting(t)).toBe(false);
-  await until("the failed wake", async () => await said(k, "[Session cc] failed: Claude Code process terminated by signal SIGKILL") === 1);
+  await until("the failed wake", async () => await said(k, wake_text("session", "cc", "failed: Claude Code process terminated by signal SIGKILL")) === 1);
 });
 
 test.concurrent("a question asked while the server is down reaches it once it's back, and is answered; each wake comes once across restarts", async () => {
@@ -56,14 +57,14 @@ test.concurrent("a question asked while the server is down reaches it once it's 
   expect(asked.questions.map((q) => q.text)).toEqual(["Which word should it be?"]);
   expect((await s.say("heron " + t, "ans-1")).status).toBe(200);
   await s.status("done");
-  await until("the done wake", async () => await said(k, "[Session q] done: It is heron.") === 1);
+  await until("the done wake", async () => await said(k, wake_text("session", "q", "done: It is heron.")) === 1);
   await k.kill();
   await k.start();
   // what the restart delivers again comes before this message's answer
   await k.tell(t + ": after");
   await until("the answer after the restart", async () => (await chat(k)).some((m) => m.text === t + " after"));
-  expect(await said(k, "[Session q] question: Which word should it be?")).toBe(1);
-  expect(await said(k, "[Session q] done:")).toBe(1);
+  expect(await said(k, wake_text("session", "q", "question: Which word should it be?"))).toBe(1);
+  expect(await said(k, wake_text("session", "q", "done:"))).toBe(1);
 });
 
 test.concurrent("a run that ends while the server is down is taken from its log at the next start, and the message queued for it runs next", async () => {
@@ -85,8 +86,8 @@ test.concurrent("a run that ends while the server is down is taken from its log 
     return p.status === "done" && p.runs.length === 2 ? p : null;
   });
   expect(done.runs.map((r) => r.status)).toEqual(["done", "done"]);
-  await until("both done wakes", async () => await said(k, "[Session qd] done:") === 2);
-  expect(await said(k, "[Session qd] failed:")).toBe(0);
+  await until("both done wakes", async () => await said(k, wake_text("session", "qd", "done:")) === 2);
+  expect(await said(k, wake_text("session", "qd", "failed:"))).toBe(0);
 });
 
 test.concurrent("a new server waits for the running one's lock, then takes over its sessions' running holders", async () => {
@@ -107,5 +108,5 @@ test.concurrent("a new server waits for the running one's lock, then takes over 
   expect(s.holder()).toBe(holder);
   s.open(t);
   await s.status("done");
-  await until("the done wake", async () => await said(k, "[Session up] done:") === 1);
+  await until("the done wake", async () => await said(k, wake_text("session", "up", "done:")) === 1);
 });

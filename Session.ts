@@ -10,6 +10,7 @@
 import type { Database } from "bun:sqlite";
 import { Owner } from "./Owner.ts";
 import { Wire, type Told } from "./Wire.ts";
+import { wake_text, type Wake } from "./Wake.ts";
 
 export type Status = "running" | "waiting" | "done" | "failed" | "stopped";
 
@@ -41,9 +42,6 @@ export type Mode = "queue" | "steer" | "answer";
 type Say = { id: string; session: string; text: string; mode: Mode; at: number };
 
 type Question = { id: string; session: string; text: string; at: number };
-
-// a message for the session's agent, sent once it's in that agent's chat
-export type Wake = { id: string; agent: string; text: string };
 
 // what the server does once a change to the record is in: deliver a wake;
 // show a parked call's card; take a card down (null: every one of the
@@ -111,22 +109,8 @@ export namespace Session {
   function opened() {
     const db = Owner.open();
     if (!MADE) {
-      const had = (db.query("select name from pragma_table_info('work_sessions')").all() as { name: string }[]).map((c) => c.name);
-      const unseen = had.length > 0 && !had.includes("seen");
-      const unitless = had.length > 0 && !had.includes("unit");
-      // the columns and what fills them in one transaction: a server killed
-      // midway leaves neither
       db.transaction(() => {
         Object.entries(TABLES).forEach(([name, columns]) => fit(db, name, columns));
-        // sessions made before a session's last look was kept count as seen
-        if (unseen) {
-          db.run("update work_sessions set seen = at");
-        }
-        // a holder launched by a version that kept no unit or socket in
-        // the record was named so
-        if (unitless) {
-          db.run("update work_sessions set unit = 'ki-hold-' || id || '-' || launches, sock = dir || '/hold-' || launches || '.sock' where launches > 0");
-        }
       })();
       MADE = true;
     }
@@ -263,7 +247,7 @@ export namespace Session {
 
   // a wake message kept to send, in the transaction of the step it tells
   function noted(db: Database, s: Session, about: string, what: string, text: string): Effect[] {
-    const wake = { id: "session " + s.id + " " + about, agent: s.agent, text: "[Session " + s.name + "] " + what + ": " + Wire.clip(text.trim()) };
+    const wake = { id: "session " + s.id + " " + about, agent: s.agent, text: wake_text("session", s.name, what + ": " + Wire.clip(text.trim())) };
     const kept = db.query("insert or ignore into work_wakes (id, agent, text, at) values (?, ?, ?, ?)").run(wake.id, wake.agent, wake.text, Date.now()).changes > 0;
     return kept ? [{ do: "wake", wake }] : [];
   }

@@ -344,11 +344,9 @@ function config_start(): Made {
 
 // why Kunumy can't use the data in DIR before the installer runs, if so
 export function config_older(): string | null {
-  const old = fs.existsSync(DIR + "/users") || fs.existsSync(DIR + "/chat");
   const agents = fs.existsSync(DIR + "/agents");
   const layout = Number((fs.existsSync(LAYOUT) ? fs.readFileSync(LAYOUT, "utf8") : "").trim()) || 0;
-  const due = (old && !agents) || (agents && layout < LAYOUT_NOW) || fs.existsSync(DIR + "/.migrating");
-  return due ? DIR + " holds an older Kunumy's data, not yet (or not all) moved to this version's layout: run the installer (" + install_cmd(process.platform === "win32") + ") with no Kunumy server running, then start again" : null;
+  return agents && layout < LAYOUT_NOW ? DIR + " holds an older Kunumy's data, not yet (or not all) moved to this version's layout: run the installer (" + install_cmd(process.platform === "win32") + ") with no Kunumy server running, then start again" : null;
 }
 
 export function config_make(file: Record<string, unknown>): Made {
