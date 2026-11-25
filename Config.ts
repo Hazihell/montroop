@@ -22,7 +22,6 @@ type Made = {
   compactor : Pick;
   context   : number;
   after     : string;
-  hops      : number;
   thinking  : boolean;
   off       : string[];
   ask       : Rule[];
@@ -61,7 +60,6 @@ export const SETTINGS: Setting[] = [
   { key: "pick",      def: "claude-api:sonnet-5.5:medium:slow", server_only: null },
   { key: "compactor", def: "claude-api:sonnet-5.5:medium:slow", server_only: null },
   { key: "compactor_context", def: "4",                         server_only: null },
-  { key: "hops",      def: "4",                                 server_only: null },
   { key: "thinking",  def: "off",                               server_only: null },
   { key: "after",     def: "",                                  server_only: "runs a command" },
 ];
@@ -118,7 +116,6 @@ const MADE = config_start();
 export const OFFER: Offer = MADE.offer;
 
 export let   AFTER      = MADE.after;
-export let   HOPS       = MADE.hops;
 export let   THINKING   = MADE.thinking;
 export let   PICK       = MADE.pick;
 
@@ -366,7 +363,6 @@ export function config_make(file: Record<string, unknown>): Made {
     compactor : config_run("compactor", config_value(file, "compactor"), offer),
     context   : config_context(config_value(file, "compactor_context")),
     after     : config_value(file, "after"),
-    hops      : config_hops(config_value(file, "hops")),
     thinking  : config_value(file, "thinking") === "on",
     off       : items(file.mcp_off).filter((name): name is string => typeof name === "string"),
     ask       : config_ask(file.ask),
@@ -391,14 +387,6 @@ export function config_mcp_off(off: string[]): void {
   const mode = fs.existsSync(FILE_PATH) ? fs.statSync(FILE_PATH).mode & 0o777 : 0o600;
   write_whole(FILE_PATH, JSON.stringify(next, null, 2) + "\n", mode);
   config_reload();
-}
-
-function config_hops(text: string): number {
-  const n = Number(text.trim());
-  if (!Number.isInteger(n) || n < 0 || n > 100) {
-    throw new Error("config: hops is a whole number from 0 to 100, not " + text);
-  }
-  return n;
 }
 
 function config_context(text: string): number {
@@ -572,7 +560,6 @@ export function config_reload(): void {
   COMPACTOR = made.compactor;
   COMPACTOR_CONTEXT = made.context;
   AFTER = made.after;
-  HOPS = made.hops;
   THINKING = made.thinking;
   MCP_OFF = made.off;
   ASK = made.ask;

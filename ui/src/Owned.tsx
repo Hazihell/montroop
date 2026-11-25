@@ -31,7 +31,6 @@ const SETTING: Record<string, [string, string]> = {
   pick              : ["Default model", "For chats that haven't picked one."],
   compactor         : ["Compactor model", "Writes the memory's summaries."],
   thinking          : ["Show thinking", "The model's thinking, in the chat."],
-  hops              : ["Hop limit", "Mon-to-mon messages in a row; 0: off."],
   compactor_context : ["Compactor context", "KB of chat each summary sees (1–128)."],
 };
 
@@ -44,11 +43,10 @@ const VENDOR_KEY: Record<string, string> = { "claude-api": "anthropic", "openai-
 
 const GROUPS: Array<[string, string[]]> = [
   ["Chat", ["thinking"]],
-  ["Mons", ["hops"]],
   ["Models", ["vendors", "pick", "compactor", "compactor_context"]],
 ];
 
-const SAVED = ["thinking", "hops", "vendors", "models", "pick", "compactor", "compactor_context"];
+const SAVED = ["thinking", "vendors", "models", "pick", "compactor", "compactor_context"];
 
 function list(text: string): string[] {
   return text.split(",").map((x) => x.trim()).filter((x) => x !== "");
@@ -298,7 +296,7 @@ function Plain({ at }: { at: string }): ReactNode {
   return (
     <label className="set">
       <span>{name}<small>{about}</small></span>
-      <input className="field" type="number" inputMode="numeric" min={at === "hops" ? 0 : 1} max={at === "hops" ? 100 : 128} step={1} value={value_of(s, at)} placeholder={r?.def} onChange={(ev) => change({ set: { ...s.set, [at]: ev.target.value } }, at)} onBlur={soon} />
+      <input className="field" type="number" inputMode="numeric" min={1} max={128} step={1} value={value_of(s, at)} placeholder={r?.def} onChange={(ev) => change({ set: { ...s.set, [at]: ev.target.value } }, at)} onBlur={soon} />
       {r?.from === "file" ? <Reset keys={[at]} /> : null}
       <Err at={at} />
     </label>

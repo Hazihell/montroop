@@ -123,3 +123,20 @@ test.concurrent("a session's call of Montroop's tools approved under a server fr
   const done = await s.status("done");
   expect(results(done.log, "runs no tools for work sessions")).toHaveLength(1);
 });
+
+test.concurrent("a chain of messages between two mons goes on as long as they send them, a hops setting left in the config ignored", async () => {
+  const k = await Troop.up({ hops: 1 });
+  const t = tag();
+  const other = ((await k.api("POST", "/api/agents", { name: "Other", about: "Another agent.", prompt: "You are Other." })).json as { agent: { id: string } }).agent.id;
+  const to = (n: number) => (n % 2 === 1 ? "Other" : "Montroop");
+  await fake.next(t + ": start the chain", { what: "tool", calls: [["message", { agent: "Other", text: t + "-m1" }]] });
+  for (let n = 1; n < 7; n++) {
+    await fake.next(t + "-m" + n, { what: "tool", calls: [["message", { agent: to(n + 1), text: t + "-m" + (n + 1) }]] });
+  }
+  await k.tell(t + ": start the chain");
+
+  const landed = async (agent: string) => (await chat(k, agent)).filter((m) => m.kind === "work" && m.text.includes(t + "-m")).map((m) => m.text.match(/-m(\d)/)?.[1]);
+  await until("the 7th message", async () => (await landed(other)).includes("7"));
+  expect(await landed(other)).toEqual(["1", "3", "5", "7"]);
+  expect(await landed(k.agent)).toEqual(["2", "4", "6"]);
+});

@@ -20,9 +20,9 @@ type Entry = { kind: Kind; text: string; echo?: string; date?: string; images?: 
 
 export type Queued = { kind: Kind; text: string };
 
-// hop and from: another agent's message, the hop it is on and whose it is;
-// origin: the chat its chain of messages started in
-export type Pending = Queued & { images: string[]; act?: string; hop?: number; from?: string; origin?: string };
+// from: another agent's message, whose it is; origin: the chat its chain
+// of messages started in
+export type Pending = Queued & { images: string[]; act?: string; from?: string; origin?: string };
 
 type Of = { tool: string; apart: boolean };
 

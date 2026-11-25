@@ -287,18 +287,17 @@ export namespace Chat {
     return buf.subarray(0, got.bytesRead);
   }
 
-  // the turn's hop and origin, kept with the memory, so a turn cut and
-  // continued (a restart, a usage limit, the goal) keeps them: the message
-  // that starts a turn sets them, another agent's to its own, a timer's or
-  // job's to 0 and this chat (null), the app's own note leaves them;
-  // mid-turn only the user's sets them, to 0 and this chat
+  // the turn's origin, kept with the memory, so a turn cut and continued
+  // (a restart, a usage limit, the goal) keeps it: the message that starts
+  // a turn sets it, another agent's to its own, a timer's or job's to this
+  // chat (null), the app's own note leaves it; mid-turn only the user's
+  // sets it, to this chat
   export function posted(chat: Chat, post: Pending): Msg {
     const keep = post.kind !== "user" && (!chat.fresh || post.kind === "note");
-    const hop = post.kind === "user" ? 0 : keep ? chat.mem.hop : post.hop ?? 0;
     const origin = post.kind === "user" ? null : keep ? chat.mem.origin : post.origin === undefined || post.origin === chat.id ? null : post.origin;
     chat.fresh = false;
-    if (hop !== chat.mem.hop || origin !== chat.mem.origin) {
-      [chat.mem.hop, chat.mem.origin] = [hop, origin];
+    if (origin !== chat.mem.origin) {
+      chat.mem.origin = origin;
       Memory.save(chat.mem);
     }
     return Chat.push(chat, chat.main, post.kind, post.text, post.images, false, post.act, post.from === undefined ? {} : { from: post.from }, true);
@@ -551,12 +550,10 @@ export namespace Chat {
     return wake?.kind === "job" ? Prompts.sender("job") : wake?.kind === "timer" ? Prompts.sender("timer") : wake?.who ?? Prompts.sender("timer");
   }
 
-  // another agent's message, as it lands in that one's chat: a turn there,
-  // one hop on from this turn's
+  // another agent's message, as it lands in that one's chat: a turn there
   export async function message(chat: Chat, to: string, text: string): Promise<Done> {
     const name = Chat.name(chat);
     const them = Team.by_name(to);
-    const hop = chat.mem.hop + 1;
     if (them === null || them.id === chat.id) {
       const others = Team.active().filter((a) => a.id !== chat.id).map((a) => a.name);
       return { text: (them === null ? "No agent " + to + "." : "That's you.") + " The others: " + (others.join(", ") || "none") + ".", fail: true };
@@ -564,11 +561,8 @@ export namespace Chat {
     if (them.archived !== 0) {
       return { text: them.name + " is archived.", fail: true };
     }
-    if (hop > config.HOPS) {
-      return { text: "hop limit reached, wait for the user", fail: true };
-    }
     const there = Main.chats.get(them.id);
-    const why = there === undefined ? "No chat for " + them.name + "." : await Run.take(there.main, { kind: "work", text: wake_text("agent", name, text), images: [], hop, from: chat.id, origin: chat.mem.origin ?? chat.id });
+    const why = there === undefined ? "No chat for " + them.name + "." : await Run.take(there.main, { kind: "work", text: wake_text("agent", name, text), images: [], from: chat.id, origin: chat.mem.origin ?? chat.id });
     return why === null ? { text: "Sent to " + them.name + ". It doesn't answer by itself: a reply comes only if it messages you.", fail: false } : { text: why, fail: true };
   }
 
