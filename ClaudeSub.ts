@@ -62,7 +62,6 @@ const OUTLASTS_CLAUDE_CODES_MCP_TIMEOUT = 1e8;
 // seconds a call Claude Code runs itself may wait for the owner's answer
 const OWNER_ANSWERS = 7 * 24 * 3600;
 
-
 const OFF = ["server_error", "overloaded", "billing_error", "account_on_hold", "oauth_org_not_allowed", "verification_required", "model_not_found"];
 
 const BUSY_ERRORS = ["server_error", "overloaded"];
