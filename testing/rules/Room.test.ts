@@ -19,7 +19,7 @@ test("what isn't measured yet is told so, not as nothing used", () => {
 });
 
 test("nothing starts with under 1 GB of memory available, saying so with the computer's facts", () => {
-  expect(Room.refused({ ...IDLE, available: 0.96 * GB })).toBe("Only 983 MB of memory is available on this computer, under the 1 GB kept free so it doesn't run out. Nothing started: wait for some subagents or work sessions to end, or do the work yourself. This computer: 16 cores, 0% busy; memory 1.0 GB available of 64.0 GB; no subagents or work sessions running.");
+  expect(Room.refused({ ...IDLE, available: 0.96 * GB })).toBe("Only 983 MB of memory is available on this computer, under the 1 GB kept free so it doesn't run out. Nothing started: wait for some subagents or work sessions to end, or do the work yourself. This computer: 16 cores, 0% busy; memory 0.9 GB available of 64.0 GB; no subagents or work sessions running.");
   expect(Room.refused({ ...IDLE, available: 1 * GB })).toBeNull();
 });
 

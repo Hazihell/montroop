@@ -62,7 +62,7 @@ let SAMPLED = false;
 // each subagent's and work session's use, by its id, kept after its run
 // till it's archived; and when they were last read
 const USED = new Map<string, Sampled>();
-let MEASURED = 0;
+let MEASURED = -Infinity;
 
 export namespace Room {
 
@@ -78,7 +78,8 @@ export namespace Room {
 
   // the computer as an agent is told it
   export function said(s: State): string {
-    const head = s.cores + " cores, " + Math.round((100 * s.busy) / s.cores) + "% busy; memory " + gb(s.available) + " available of " + gb(s.total) + "; ";
+    // what's available rounded down, never told as more than it is
+    const head = s.cores + " cores, " + Math.round((100 * s.busy) / s.cores) + "% busy; memory " + gb(Math.floor((s.available / GB) * 10) * (GB / 10)) + " available of " + gb(s.total) + "; ";
     if (s.running === 0) {
       return head + "no subagents or work sessions running";
     }
@@ -101,7 +102,7 @@ export namespace Room {
     fresh();
     const u = USED.get(id);
     const s = Session.get(id);
-    if (u === undefined || u.most.memory === null || s === null) {
+    if (u === undefined || u.most.memory === null || s === null || (LIVE.includes(s.status) && u.unit !== s.unit)) {
       return null;
     }
     if (!LIVE.includes(s.status)) {
@@ -148,7 +149,7 @@ export namespace Room {
       if (line === null) {
         return;
       }
-      const at = Date.now();
+      const at = performance.now();
       TICKS.push({ at, line });
       while (TICKS.length > 2 && TICKS[1].at <= at - WINDOW) {
         TICKS.shift();
@@ -159,13 +160,13 @@ export namespace Room {
   }
 
   function fresh(): void {
-    if (Date.now() - MEASURED >= FRESH) {
+    if (performance.now() - MEASURED >= FRESH) {
       measure();
     }
   }
 
   function measure(): void {
-    MEASURED = Date.now();
+    MEASURED = performance.now();
     const all = Session.list(null);
     const ids = new Set(all.map((s) => s.id));
     [...USED.keys()].filter((id) => !ids.has(id)).forEach((id) => USED.delete(id));
@@ -180,7 +181,7 @@ export namespace Room {
       return;
     }
     const got = readings(live.map((s) => ({ name: s.unit, dir: s.dir })));
-    const at = Date.now();
+    const at = performance.now();
     for (const s of live) {
       const was = USED.get(s.id);
       const u = got.get(s.unit);
