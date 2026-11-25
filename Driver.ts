@@ -56,7 +56,7 @@ export type Inbox = { pending: () => boolean; next: () => Promise<string | null>
 // emit: an event told to the server and logged; parks: whether a rule has
 // the owner answer the call first; gate: before a tool of the provider's
 // own runs, parked if a rule says so (stop: dropped); call: one of
-// Kunumy's tools (Job.tools), gated, then run once
+// Kunumy's tools (Job.tools), run once, gated where a rule says so
 export type Io = {
   emit  : (ev: Ev) => void;
   inbox : Inbox;

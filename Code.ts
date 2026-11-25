@@ -25,7 +25,7 @@ import { Limit } from "./Limit.ts";
 import { Loop } from "./Loop.ts";
 import type { Spec } from "./Machine.ts";
 import * as Prompts from "./Prompts.ts";
-import { Wire, type Ev } from "./Wire.ts";
+import { HELD, MCP, Wire, type Ev } from "./Wire.ts";
 
 const ENV = {
   CLAUDE_AGENT_SDK_CLIENT_APP              : "kunumy",
@@ -46,11 +46,6 @@ const SETTINGS = {
   pluginConfigs             : { "cc-plugin-agents-md@builtin": { options: { instructionFiles: "claude-md-and-agents-md" } } },
 };
 
-// Kunumy's MCP server in Claude Code, which names each of its tools for
-// the model mcp__kunumy__<name>, as the server's own path does (ClaudeSub)
-const MCP = "kunumy";
-
-const OURS = "mcp__" + MCP + "__";
 
 const HOUR = { type: "ephemeral", ttl: "1h" };
 
@@ -307,7 +302,7 @@ export namespace Code {
     const notes = new Map<string, string>();
     let gating = 0;
     const pre: HookCallback = (input) => {
-      const asks = input.hook_event_name === "PreToolUse" && !input.tool_name.startsWith(OURS) && io.parks(call_of(input.tool_name, rec(input.tool_input) ? input.tool_input : {}, input.tool_use_id));
+      const asks = input.hook_event_name === "PreToolUse" && !input.tool_name.startsWith(HELD) && io.parks(call_of(input.tool_name, rec(input.tool_input) ? input.tool_input : {}, input.tool_use_id));
       return Promise.resolve(asks ? { hookSpecificOutput: { hookEventName: "PreToolUse" as const, permissionDecision: "ask" as const } } : {});
     };
     const post: HookCallback = (input) => {
@@ -319,7 +314,7 @@ export namespace Code {
       return Promise.resolve({ hookSpecificOutput: { hookEventName: "PostToolUse" as const, additionalContext: note } });
     };
     const can: CanUseTool = async (tool, input, { signal, toolUseID }) => {
-      if (tool.startsWith(OURS)) {
+      if (tool.startsWith(HELD)) {
         return { behavior: "allow", updatedInput: input };
       }
       gating += 1;
@@ -357,7 +352,7 @@ export namespace Code {
       const args = get(params, "arguments");
       const input = rec(args) ? args : {};
       const id = str(get(get(params, "_meta"), "claudecode/toolUseId")) ?? crypto.randomUUID();
-      const out = !tools.some((t) => t.name === name) ? { text: "No tool " + name + ".", fail: true } : await io.call({ id, tool: name, args: input, native: OURS + name, input }).catch((err: unknown) => ({ text: err_why(err), fail: true, imgs: [] }));
+      const out = !tools.some((t) => t.name === name) ? { text: "No tool " + name + ".", fail: true } : await io.call({ id, tool: name, args: input, native: HELD + name, input }).catch((err: unknown) => ({ text: err_why(err), fail: true, imgs: [] }));
       const imgs = (out.imgs ?? []).map((img) => ({ type: "image", data: img.data, mimeType: img.type }));
       return { content: [{ type: "text", text: out.text || "(no output)" }, ...imgs], isError: out.fail };
     };

@@ -31,8 +31,8 @@ export type Spec = { cwd: string; claude: string; model: string; append: string 
 // work session's, on its spec and the provider's session it resumes, ""
 // for a new one; provider: the one the job's provider picks), its first
 // message, the rules that ask the owner first and the devices' scratch
-// folders they read, Kunumy's tools the server runs for it (a provider's
-// job lists its own), the socket it listens on
+// folders they read, the kit of Kunumy's tools a work session is offered
+// (a provider job's is its job's tools), the socket it listens on
 export type Start = { driver: "claude-code" | "provider"; job?: Omit<Job, "dir">; prompt: string; resume: string; rules: Rule[]; scratch: Scratch; tools: Kit[]; sock: string };
 
 // a start written before drivers were named runs Claude Code; one before
@@ -51,8 +51,10 @@ type Box = { queue: string[]; wake: () => void; shut: boolean };
 // a holder's state: what it told and the server hasn't acked, the calls
 // parked, the calls the server runs till their results come, the
 // questions waiting for an answer, the messages the server sent (by id),
-// the driver's, the rules that park a call and the devices' scratch
-// folders they read, the connection that owns it now, how it tells an event
+// the driver's inbox, the rules that park a call and the devices' scratch
+// folders they read, whether the linked server is from before Kunumy's
+// tools ran in sessions, the connection that owns it now, how it tells an
+// event
 type Held = {
   out     : Outbox;
   asks    : Map<string, Parked>;
@@ -62,7 +64,7 @@ type Held = {
   box     : Box;
   rules   : Rule[];
   scratch : Scratch;
-  old     : boolean;
+  older   : boolean;
   conn    : net.Socket | null;
   emit    : Io["emit"];
 };
@@ -146,13 +148,13 @@ export namespace Hold {
         h.conn.destroy();
       }
       h.conn = s;
-      h.old = !(Number(msg.v) >= TOOLS);
+      h.older = !(Number(msg.v) >= TOOLS);
       ruled(h, msg);
       Wire.ack(h.out, Number(msg.ack) || 0);
       Wire.send(s, { $: "welcome", v: VERSION, seq: h.out.seq, asks: [...h.asks.values()].map((a) => a.ask), questions: [...h.waits.values()].map((w) => w.q) });
       h.out.kept.forEach((t) => Wire.send(s, { $: "ev", ...t }));
       for (const [id, c] of h.calls) {
-        if (h.old) {
+        if (h.older) {
           h.calls.delete(id);
           c.done(OLD);
         } else {
@@ -214,11 +216,10 @@ export namespace Hold {
     };
   }
 
-  // a call a rule names parked till the owner answers it, or the driver
-  // drops it; scratch: the folder the rules read as <scratch>; the card
-  // shows the tool as shown
-  function gate(h: Held, scratch: string | null, call: Call, stop: AbortSignal, shown = call.native): Promise<Gated> {
-    const rule = Rules.match(h.rules, call.tool, call.args, scratch);
+  // a call parked under the rule it matched (null: none, it runs) till
+  // the owner answers it, or the driver drops it; the card shows the tool
+  // as shown
+  function gate(h: Held, rule: Rule | null, call: Call, stop: AbortSignal, shown = call.native): Promise<Gated> {
     if (rule === null) {
       return Promise.resolve({ ok: true, note: "" });
     }
@@ -265,16 +266,15 @@ export namespace Hold {
     if (tool === undefined) {
       return { text: "No tool " + c.tool + ".", fail: true };
     }
-    if (h.old) {
+    if (h.older) {
       return OLD;
     }
-    const on = tool.device ?? (typeof c.args.device === "string" ? c.args.device : null);
-    const said = c.tool === "search" ? { ok: true, note: "" } : await gate(h, on === null ? null : h.scratch[on] ?? null, c, NEVER, c.tool);
+    const said = await gate(h, Rules.kunumy(h.rules, c.tool, c.args, tool.device, h.scratch), c, NEVER, c.tool);
     if (!said.ok) {
       return { text: said.note, fail: true };
     }
     // the server may have become an older one while the call waited
-    if (h.old) {
+    if (h.older) {
       return OLD;
     }
     const out = await new Promise<Out>((done) => {
@@ -323,7 +323,7 @@ export namespace Hold {
     if (size > 0 && fs.readFileSync(file).at(size - 1) !== 0x0a) {
       fs.writeSync(log, "\n");
     }
-    const h: Held = { out: Wire.outbox(Hold.told(dir).at(-1)?.seq ?? 0), asks: new Map(), calls: new Map(), waits: new Map(), says: new Set(), box: { queue: [start.prompt], wake: () => {}, shut: false }, rules: start.rules, scratch: start.scratch ?? {}, old: false, conn: null, emit: () => {} };
+    const h: Held = { out: Wire.outbox(Hold.told(dir).at(-1)?.seq ?? 0), asks: new Map(), calls: new Map(), waits: new Map(), says: new Set(), box: { queue: [start.prompt], wake: () => {}, shut: false }, rules: start.rules, scratch: start.scratch ?? {}, older: false, conn: null, emit: () => {} };
     h.emit = (ev) => {
       const told = Wire.push(h.out, ev, Date.now());
       fs.writeSync(log, JSON.stringify(told) + "\n");
@@ -338,7 +338,7 @@ export namespace Hold {
       s.on("close", () => {
         if (h.conn === s) {
           h.conn = null;
-          h.old = false;
+          h.older = false;
         }
       });
     });
@@ -350,7 +350,8 @@ export namespace Hold {
     const job: Job | null = given === null ? null : { ...given, dir, tools: [...HOLDS, ...kit] };
     const driver = job === null ? null : Providers.driver(job);
     const cwd = job?.cwd ?? null;
-    const io: Io = { emit: h.emit, inbox: inbox(h.box), parks: (call) => Rules.match(h.rules, call.tool, call.args, cwd) !== null, gate: (call, stop) => gate(h, cwd, call, stop), call: (c) => call(h, kit, c) };
+    const own = (call: Call) => Rules.match(h.rules, call.tool, call.args, cwd);
+    const io: Io = { emit: h.emit, inbox: inbox(h.box), parks: (call) => own(call) !== null, gate: (call, stop) => gate(h, own(call), call, stop), call: (c) => call(h, kit, c) };
     let end: End;
     try {
       end = job === null || driver === null ? { ok: false, text: "This holder has no driver " + name + ": a newer kny started it." } : typeof driver === "string" ? { ok: false, text: driver } : await driver(job, io);

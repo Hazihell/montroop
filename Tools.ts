@@ -19,7 +19,7 @@ import { Sub, type Spawn } from "./Sub.ts";
 import { err_why } from "./Err.ts";
 import { get, list as items, rec, text_of } from "./Json.ts";
 import { wake_relayed, wake_text } from "./Wake.ts";
-import type { Kit, Scratch } from "./Wire.ts";
+import { HELD, type Kit, type Scratch } from "./Wire.ts";
 
 type Device = {
   who    : string;
@@ -97,10 +97,6 @@ export type Tools = {
 export const SEARCHES = 10;
 
 const GRACE = 3 * PING;
-
-// what a work session's Claude Code puts before each of Kunumy's tools'
-// names
-const HELD = "mcp__kunumy__";
 
 const CHATS = new Map<string, Tools>();
 let HTTP: ReturnType<typeof Bun.serve> | null = null;
@@ -360,9 +356,7 @@ export namespace Tools {
 
   // a call a rule names runs once the owner approves it
   export async function gated(tools: Tools, who: string, name: string, args: Record<string, unknown>, device: string | null, signal: AbortSignal, run: () => Promise<Out>): Promise<Out> {
-    const on = device ?? (typeof args.device === "string" ? args.device : null);
-    const link = on === null ? undefined : [...(tools.devices.get(on)?.terms.values() ?? [])][0];
-    const rule = name === "search" ? null : Rules.match(config.ASK, name, args, link?.scratch ?? null);
+    const rule = Rules.kunumy(config.ASK, name, args, device, Tools.scratch(tools));
     if (rule === null) {
       return await run();
     }

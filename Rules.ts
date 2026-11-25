@@ -106,4 +106,12 @@ export namespace Rules {
     return rules.find((r) => named(r.tools, tool) && (r.args === "" || new RegExp(r.args, "i").test(flat))) ?? null;
   }
 
+  // the rule a call of Kunumy's tools matches, its arguments read with the
+  // scratch folder of the device it runs on (device: the tool's own, else
+  // the one its arguments name); search asks no one
+  export function kunumy(rules: Rule[], tool: string, args: Record<string, unknown>, device: string | null, scratch: Record<string, string>): Rule | null {
+    const on = device ?? (typeof args.device === "string" ? args.device : null);
+    return tool === "search" ? null : Rules.match(rules, tool, args, on === null ? null : scratch[on] ?? null);
+  }
+
 }

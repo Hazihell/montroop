@@ -34,6 +34,12 @@ export type Calling = { id: string; tool: string; input: Record<string, unknown>
 // name, if any
 export type Kit = Spec & { device: string | null };
 
+// Kunumy's MCP server in a holder's Claude Code, which names each of its
+// tools for the model mcp__kunumy__<name>, as the server's own path does
+// (ClaudeSub)
+export const MCP = "kunumy";
+export const HELD = "mcp__" + MCP + "__";
+
 // each open device's scratch folder, by its name
 export type Scratch = Record<string, string>;
 
