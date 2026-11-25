@@ -48,11 +48,12 @@ export namespace Loop {
     };
   }
 
-  // what a usage limit's wait tells the server: a long one (Limit.hit;
-  // a short one is the service being busy)
+  // what a usage limit's wait tells the server: a long one till the
+  // reset it told (Limit.hit; a short one is the service being busy, one
+  // with no reset told is tried again now and then)
   export function limits(io: Io): (ev: Event) => void {
     return (ev) => {
-      if (ev.$ === "Limit" && ev.limit !== null) {
+      if (ev.$ === "Limit" && ev.limit !== null && ev.limit.known) {
         io.emit({ k: "limit", until: ev.limit.until });
       }
     };
@@ -72,14 +73,17 @@ export namespace Loop {
       const items: Item[] = [];
       let keep = (more: Item[]) => void items.push(...more);
       if (c.kind === "given") {
-        keep([{ $: "User", parts: c.blocks.filter((b) => b.text !== ""), imgs: c.imgs }]);
+        const texts = await Loop.taken(io);
+        keep([{ $: "User", parts: [...c.blocks, ...texts.map((text) => ({ text, mark: false }))].filter((b) => b.text !== ""), imgs: c.imgs }]);
       } else {
         const id = c.resume === "" ? crypto.randomUUID() : c.resume;
         const file = path.join(job.dir, "loop-" + id + ".jsonl");
         items.push(...(c.resume === "" ? [] : read(file)));
         keep = (more) => {
           items.push(...more);
-          fs.appendFileSync(file, JSON.stringify(more) + "\n", { mode: 0o600 });
+          if (more.length > 0) {
+            fs.appendFileSync(file, JSON.stringify(more) + "\n", { mode: 0o600 });
+          }
         };
         if (c.resume === "") {
           io.emit({ k: "began", sdk: id });
@@ -137,13 +141,8 @@ export namespace Loop {
     });
   }
 
-  // the messages that came in, as one, unless a server tool call is open:
-  // only its results may follow it (Agent.steered)
-  async function steered(io: Io, items: Item[]): Promise<Item[]> {
-    const turn = items.findLast((item) => item.$ === "Turn");
-    if (turn?.$ === "Turn" && turn.open === true) {
-      return [];
-    }
+  // the messages that came in, each once (an empty one dropped)
+  export async function taken(io: Io): Promise<string[]> {
     const texts: string[] = [];
     while (io.inbox.pending()) {
       const text = await io.inbox.next();
@@ -151,6 +150,17 @@ export namespace Loop {
         texts.push(text);
       }
     }
+    return texts;
+  }
+
+  // the messages that came in, as one, unless a server tool call is open:
+  // only its results may follow it (Agent.steered)
+  async function steered(io: Io, items: Item[]): Promise<Item[]> {
+    const turn = items.findLast((item) => item.$ === "Turn");
+    if (turn?.$ === "Turn" && turn.open === true) {
+      return [];
+    }
+    const texts = await Loop.taken(io);
     return texts.length === 0 ? [] : [{ $: "User", parts: texts.map((text) => ({ text, mark: false })), imgs: [] }];
   }
 

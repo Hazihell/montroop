@@ -72,7 +72,7 @@ async function tell(dir: string, ...msgs: object[]): Promise<void> {
 const evs = (told: Told[]): Ev[] => told.map((x) => x.ev);
 
 for (const [name, of] of Object.entries(DRIVERS)) {
-  test.concurrent(name + ": a tool call of Kunumy's runs in the holder, its result goes back to the model", async () => {
+  test.concurrent(name + ": a tool call of Kunumy's runs in the holder, its result goes back to the model in the same turn", async () => {
     const t = tag();
     const home = signed(fs.mkdtempSync(path.join(os.tmpdir(), "home-")));
     await fake.next(t + ": work", { what: "tool", calls: [["report", { result: t + " result" }]] });
@@ -81,6 +81,7 @@ for (const [name, of] of Object.entries(DRIVERS)) {
     expect(told.some((e) => e.k === "tool" && e.name.endsWith("report"))).toBe(true);
     expect(told as unknown[]).toContainEqual({ k: "report", text: t + " result" });
     expect(told as unknown[]).toContainEqual(expect.objectContaining({ k: "result", text: "Reported. End your turn now.", error: false }));
+    expect(told.filter((e) => e.k === "turn")).toEqual([{ k: "turn", ok: true, text: "ok" }]);
     expect(told.at(-1)).toEqual({ k: "end", ok: true, text: "ok" });
   });
 

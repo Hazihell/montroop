@@ -19,6 +19,7 @@ import { AskAI } from "./AskAI.ts";
 import { BIN } from "./Browser.ts";
 import { ClaudeSub } from "./ClaudeSub.ts";
 import type { Call, Driver, End, Io, Job } from "./Driver.ts";
+import { err_why } from "./Err.ts";
 import { get, list, rec, str } from "./Json.ts";
 import { Limit } from "./Limit.ts";
 import { Loop } from "./Loop.ts";
@@ -62,7 +63,7 @@ const BUSY_ERRORS = ["server_error", "overloaded"];
 type Limits = { info: SDKRateLimitInfo | null; hit: boolean; over: boolean; cut: "over" | "steer" | null };
 
 // the messages Claude Code reads (feed)
-type Feed = { put: (content: object[]) => void; pause: () => void; held: () => boolean; read: () => AsyncGenerator<SDKUserMessage> };
+type Feed = { put: (content: object[]) => void; pause: () => void; busy: () => boolean; read: () => AsyncGenerator<SDKUserMessage> };
 
 // how a turn ended: its end, a usage limit (with when it resets, if told),
 // the messages that came in to go on it, or Claude Code gone
@@ -80,8 +81,9 @@ export namespace Code {
     const first = c.kind === "native" && c.resume === "" ? c.first.filter((b) => b.text !== "") : [];
     const marked = first.findLastIndex((b) => b.mark);
     const env = Object.fromEntries(Object.entries(ClaudeSub.bare_env()).filter(([k]) => k !== "DISABLE_AUTO_COMPACT"));
-    // the API refuses an hour's mark after Claude Code's own 5 minutes' one
-    const ttl = marked >= 0 ? { CLAUDE_CODE_PROMPT_CACHE_TTL: "1h" } : {};
+    // the API refuses an hour's mark after Claude Code's own 5 minutes'
+    // one, and a resumed session sends its first message again
+    const ttl = c.kind === "native" && c.first.some((b) => b.mark) ? { CLAUDE_CODE_PROMPT_CACHE_TTL: "1h" } : {};
     const watch: Limits = { info: null, hit: false, over: false, cut: null };
     const limit = Limit.make(Loop.asked(job, "claude-sub"), Loop.limits(io), new AbortController().signal);
     const gates = gated(io);
@@ -137,7 +139,7 @@ export namespace Code {
           continue;
         }
         limit.n = 0;
-        if (!io.inbox.pending() && !box.held() && tasks === 0 && gates.parked() === 0) {
+        if (!io.inbox.pending() && !box.busy() && tasks === 0 && gates.parked() === 0) {
           io.inbox.close();
         }
       }
@@ -181,7 +183,7 @@ export namespace Code {
     let code: { q: Query; box: Feed } | null = null;
     let lead: string[] = [];
     // the messages taken in, for a new Claude Code's first message
-    const steered: string[] = [];
+    const steered = await Loop.taken(io);
     let acted = false;
     try {
       for (let tries = 0; ;) {
@@ -190,9 +192,10 @@ export namespace Code {
           code = { q: sdk.query({ prompt: box.read(), options: { ...options, abortController: new AbortController() } }), box };
           box.put([...marked_content([...blocks.map((b) => b.text), ...steered], blocks.slice(0, -1).findLastIndex((b) => b.mark)), ...c.imgs.map(Anthropic.image)]);
         } else {
-          const texts = await taken(io);
+          const texts = await Loop.taken(io);
           steered.push(...texts);
-          code.box.put(Anthropic.content([...lead, ...texts], []));
+          const said = [...lead, ...texts];
+          code.box.put(Anthropic.content(said.length === 0 ? [labeled(Prompts.prompt("continue"))] : said, []));
         }
         const said = { v: false };
         const got = await turn(code.q, io, watch, own, signin, said, (v) => (acted ||= v));
@@ -238,27 +241,20 @@ export namespace Code {
     return Anthropic.content(texts, []).map((b, k) => (k === mark ? { ...b, cache_control: HOUR } : b));
   }
 
-  // the app's word that a limit's reset came (ClaudeSub.run)
-  function go_on(): string {
-    return AskAI.labeled({ text: Prompts.prompt("go-on"), imgs: [], from: Prompts.sender("app") });
+  // a word of the app's to the model (ClaudeSub.go_on)
+  function labeled(text: string): string {
+    return AskAI.labeled({ text, imgs: [], from: Prompts.sender("app") });
   }
 
-  // the messages that came in, each once
-  async function taken(io: Io): Promise<string[]> {
-    const texts: string[] = [];
-    while (io.inbox.pending()) {
-      const text = await io.inbox.next();
-      if (text !== null && text !== "") {
-        texts.push(text);
-      }
-    }
-    return texts;
+  // the app's word that a limit's reset came (ClaudeSub.run)
+  function go_on(): string {
+    return labeled(Prompts.prompt("go-on"));
   }
 
   // the messages Claude Code reads, as they come: the driver's own (put),
   // and the holder's (from, each as first makes it a message) unless a
   // limit paused them, till the holder's inbox closes; a put of the
-  // driver's goes on with them
+  // driver's goes on with them. busy: paused, or holding some
   function feed(from: Io["inbox"] | null, first: (text: string) => object[]): Feed {
     const mine: SDKUserMessage[] = [];
     const later: SDKUserMessage[] = [];
@@ -297,7 +293,7 @@ export namespace Code {
         wake();
       },
       pause : () => void (paused = true),
-      held  : () => later.length > 0,
+      busy  : () => paused || later.length > 0,
       read,
     };
   }
@@ -361,7 +357,7 @@ export namespace Code {
       const args = get(params, "arguments");
       const input = rec(args) ? args : {};
       const id = str(get(get(params, "_meta"), "claudecode/toolUseId")) ?? crypto.randomUUID();
-      const out = tools.some((t) => t.name === name) ? await io.call({ id, tool: name, args: input, native: OURS + name, input }) : { text: "No tool " + name + ".", fail: true };
+      const out = !tools.some((t) => t.name === name) ? { text: "No tool " + name + ".", fail: true } : await io.call({ id, tool: name, args: input, native: OURS + name, input }).catch((err: unknown) => ({ text: err_why(err), fail: true, imgs: [] }));
       const imgs = (out.imgs ?? []).map((img) => ({ type: "image", data: img.data, mimeType: img.type }));
       return { content: [{ type: "text", text: out.text || "(no output)" }, ...imgs], isError: out.fail };
     };
