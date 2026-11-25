@@ -37,7 +37,9 @@ test("a detached unit runs with the variables it's given and its starter's home,
   const why = transient({ name: "u-" + tag(), dir }, "a test unit", ["sh", "-c", "echo \"$GIVEN|$HOME|$KNY_UNIT_TEST_SECRET\" > " + path.join(dir, "env")], { GIVEN: "yes" });
 
   expect(why).toBeNull();
-  expect(await until("its output", () => fs.existsSync(path.join(dir, "env")) && fs.readFileSync(path.join(dir, "env"), "utf8"))).toBe("yes|" + os.homedir() + "|\n");
+  // the shell makes the file before it writes the line
+  const line = () => (fs.existsSync(path.join(dir, "env")) ? fs.readFileSync(path.join(dir, "env"), "utf8") : "");
+  expect(await until("its output", () => line().endsWith("\n") && line())).toBe("yes|" + os.homedir() + "|\n");
 });
 
 test("a detached unit is active till it's halted, and halting it ends what it started too", async () => {
