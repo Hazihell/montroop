@@ -120,6 +120,20 @@ function Sent({ text, why = "" }: { text: string; why?: string }): ReactNode {
   );
 }
 
+// its new worktree's setup: begun (ok null, text its command), or ended
+// (text its output's last lines, shown when it failed)
+function Setup({ ok, text }: { ok: boolean | null; text: string }): ReactNode {
+  if (ok !== false) {
+    return <p className="cap">{ok === null ? "Setting up its worktree" + (text === "" ? "." : ": " + text) : "Its worktree is set up."}</p>;
+  }
+  return (
+    <div>
+      <p className="cap text-bad">Its worktree's setup failed:</p>
+      <div className="prose mt-1.5"><Blocks x={Md.md_output(text || "(no output)")} /></div>
+    </div>
+  );
+}
+
 function Report({ text }: { text: string }): ReactNode {
   return (
     <div className="msg card gl report">
@@ -142,6 +156,7 @@ function Entry({ t, result, media, id, agent }: { t: Told; result: { text: strin
     : ev.k === "compacted" ? <p className="cap">Its context was compacted.</p>
     : ev.k === "turn" ? (ev.ok ? null : <p className="cap text-bad">Its turn failed: {ev.text}</p>)
     : ev.k === "limit" ? <p className="cap">Hit a usage limit: it goes on by itself at {View.clock(ev.until)}.</p>
+    : ev.k === "setup" ? <Setup ok={ev.ok} text={ev.text} />
     : ev.k === "end" ? <p className={"cap end" + (ev.ok ? "" : " text-bad")}>{ev.ok ? "The run ended." : "The run failed: " + ev.text}</p>
     : null;
   return (

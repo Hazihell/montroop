@@ -6,8 +6,9 @@
 // the server everything it does (Wire), parks each call a rule names until
 // the server sends the owner's answer, has the server run Montroop's tools,
 // and passes on the questions the run asks its agent and the messages sent
-// to it. What it tells is also kept in its log, which the server reads what
-// it missed from once the holder is gone.
+// to it. A new worktree is set up first (Setup). What it tells is also kept
+// in its log, which the server reads what it missed from once the holder is
+// gone.
 
 import * as fs from "node:fs";
 import * as net from "node:net";
@@ -21,6 +22,7 @@ import { Limit } from "./Limit.ts";
 import { Providers } from "./Providers.ts";
 import { Rules, type Rule } from "./Rules.ts";
 import { reap } from "./Service.ts";
+import { Setup } from "./Setup.ts";
 import { TOOLS, VERSION, Wire, type Ask, type Asking, type Calling, type Kit, type Outbox, type Scratch, type Told } from "./Wire.ts";
 
 // what a session keeps for its life: its worktree, its Claude account's
@@ -351,6 +353,11 @@ export namespace Hold {
       });
     });
     await new Promise<void>((ok) => server.listen(start.sock, ok));
+
+    const failed = await Setup.run(dir, h.emit);
+    if (failed !== "") {
+      h.box.queue[0] = failed + "\n\n" + (h.box.queue[0] ?? "");
+    }
 
     const name = start.driver ?? "claude-code";
     const given = name === "claude-code" ? sessions(dir, start) : name === "provider" ? start.job ?? null : null;

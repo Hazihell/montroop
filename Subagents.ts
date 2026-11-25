@@ -24,6 +24,7 @@ import { Pick } from "./Pick.ts";
 import * as Prompts from "./Prompts.ts";
 import { transients } from "./Service.ts";
 import { Session } from "./Session.ts";
+import { Setup } from "./Setup.ts";
 import { DIR, NAME, Sessions } from "./Sessions.ts";
 import { Sub, type Role } from "./Sub.ts";
 import { Team } from "./Team.ts";
@@ -169,6 +170,9 @@ export namespace Subagents {
     const id = crypto.randomUUID().slice(0, 8);
     const dir = path.join(DIR, id);
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    if (t.repo !== "") {
+      Setup.arm(agent, t.repo, folder, dir);
+    }
     const media = t.browser && Browser.make(dir, id) ? Prompts.prompt("session-browser", { media: path.join(dir, MEDIA) }) : "";
     const own = "Your folder on this server's computer, where your own tools work: " + folder + (t.repo === "" ? "" : ", a worktree of " + t.repo + (branch === "" ? " at " + t.base + " on no branch; your edit tools are denied" : " on your branch " + branch + " from " + t.base)) + "." + (media === "" ? "" : "\n" + media);
     const { system, first } = Brief.subagent(a, view, t.repo !== "", own, HOOKS.tools);

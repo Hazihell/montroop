@@ -13,7 +13,8 @@
 // its provider picks, a run tells a usage limit it waits out, the server
 // runs Montroop's tools for holders, and the devices' scratch folders the
 // rules read; 4: a start may run a subagent, whose question tool is ask,
-// and the server pokes holders when the usage limits were reset).
+// and the server pokes holders when the usage limits were reset; 5: a run
+// tells the setup of its new worktree).
 
 import type * as net from "node:net";
 import type { Out } from "./Agent.ts";
@@ -52,8 +53,9 @@ export type Asking = { id: string; text: string };
 // heard: a message the server sent went in; replied: a question got its
 // answer; report: the run's result; turn: the model finished a turn;
 // limit: a usage limit stopped it, till until (ms since 1970), when it
-// goes on by itself; used: the tokens of its latest request; end: the
-// holder's run is over and it exits
+// goes on by itself; used: the tokens of its latest request; setup: its
+// new worktree's setup began (ok null, text: its command) or ended (text:
+// its output's last lines); end: the holder's run is over and it exits
 export type Ev =
   | { k: "began"; sdk: string }
   | { k: "text"; text: string }
@@ -70,11 +72,12 @@ export type Ev =
   | { k: "turn"; ok: boolean; text: string }
   | { k: "limit"; until: number }
   | { k: "used"; tokens: number }
+  | { k: "setup"; ok: boolean | null; text: string }
   | { k: "end"; ok: boolean; text: string };
 
 export type Told = { seq: number; at: number; ev: Ev };
 
-export const VERSION = 4;
+export const VERSION = 5;
 
 // the first version whose server runs Montroop's tools for holders
 export const TOOLS = 3;

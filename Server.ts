@@ -19,6 +19,7 @@ import { Pick } from "./Pick.ts";
 import { ACTIVE_MS, Push } from "./Push.ts";
 import { Reap } from "./Reap.ts";
 import { Settings } from "./Settings.ts";
+import { Setup } from "./Setup.ts";
 import { Team, type Agent } from "./Team.ts";
 import * as Prompts from "./Prompts.ts";
 import { install_cmd } from "./Update.ts";
@@ -2457,6 +2458,7 @@ export namespace Main {
     Main.chats.delete(chat.id);
     Tools.unseat(Main.tools, chat.who);
     Team.drop(chat.id);
+    Setup.drop(chat.id);
     chat.socks.forEach((sock) => Chat.join(Main.first(), sock, chat.id));
     Main.team_soon();
     for (const [device] of Tools.opened(Main.tools)) {

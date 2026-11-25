@@ -30,6 +30,7 @@ import { err_why } from "./Err.ts";
 import { get, rec, str, text_of } from "./Json.ts";
 import { Machine } from "./Machine.ts";
 import { Owner } from "./Owner.ts";
+import { Setup } from "./Setup.ts";
 import { LABELS, Pick } from "./Pick.ts";
 import { Brief } from "./Brief.ts";
 import type { Job } from "./Driver.ts";
@@ -223,6 +224,7 @@ export namespace Sessions {
     }
     const dir = path.join(DIR, id);
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    Setup.arm(b.agent, top.dir, worktree, dir);
     const media = Browser.make(dir, id) ? path.join(dir, MEDIA) : null;
     const spec: Spec = { cwd: worktree, claude: config.claude_dir(agent.claude), model: b.model, append: Brief.append(agent, media, b.brief, HOOKS.tools) };
     fs.writeFileSync(path.join(dir, SPEC), JSON.stringify(spec, null, 1) + "\n", { mode: 0o600 });
@@ -254,8 +256,8 @@ export namespace Sessions {
   }
 
   // a subagent's holder on its job, in its folder (a worktree on no
-  // branch made again if its last run's end removed it). null: started;
-  // else why not
+  // branch made again, and set up again, if its last run's end removed
+  // it). null: started; else why not
   function launch_sub(s: Session, h: Holder, prompt: string): string | null {
     const sub = job_of(s);
     if (typeof sub === "string") {
@@ -264,9 +266,12 @@ export namespace Sessions {
     if (place(s) === "folder") {
       fs.mkdirSync(s.worktree, { recursive: true });
     }
-    const why = place(s) === "detached" && !fs.existsSync(s.worktree) ? Worktree.detach(s.repo, s.base, s.worktree) : null;
-    if (why !== null) {
-      return why;
+    if (place(s) === "detached" && !fs.existsSync(s.worktree)) {
+      const why = Worktree.detach(s.repo, s.base, s.worktree);
+      if (why !== null) {
+        return why;
+      }
+      Setup.arm(s.agent, s.repo, s.worktree, s.dir);
     }
     const t = HOOKS.tools;
     const tools = t === null ? [] : Tools.kit(t, s.agent, { memory: s.memory === 1, mcp: sub.mcp, write: s.write === 1 });
@@ -725,8 +730,12 @@ export namespace Sessions {
     const no = (text: string): Out => ({ text, fail: true });
     const mine = Session.list(agent).filter((x) => Session.kind(x) === kind).map(row);
     const action = arg("action");
+    if (action === "setup") {
+      return Setup.tool(agent, args);
+    }
     if (action === "list") {
-      return ok(mine.length === 0 ? "You have no " + kind + "s." : mine.map((x) => x.name + ": " + state(x) + (x.branch === "" ? "" : ", branch " + x.branch) + (x.last === "" ? "" : ", last: " + line(x.last, 80))).join("\n"));
+      const rows = mine.length === 0 ? ["You have no " + kind + "s."] : mine.map((x) => x.name + ": " + state(x) + (x.branch === "" ? "" : ", branch " + x.branch) + (x.last === "" ? "" : ", last: " + line(x.last, 80)));
+      return ok([...rows, ...Setup.listed(agent)].join("\n"));
     }
     const s = mine.find((x) => x.name === arg("name"));
     if (s === undefined) {
@@ -759,7 +768,7 @@ export namespace Sessions {
         return why !== null || record === null ? no(why ?? "No " + kind + " " + s.name + ".") : ok("Archived " + s.name + ": " + ({ folder: "its folder is", detached: "its worktree is", branch: "its worktree and branch are" }[place(record)]) + " removed, its record kept.");
       }
     }
-    return no("action is start, send, read, stop, list or archive.");
+    return no("action is start, send, read, stop, list, archive or setup.");
   }
 
   // what a stopped one keeps
@@ -786,6 +795,7 @@ export namespace Sessions {
       ev.k === "answered" ? (ev.ok ? "approved" : "denied") :
       ev.k === "question" || ev.k === "report" || ev.k === "turn" || ev.k === "end" ? ev.text :
       ev.k === "limit" ? "waits for a usage limit, till " + clock(ev.until) :
+      ev.k === "setup" ? (ev.ok === null ? "sets up its worktree" + (ev.text === "" ? "" : ": " + ev.text) : ev.ok ? "its worktree is set up" : "its worktree's setup failed: " + ev.text) :
       "";
   }
 

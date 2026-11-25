@@ -118,6 +118,9 @@ const OWN: Spec[] = [
   spec("search", "Search every message in this chat for a literal, case-insensitive word or phrase (1–500 characters), however old. Returns oldest first: message id, UTC date, kind and a short matching excerpt; zoom(id, 1) opens the full message. since/until are inclusive YYYY-MM-DD dates. limit defaults to 20, at most 100. after continues after a message id. No regular expressions.", { query: STR, since: STR, until: STR, limit: INT, after: INT }, ["query"]),
   spec("date", "The date and time of message id.", { id: INT }, ["id"]),
 ];
+// the setup action, the same in the session and subagent tools
+const SETUP = "setup: what each new worktree of a repo runs before its first turn, so it doesn't start bare (no dependencies, no gitignored env files): repo and command set it, an empty command clears it, no command shows it, no repo lists them all. The command runs in the worktree with your shell, with TROOP_REPO (the repo's main checkout) and TROOP_WORKTREE set, for at most 10 minutes, after the gitignored files the repo's .worktreeinclude names are copied in; one that fails is told to the worker in its first message, with its last lines.";
+const COMMAND = { type: "string", description: "Setup: a shell command, such as cp \"$TROOP_REPO\"/.env* . 2>/dev/null; bun install --frozen-lockfile" };
 // built at each listing: spawn names the models offered now, which
 // Settings change while Montroop runs
 const boss = (): Spec[] => [
@@ -147,10 +150,10 @@ const boss = (): Spec[] => [
     id     : INT,
     ids    : { type: "array", items: INT },
   }, ["action"]),
-  spec("session", "Work sessions: a Claude Code session of your own on a git repo of this server's computer, in its own new branch and worktree, that runs on its own for as long as the task takes, through server restarts. start: repo, base (the ref its branch starts from; default the repo's HEAD), branch (its new branch's name, one the repo doesn't have yet; default troop/<name>), name, brief (its whole task: it knows only that, the repo and its instructions), model. It never waits on you while it runs: you get one message \"[Session name] done|failed|stopped|waiting|question: …\" when its run ends, it waits on the user's approval of a call (only the user can give it, in the app), or it asks you something; that message starts your turn, so don't wait for it, read it to check, or schedule a check. send: a message (text) to it, by name: mode steer (default: into its work now; to a session that asked you something, the answer) or queue (for its next run, once this one ends); to a session done or stopped it starts a new run; request: an id of yours for this message, the same on a retry, so it's sent once. read: its state, what it waits on, its report and its latest lines; after (a line's number) and n for its log from there. stop: stop it at once (its worktree stays). list: your sessions. archive: remove its worktree and branch once its work is merged or not wanted (force: even with commits or changes found nowhere else).", {
-    action  : { type: "string", enum: ["start", "send", "read", "stop", "list", "archive"] },
+  spec("session", "Work sessions: a Claude Code session of your own on a git repo of this server's computer, in its own new branch and worktree, that runs on its own for as long as the task takes, through server restarts. start: repo, base (the ref its branch starts from; default the repo's HEAD), branch (its new branch's name, one the repo doesn't have yet; default troop/<name>), name, brief (its whole task: it knows only that, the repo and its instructions), model. It never waits on you while it runs: you get one message \"[Session name] done|failed|stopped|waiting|question: …\" when its run ends, it waits on the user's approval of a call (only the user can give it, in the app), or it asks you something; that message starts your turn, so don't wait for it, read it to check, or schedule a check. send: a message (text) to it, by name: mode steer (default: into its work now; to a session that asked you something, the answer) or queue (for its next run, once this one ends); to a session done or stopped it starts a new run; request: an id of yours for this message, the same on a retry, so it's sent once. read: its state, what it waits on, its report and its latest lines; after (a line's number) and n for its log from there. stop: stop it at once (its worktree stays). list: your sessions. archive: remove its worktree and branch once its work is merged or not wanted (force: even with commits or changes found nowhere else). " + SETUP, {
+    action  : { type: "string", enum: ["start", "send", "read", "stop", "list", "archive", "setup"] },
     name    : { type: "string", description: "The session's name: 1 to 40 lowercase letters, digits and dashes." },
-    repo    : { type: "string", description: "Start: the repo's folder (~ is the home folder)." },
+    repo    : { type: "string", description: "Start and setup: the repo's folder (~ is the home folder)." },
     base    : STR,
     branch  : STR,
     brief   : STR,
@@ -161,13 +164,14 @@ const boss = (): Spec[] => [
     after   : INT,
     n       : INT,
     force   : { type: "boolean" },
+    command : COMMAND,
   }, ["action"]),
   SUBAGENT(),
   spec("resume", "Wake every call on this server waiting for an AI service's usage limit (other turns, summaries), when the user says a limit was reset early. Each asks again once; one still limited waits again.", {}, []),
 ];
 // the subagent tool, for an agent whose subagents run on the engine
-const SUBAGENT = (): Spec => spec("subagent", "Subagents: workers of your own, each on one task, that run on their own for as long as it takes, through server restarts, each in its own folder on this server's computer (with a repo, its own worktree), with that computer's tools of its provider (files, shell, web) and Montroop's device tools. start: tasks, started at once, their names returned at once. It never waits on you while it runs: you get one message \"[Subagent name] done|failed|stopped|waiting|question: …\" when its run ends (done: with its last reply, its result), it waits on the user's approval of a call (only the user can give it, in the app) or on a usage limit, or it asks you something; that message starts your turn, so don't wait for it, read it to check, or schedule a check. send: a message (text) to it, by name: mode steer (default: into its work now; to one that asked you something, the answer) or queue (for its next run, once this one ends); to one done or stopped it starts a new run where it left off; request: an id of yours for this message, the same on a retry, so it's sent once. read: its state, what it waits on, its result and its latest lines; after (a line's number) and n for its log from there. stop: stop it at once (why: for its record; its folder stays). list: your subagents. archive: remove its folder, worktree and branch once its work is merged or not wanted (force: even with commits or changes found nowhere else).", {
-  action  : { type: "string", enum: ["start", "send", "read", "stop", "list", "archive"] },
+const SUBAGENT = (): Spec => spec("subagent", "Subagents: workers of your own, each on one task, that run on their own for as long as it takes, through server restarts, each in its own folder on this server's computer (with a repo, its own worktree), with that computer's tools of its provider (files, shell, web) and Montroop's device tools. start: tasks, started at once, their names returned at once. It never waits on you while it runs: you get one message \"[Subagent name] done|failed|stopped|waiting|question: …\" when its run ends (done: with its last reply, its result), it waits on the user's approval of a call (only the user can give it, in the app) or on a usage limit, or it asks you something; that message starts your turn, so don't wait for it, read it to check, or schedule a check. send: a message (text) to it, by name: mode steer (default: into its work now; to one that asked you something, the answer) or queue (for its next run, once this one ends); to one done or stopped it starts a new run where it left off; request: an id of yours for this message, the same on a retry, so it's sent once. read: its state, what it waits on, its result and its latest lines; after (a line's number) and n for its log from there. stop: stop it at once (why: for its record; its folder stays). list: your subagents. archive: remove its folder, worktree and branch once its work is merged or not wanted (force: even with commits or changes found nowhere else). " + SETUP, {
+  action  : { type: "string", enum: ["start", "send", "read", "stop", "list", "archive", "setup"] },
   tasks   : { type: "array", items: { type: "object", properties: {
     task   : { type: "string", description: "Its whole brief: it knows only this, what the other options give it, and the pins." },
     name   : { type: "string", description: "1 to 40 lowercase letters, digits and dashes, none of your other subagents' or sessions'; by default a new one." },
@@ -188,6 +192,8 @@ const SUBAGENT = (): Spec => spec("subagent", "Subagents: workers of your own, e
   n       : INT,
   why     : STR,
   force   : { type: "boolean" },
+  repo    : { type: "string", description: "Setup: the repo's folder (~ is the home folder)." },
+  command : COMMAND,
 }, ["action"]);
 // what the subagent tool replaces
 const REPLACED = new Set(["spawn", "tell", "stop", "session"]);
