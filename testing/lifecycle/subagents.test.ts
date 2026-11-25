@@ -115,7 +115,7 @@ test.concurrent("a start with a task whose branch can't be made starts none of i
     [[fine, { task: t + ": invalid", repo: r, branch: "bad.." + t }], "Task 2 (\"" + t + ": invalid\"): bad.." + t + " is no valid branch name"],
     [[fine, { task: t + ": twice", repo: r, branch: "troop/fine" }], "Task 2 (\"" + t + ": twice\"): another of these tasks works on branch troop/fine in this repo already: give each its own. Nothing started."],
     [[{ task: t + ": here", repo: r, branch: "feat/" + t }, { task: t + ": linked", repo: linked, branch: "feat/" + t }], "Task 2 (\"" + t + ": linked\"): another of these tasks works on branch feat/" + t + " in this repo already: give each its own. Nothing started."],
-    [[{ task: t + ": parent", repo: r, branch: "feat/" + t }, { task: t + ": child", repo: r, branch: "feat/" + t + "/more" }], "Task 2 (\"" + t + ": child\"): another of these tasks works on branch feat/" + t + " in this repo, which git can't keep beside feat/" + t + "/more: pick another name. Nothing started."],
+    [[{ task: t + ": parent", repo: r, branch: "feat/" + t }, { task: t + ": child", repo: r, branch: "feat/" + t + "/more" }], "Task 2 (\"" + t + ": child\"): another of these tasks works on branch feat/" + t + " in this repo, so git can't keep feat/" + t + "/more beside it: pick another name. Nothing started."],
     [[{ task: t + ": review", repo: r, write: false, branch: "feat/" + t }], "Task 1 (\"" + t + ": review\"): branch needs write true: with write false it works on no branch. Nothing started."],
     [[{ task: t + ": folder", branch: "feat/" + t }], "Task 1 (\"" + t + ": folder\"): branch needs a repo: without one it works in a folder of its own. Nothing started."],
   ];

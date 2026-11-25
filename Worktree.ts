@@ -50,12 +50,15 @@ export namespace Worktree {
     if (!name.ok || name.out !== branch) {
       return branch + " is no valid branch name (see git check-ref-format): pick another, or leave branch out for the default";
     }
-    const spaces = ["refs/heads/", ...git(repo, ["remote"]).out.split("\n").filter((r) => r !== "").map((r) => "refs/remotes/" + r + "/")];
-    const refs = git(repo, ["for-each-ref", "--format=%(refname)", ...spaces]).out.split("\n");
+    const remotes = git(repo, ["remote"]).out.split("\n").filter((r) => r !== "");
+    const spaces = [{ at: "refs/heads/", remote: "" }, ...remotes.map((r) => ({ at: "refs/remotes/" + r + "/", remote: r }))];
+    const refs = git(repo, ["for-each-ref", "--format=%(refname)", ...spaces.map((x) => x.at)]).out.split("\n");
     for (const ref of refs) {
-      const had = spaces.filter((p) => ref.startsWith(p)).map((p) => ref.slice(p.length)).find((b) => clash(b, branch));
-      if (had !== undefined) {
-        return "The repo has a branch " + ref.replace(/^refs\/(heads|remotes)\//, "") + " already" + (had === branch ? ": a session works on a new branch, so pick another name" : ", which git can't keep beside " + branch + ": pick another name");
+      const space = spaces.find((x) => ref.startsWith(x.at) && clash(ref.slice(x.at.length), branch));
+      if (space !== undefined) {
+        const had = ref.slice(space.at.length);
+        const why = had === branch ? ": a session works on a new branch, so pick another name" : space.remote === "" ? ", so git can't keep " + branch + " beside it: pick another name" : ", so " + branch + " couldn't be pushed to " + space.remote + ": pick another name";
+        return "The repo has a branch " + (space.remote === "" ? "" : space.remote + "/") + had + " already" + why;
       }
     }
     return null;

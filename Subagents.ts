@@ -143,7 +143,7 @@ export namespace Subagents {
       const other = branch === "" ? undefined : branches.find((b) => b.git === top.git && Worktree.clash(b.branch, branch))?.branch;
       const no_branch = named !== "" && branch === "" ? (top.dir === "" ? "branch needs a repo: without one it works in a folder of its own" : "branch needs write true: with write false it works on no branch") :
         branch === "" ? null :
-        other !== undefined ? "another of these tasks works on branch " + other + " in this repo" + (other === branch ? " already: give each its own" : ", which git can't keep beside " + branch + ": pick another name") :
+        other !== undefined ? "another of these tasks works on branch " + other + " in this repo" + (other === branch ? " already: give each its own" : ", so git can't keep " + branch + " beside it: pick another name") :
         Worktree.taken(top.dir, branch);
       if (no_branch !== null) {
         return Sub.refused(k, task, no_branch);
