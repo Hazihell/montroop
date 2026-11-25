@@ -1,7 +1,7 @@
 import { afterAll, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { chat, down, fake, Kny, procs, repo, tag, until } from "../rig.ts";
+import { chat, down, fake, gate, Kny, older, procs, repo, tag, until, waiting } from "../rig.ts";
 
 afterAll(down);
 
@@ -29,8 +29,8 @@ test.concurrent("a session runs Kunumy's shell on a device, in its agent's scrat
   expect(k.cards()).toEqual([]);
 });
 
-test.concurrent("a session searches its agent's chat with Kunumy's search", async () => {
-  const k = await Kny.up();
+test.concurrent("a session searches its agent's chat with Kunumy's search, which asks no one even when a rule names it", async () => {
+  const k = await Kny.up({ ask: [{ what: "Search", tools: "search", args: "" }] });
   const t = tag();
   await fake.next(t + ": remember", { what: "reply", text: "Noted." });
   await k.tell(t + ": remember the heron-" + t);
@@ -41,6 +41,7 @@ test.concurrent("a session searches its agent's chat with Kunumy's search", asyn
 
   const done = await s.status("done");
   expect(results(done.log, "remember the heron-" + t)).toHaveLength(1);
+  expect(k.cards()).toEqual([]);
 });
 
 test.concurrent("a server killed in the middle of a session's shell call on a device gives the session its result once it's back, the command run once", async () => {
@@ -86,4 +87,21 @@ test.concurrent("a session's shell call on a device that an ask rule names waits
   const done = await s.status("done");
   expect(results(done.log, t + "-ran")).toHaveLength(1);
   expect(fs.readFileSync(count, "utf8")).toBe("once\n");
+});
+
+test.concurrent("a session's call of Kunumy's tools while a server of the version before owns its holder is told that server runs none", async () => {
+  const k = await Kny.up();
+  const t = tag();
+  await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
+  await fake.next(t + "-done", { what: "tool", calls: [["search", { query: "heron-" + t }]] });
+  await fake.next("runs no tools for work sessions", { what: "reply", text: t + " told" });
+  const s = await k.session("ol", t + ": work", repo());
+  await until("the command running", () => waiting(t));
+  await k.kill();
+  k.root = older();
+  await k.start();
+  s.open(t);
+
+  const done = await s.status("done");
+  expect(results(done.log, "runs no tools for work sessions")).toHaveLength(1);
 });

@@ -287,7 +287,6 @@ export namespace Sessions {
         }
       } else if (f.do === "uncard") {
         (f.ask === null ? [...(waits?.values() ?? [])] : [waits?.get(f.ask)]).forEach((w) => w?.abort());
-        // out of work, its calls are no one's
         (f.ask === null ? [...CALLS.values()].filter((c) => c.session === id) : []).forEach((c) => c.stop.abort());
       } else {
         next_run(id);

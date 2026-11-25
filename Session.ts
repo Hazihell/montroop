@@ -330,9 +330,9 @@ export namespace Session {
     return (opened().query("select * from work_calls where id = ?").get(id) as Called | null) ?? null;
   }
 
-  // the calls its holder sent that run or ran, oldest first
+  // the calls its holder sent that run or ran
   export function calls(session: string): Called[] {
-    return opened().query("select * from work_calls where session = ? order by at").all(session) as Called[];
+    return opened().query("select * from work_calls where session = ?").all(session) as Called[];
   }
 
   // a call its holder sent, once; false: it came already, or the session

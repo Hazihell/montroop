@@ -37,8 +37,9 @@ type Running = { term: string; job: Job; out: Promise<Out>; end: (out: Out) => v
 
 // a device's job a server before this one started for a work session's
 // call, kept till the call asks for it again: its device's job again once
-// the device is back (tracked), its result out
-type Kept = { device: string; job: Job; out: Promise<Out>; end: (out: Out) => void; tracked: boolean };
+// the device is back (tracked), its result out; settled: its outcome told
+// unknown, its device not back in time
+type Kept = { device: string; job: Job; out: Promise<Out>; end: (out: Out) => void; tracked: boolean; settled: boolean };
 
 type Link = { send: (msg: object) => void; live: () => boolean; work: string; scratch: string | null; shell: string | null };
 
@@ -610,10 +611,11 @@ export namespace Tools {
     }
     const { device, job } = job_of(who, name, args);
     const { promise, resolve } = Promise.withResolvers<Out>();
-    const k: Kept = { device, job, out: promise, end: resolve, tracked: false };
+    const k: Kept = { device, job, out: promise, end: resolve, tracked: false, settled: false };
     tools.kept.set(id, k);
     setTimeout(() => {
       if (!k.tracked) {
+        k.settled = true;
         k.end({ text: "The device " + device + " that ran this wasn't back soon after the server restarted, so whether it ran is unknown: check before running it again.", fail: true });
       }
     }, GRACE).unref();
@@ -676,7 +678,7 @@ export namespace Tools {
       }
     }
     for (const [id, k] of tools.kept) {
-      if (k.device === name && !k.tracked) {
+      if (k.device === name && !k.tracked && !k.settled) {
         k.tracked = true;
         void Tools.track(d, id, term, k.job).out.then(k.end);
       }

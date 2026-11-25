@@ -60,6 +60,7 @@ type Held = {
   box     : Box;
   rules   : Rule[];
   scratch : Scratch;
+  old     : boolean;
   conn    : net.Socket | null;
   emit    : Io["emit"];
 };
@@ -71,6 +72,10 @@ const OWN = [
   spec("ask_owner", "Ask the agent that started this session a question, when you can't go on without its answer (a decision, missing information). The call waits for the answer, which can take a while; it comes back as this call's result.", { question: STR }, ["question"]),
   spec("report", "Give your result to the agent that started this session, once, when you're done: what you did, where (branch, commits, files), how you checked it, what is left. Then end your turn.", { result: STR }, ["result"]),
 ];
+
+// what a call of Kunumy's gets while an older server, which runs none,
+// owns the holder
+const OLD = { text: "The server runs an older Kunumy, which runs no tools for work sessions.", fail: true };
 
 // a gate's wait no one ends: a call of Kunumy's waits for its answer
 // while the run does
@@ -141,11 +146,19 @@ export namespace Hold {
         h.conn.destroy();
       }
       h.conn = s;
+      h.old = Number(msg.v) < VERSION;
       ruled(h, msg);
       Wire.ack(h.out, Number(msg.ack) || 0);
       Wire.send(s, { $: "welcome", v: VERSION, seq: h.out.seq, asks: [...h.asks.values()].map((a) => a.ask), questions: [...h.waits.values()].map((w) => w.q) });
       h.out.kept.forEach((t) => Wire.send(s, { $: "ev", ...t }));
-      h.calls.forEach((c) => Wire.send(s, { $: "call", ...c.calling }));
+      for (const [id, c] of h.calls) {
+        if (h.old) {
+          h.calls.delete(id);
+          c.done(OLD);
+        } else {
+          Wire.send(s, { $: "call", ...c.calling });
+        }
+      }
     } else if (s !== h.conn) {
       return;
     } else if (msg.$ === "ack") {
@@ -252,8 +265,11 @@ export namespace Hold {
     if (tool === undefined) {
       return { text: "No tool " + c.tool + ".", fail: true };
     }
+    if (h.old) {
+      return OLD;
+    }
     const on = tool.device ?? (typeof c.args.device === "string" ? c.args.device : null);
-    const said = await gate(h, on === null ? null : h.scratch[on] ?? null, c, NEVER, c.tool);
+    const said = c.tool === "search" ? { ok: true, note: "" } : await gate(h, on === null ? null : h.scratch[on] ?? null, c, NEVER, c.tool);
     if (!said.ok) {
       return { text: said.note, fail: true };
     }
@@ -285,7 +301,7 @@ export namespace Hold {
     if (size > 0 && fs.readFileSync(file).at(size - 1) !== 0x0a) {
       fs.writeSync(log, "\n");
     }
-    const h: Held = { out: Wire.outbox(Hold.told(dir).at(-1)?.seq ?? 0), asks: new Map(), calls: new Map(), waits: new Map(), says: new Set(), box: { queue: [start.prompt], wake: () => {}, shut: false }, rules: start.rules, scratch: start.scratch ?? {}, conn: null, emit: () => {} };
+    const h: Held = { out: Wire.outbox(Hold.told(dir).at(-1)?.seq ?? 0), asks: new Map(), calls: new Map(), waits: new Map(), says: new Set(), box: { queue: [start.prompt], wake: () => {}, shut: false }, rules: start.rules, scratch: start.scratch ?? {}, old: false, conn: null, emit: () => {} };
     h.emit = (ev) => {
       const told = Wire.push(h.out, ev, Date.now());
       fs.writeSync(log, JSON.stringify(told) + "\n");
