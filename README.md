@@ -1,6 +1,6 @@
 <img width="1266" height="663" alt="kunumy-screenshot" src="https://github.com/user-attachments/assets/35b5c75d-cae8-4892-8a49-30f25cf53880" />
 
-Kunumy is an AI agent with one chat that never ends. There is no "new chat" button: you talk to the same agent for days, weeks, years, and it remembers. It started from [Victor Taelin's UniiChat](https://github.com/VictorTaelin/uniichat).
+Kunumy is an AI agent with one chat that never ends. There is no "new chat" button: you talk to the same agent for days, weeks, years, and it remembers. It started from [Victor Taelin's UniiChat](https://github.com/VictorTaelin/uniichat) by way of [arteeh's Ki](https://github.com/arteeh/ki).
 
 Features
 --------
