@@ -195,17 +195,16 @@ export namespace Setup {
     return { ok, out: ok ? p.stdout.toString() : p.stderr.toString().trim() };
   }
 
-  // the command run with the user's shell in the worktree, in a process
+  // the command run with the user's shell in the worktree, its errors on
+  // its output's one pipe so their lines keep their order, in a process
   // group of its own, killed whole when it exits or runs out of time; why:
   // how it failed, null if it didn't
   function shell(a: Armed): Promise<{ why: string | null; out: string }> {
     return new Promise((done) => {
       let out = "";
       let why: string | null = null;
-      const p = spawn(process.env.SHELL || "/bin/sh", ["-c", a.command], { cwd: a.worktree, env: { ...process.env, TROOP_REPO: a.repo, TROOP_WORKTREE: a.worktree }, detached: true, stdio: ["ignore", "pipe", "pipe"] });
-      const keep = (b: Buffer) => void (out = (out + b.toString("utf8")).slice(-KEPT));
-      p.stdout.on("data", keep);
-      p.stderr.on("data", keep);
+      const p = spawn("/bin/sh", ["-c", "exec \"$0\" -c \"$1\" 2>&1", process.env.SHELL || "/bin/sh", a.command], { cwd: a.worktree, env: { ...process.env, TROOP_REPO: a.repo, TROOP_WORKTREE: a.worktree }, detached: true, stdio: ["ignore", "pipe", "ignore"] });
+      p.stdout.on("data", (b: Buffer) => void (out = (out + b.toString("utf8")).slice(-KEPT)));
       const kill = () => {
         try {
           if (p.pid !== undefined) {
@@ -216,7 +215,6 @@ export namespace Setup {
       const finish = () => {
         clearTimeout(timer);
         p.stdout.destroy();
-        p.stderr.destroy();
         done({ why, out });
       };
       const timer = setTimeout(() => {

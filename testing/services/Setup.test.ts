@@ -61,3 +61,15 @@ test("a failed setup runs once, and is told again to each holder till its run be
   Setup.taken(dir);
   expect(await Setup.run(dir, () => {})).toBe("");
 });
+
+test("a setup's output and errors are told in the order it wrote them", async () => {
+  const r = repo();
+  const worktree = fs.mkdtempSync(path.join(os.tmpdir(), "worktree-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "holder-"));
+  Sessions.tool("setter6", { action: "setup", repo: r, command: "for i in 1 2 3 4 5 6; do echo out$i; echo err$i >&2; done; exit 1" });
+  Setup.arm("setter6", r, worktree, dir);
+  const told: Ev[] = [];
+
+  await Setup.run(dir, (ev) => told.push(ev));
+  expect(told.at(-1)).toEqual({ k: "setup", ok: false, text: "out1\nerr1\nout2\nerr2\nout3\nerr3\nout4\nerr4\nout5\nerr5\nout6\nerr6" });
+});
