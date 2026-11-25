@@ -10,16 +10,7 @@ import { until } from "../rig.ts";
 // a subagent's use as its agent is told it: cores and GB now, then at most
 const TOLD = /^uses now (\d+\.\d) cores and (\d+\.\d) GB; at most (\d+\.\d) cores and (\d+\.\d) GB so far$/;
 
-function told(id: string): RegExpExecArray {
-  const said = Room.used(id) ?? "";
-  const got = TOLD.exec(said);
-  if (got === null) {
-    throw new Error("not told as a use: " + said);
-  }
-  return got;
-}
-
-test("a running subagent uses what its process tree uses now, and at most what it used at a reading so far", async () => {
+test("a running subagent uses what its process tree uses now, and at most what it used at a reading in its run, which is told after the run too", async () => {
   const id = crypto.randomUUID().slice(0, 8);
   const dir = path.join(DIR, "sessions", id);
   fs.mkdirSync(dir, { recursive: true });
@@ -39,18 +30,22 @@ test("a running subagent uses what its process tree uses now, and at most what i
   try {
     await until("it holds its memory", () => fs.existsSync(held));
     expect(Room.used(id)).toMatch(/^uses now 0\.3 GB \(CPU not measured yet\); at most 0\.3 GB \(CPU not measured yet\) so far$/);
-    await Bun.sleep(1100);
-    const busy = told(id);
+    const busy = await until("its CPU measured", () => TOLD.exec(Room.used(id) ?? ""));
     expect(Number(busy[1])).toBeGreaterThan(0.2);
     expect(busy[2]).toBe("0.3");
 
     fs.writeFileSync(drop, "");
     await until("its child ended", () => fs.existsSync(gone));
-    await Bun.sleep(1100);
-    const after = told(id);
-    expect(after[2]).toBe("0.0");
+    const after = await until("its child's memory gone", () => {
+      const got = TOLD.exec(Room.used(id) ?? "");
+      return got?.[2] === "0.0" && got;
+    });
     expect(Number(after[3])).toBeGreaterThanOrEqual(Number(busy[1]));
     expect(after[4]).toBe("0.3");
+
+    halt(unit);
+    Session.move(id, "stop", "", null);
+    expect(await until("its run told as ended", () => Room.used(id)?.startsWith("used ") && Room.used(id))).toBe("used at most " + after[3] + " cores and 0.3 GB in its last run");
   } finally {
     halt(unit);
   }

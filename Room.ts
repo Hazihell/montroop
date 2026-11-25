@@ -33,9 +33,9 @@ type Total = Use & { missing: number };
 // they use, and the agent's own
 type State = { cores: number; busy: number; available: number; total: number; running: number; mine: number; used: Total; own: Total };
 
-// one running's use: its unit, when it was last read and its CPU counters
-// then (Service's), its use now (null: its processes weren't found), and
-// the most it used at a reading so far
+// one's use: its unit, when it was last read and its CPU counters then
+// (Service's), its use now (null: its processes weren't found, or it
+// doesn't run), and the most it used at a reading in that unit's run
 type Sampled = { unit: string; at: number; cpu: Map<string, number>; now: Use | null; most: Use };
 
 const GB = 2 ** 30;
@@ -59,8 +59,8 @@ const FRESH = 1e3;
 const TICKS: Array<{ at: number; line: string }> = [];
 let SAMPLED = false;
 
-// each running subagent's and work session's use, by its id, and when it
-// was last read
+// each subagent's and work session's use, by its id, kept after its run
+// till it's archived; and when they were last read
 const USED = new Map<string, Sampled>();
 let MEASURED = 0;
 
@@ -92,15 +92,22 @@ export namespace Room {
 
   // why nothing may start now; null: it may
   export function refused(s: State): string | null {
-    return s.available >= FLOOR ? null : "Only " + Math.floor(s.available / MB) + " MB of memory is available on this computer, under the " + FLOOR / GB + " GB kept free so it doesn't run out. Nothing started: wait for some subagents or work sessions to end, or do the work yourself.";
+    return s.available >= FLOOR ? null : "Only " + Math.floor(s.available / MB) + " MB of memory is available on this computer, under the " + FLOOR / GB + " GB kept free so it doesn't run out. Nothing started: wait for some subagents or work sessions to end, or do the work yourself. This computer: " + Room.said(s) + ".";
   }
 
-  // what a running subagent or work session uses, as its agent is told
-  // it; null: not measured
+  // what a subagent or work session uses, or used in its last run, as its
+  // agent is told it; null: not measured
   export function used(id: string): string | null {
     fresh();
     const u = USED.get(id);
-    return u === undefined || u.most.memory === null ? null : (u.now === null ? "its processes not found now" : "uses now " + use_said(u.now)) + "; at most " + use_said(u.most) + " so far";
+    const s = Session.get(id);
+    if (u === undefined || u.most.memory === null || s === null) {
+      return null;
+    }
+    if (!LIVE.includes(s.status)) {
+      return "used at most " + use_said(u.most) + " in its last run";
+    }
+    return (u.now === null ? "its processes not found now" : "uses now " + use_said(u.now)) + "; at most " + use_said(u.most) + " so far";
   }
 
   // the cores busy between two readings of /proc/stat's cpu line (then
@@ -136,7 +143,7 @@ export namespace Room {
     }
     SAMPLED = true;
     const read = () => {
-      measure();
+      fresh();
       const line = stat();
       if (line === null) {
         return;
@@ -159,9 +166,16 @@ export namespace Room {
 
   function measure(): void {
     MEASURED = Date.now();
-    const live = Session.list(null).filter((s) => LIVE.includes(s.status) && s.unit !== "");
-    const ids = new Set(live.map((s) => s.id));
+    const all = Session.list(null);
+    const ids = new Set(all.map((s) => s.id));
     [...USED.keys()].filter((id) => !ids.has(id)).forEach((id) => USED.delete(id));
+    const live = all.filter((s) => LIVE.includes(s.status) && s.unit !== "");
+    for (const s of all.filter((x) => !live.includes(x))) {
+      const was = USED.get(s.id);
+      if (was !== undefined) {
+        USED.set(s.id, { ...was, now: null });
+      }
+    }
     if (live.length === 0) {
       return;
     }
@@ -170,9 +184,10 @@ export namespace Room {
     for (const s of live) {
       const was = USED.get(s.id);
       const u = got.get(s.unit);
-      // CPU counters only from a reading of the same unit's processes
-      const cores = u === undefined || was?.now === null || was?.unit !== s.unit || at <= was.at ? null : spent(was.cpu, u.cpu) / ((at - was.at) * 1e3);
-      const most = { cores: larger(was?.most.cores ?? null, cores), memory: larger(was?.most.memory ?? null, u?.memory ?? null) };
+      // CPU counters only from a reading of the same run's processes
+      const same = was !== undefined && was.unit === s.unit ? was : null;
+      const cores = u === undefined || same === null || same.now === null ? null : spent(same.cpu, u.cpu) / ((at - same.at) * 1e3);
+      const most = { cores: larger(same?.most.cores ?? null, cores), memory: larger(same?.most.memory ?? null, u?.memory ?? null) };
       USED.set(s.id, { unit: s.unit, at, cpu: u?.cpu ?? new Map<string, number>(), now: u === undefined ? null : { cores, memory: u.memory }, most });
     }
   }
