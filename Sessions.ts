@@ -756,6 +756,11 @@ export namespace Sessions {
         if (mode !== "steer" && mode !== "queue") {
           return no("mode is steer or queue.");
         }
+        // one done or stopped starts a new run
+        const floor = LIVE.includes(s.status) ? null : Room.refused(Room.now(agent));
+        if (floor !== null) {
+          return no(floor);
+        }
         const sent = say(s.id, arg("text"), arg("request"), mode);
         return typeof sent !== "string" ? no(sent.why) : ok(Prompts.fill(SENT[sent], { kind }) + " You get a message when it's done or needs you: don't wait for it.");
       }

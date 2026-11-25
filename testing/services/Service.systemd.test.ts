@@ -3,7 +3,7 @@ import { expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { active, halt, transient, usages } from "../../Service.ts";
+import { active, halt, transient, readings } from "../../Service.ts";
 import { until } from "../rig.ts";
 
 // a user's systemd, faked: systemctl and systemd-run that log how they're
@@ -52,21 +52,22 @@ test("a systemd unit uses what its cgroup counts: all the CPU time its processes
     "memory.stat": "anon 189616128\nfile 520192\nkernel 3887104\nkernel_stack 245760\nsock 0\nshmem 4096\nfile_mapped 0\n",
   });
 
-  expect(usages([{ name: "troop-hold-ef56ab78-2", dir }]).get("troop-hold-ef56ab78-2")).toEqual({ memory: 189620224, cpu: new Map([["", 2903572]]) });
-  expect(calls()).toContain("systemctl --user show -p ControlGroup --value troop-hold-ef56ab78-2");
+  expect(readings([{ name: "troop-hold-ef56ab78-2", dir }]).get("troop-hold-ef56ab78-2")).toEqual({ memory: 189620224, cpu: new Map([["", 2903572]]) });
 });
 
-test("a systemd unit whose cgroup keeps no memory count uses the memory of the processes in it and in those under it", async () => {
+test("a systemd unit whose cgroup keeps no counts (cgroup v1, or its controllers off) uses what the processes in it and in those under it hold and spent", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unit-"));
   const up = path.join(dir, "up");
   const p = Bun.spawn([process.execPath, "-e", "const held = Buffer.alloc(100 * 2 ** 20, 1); require(\"node:fs\").writeFileSync(" + JSON.stringify(up) + ", \"\"); setInterval(() => held[0]++, 1e3);"]);
   try {
-    const top = cgroup("troop-hold-0a1b2c3d-1", { "cpu.stat": "usage_usec 10\n", "cgroup.procs": "" });
+    const top = cgroup("troop-hold-0a1b2c3d-1", { "cgroup.procs": "" });
     fs.mkdirSync(path.join(top, "under"));
     fs.writeFileSync(path.join(top, "under", "cgroup.procs"), p.pid + "\n");
     await until("it holds its memory", () => fs.existsSync(up));
 
-    expect(usages([{ name: "troop-hold-0a1b2c3d-1", dir }]).get("troop-hold-0a1b2c3d-1")?.memory).toBeGreaterThanOrEqual(100 * 2 ** 20);
+    const got = readings([{ name: "troop-hold-0a1b2c3d-1", dir }]).get("troop-hold-0a1b2c3d-1");
+    expect(got?.memory).toBeGreaterThanOrEqual(100 * 2 ** 20);
+    expect([...(got?.cpu.values() ?? [])].reduce((a, n) => a + n, 0)).toBeGreaterThan(0);
   } finally {
     p.kill();
   }
