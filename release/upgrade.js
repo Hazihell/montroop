@@ -1,12 +1,11 @@
-// The installers run this every time, with the new ki as bun (BUN_BE_BUN=1),
-// after unii's data was moved and given ki's names (rename.js): it brings
-// the data in DIR to this version's layout, and then writes DIR/layout,
-// without which a ki finding agents there won't start. A step done is
+// The installers run this every time, with the new kny as bun (BUN_BE_BUN=1):
+// it brings the data in DIR to this version's layout, and then writes
+// DIR/layout, without which a kny finding agents there won't start. A step done is
 // skipped. `check DIR` changes nothing: it exits 3 if a step is due, which
-// the installers run only with no ki server on the data, else 0.
+// the installers run only with no Kunumy server on the data, else 0.
 //
 // 41: each agent keeps its own pictures and files (#169), and its uploaded
-// picture becomes /media/<id>/<name>; links in memory stay as they are (ki
+// picture becomes /media/<id>/<name>; links in memory stay as they are (kny
 // finds an old /media/<name> in any agent's store). The MCP servers switched
 // off in 40 (the lead's view.json "off") go to config.json's mcp_off, unless
 // that has one already. 40's description of its main agent becomes the first
@@ -39,11 +38,11 @@ const there = (p) => { try { fs.lstatSync(p); return true; } catch { return fals
 const read = (p) => { try { return fs.readFileSync(p, "utf8"); } catch (e) { if (e.code === "ENOENT") return null; throw e; } };
 const layout = Number((read(path.join(dir, "layout")) ?? "0").trim()) || 0;
 const agents = path.join(dir, "agents");
-const db_file = path.join(dir, "ki.db");
+const db_file = path.join(dir, "kunumy.db");
 const due = layout < LAYOUT && there(agents) && there(db_file);
 if (checking) process.exit(due ? 3 : 0);
 if (!due) {
-  if (!there(path.join(dir, "layout")) && there(agents) && !there(db_file)) say(dir + " has agents but no ki.db: left as it is.");
+  if (!there(path.join(dir, "layout")) && there(agents) && !there(db_file)) say(dir + " has agents but no kunumy.db: left as it is.");
   process.exit(0);
 }
 
@@ -184,7 +183,7 @@ if (layout < 47) {
       changed.push("config.json");
     }
   } else if (conf === undefined && Object.keys(NEW).some((m) => (read(file) ?? "").includes(m))) {
-    say(file + " isn't plain JSON, so it still names gpt-6-astra or gpt-6.1-sol, which this ki doesn't offer: change them to gpt-6.2-astra and gpt-6.2-sol.");
+    say(file + " isn't plain JSON, so it still names gpt-6-astra or gpt-6.1-sol, which this kny doesn't offer: change them to gpt-6.2-astra and gpt-6.2-sol.");
   }
   let picks = 0;
   const subs = new Set();
