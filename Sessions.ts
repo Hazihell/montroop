@@ -718,6 +718,10 @@ export namespace Sessions {
     if (had !== undefined) {
       return { text: "You have a session " + had.name + " already (" + state(had) + "): read it, or pick another name.", fail: true };
     }
+    const no = Room.refused(Room.now(agent));
+    if (no !== null) {
+      return { text: no, fail: true };
+    }
     const brief = arg("brief");
     const s = start({ agent, repo: Machine.home(arg("repo")), base: arg("base"), branch: arg("branch"), name: arg("name"), brief, prompt: brief, model: arg("model") });
     const bare = typeof s === "string" || fs.existsSync(Browser.script(s.dir)) ? "" : " It has no browser: agent-browser is neither on this computer's PATH nor set as agent_browser in Montroop's config.";
@@ -736,8 +740,8 @@ export namespace Sessions {
       return Setup.tool(agent, args);
     }
     if (action === "list") {
-      const rows = mine.length === 0 ? ["You have no " + kind + "s."] : mine.map((x) => x.name + ": " + state(x) + (x.branch === "" ? "" : ", branch " + x.branch) + (x.last === "" ? "" : ", last: " + line(x.last, 80)));
-      return ok([...rows, ...Setup.listed(agent), ...(kind === "subagent" ? ["This computer: " + Room.said(Room.now()) + "."] : [])].join("\n"));
+      const rows = mine.length === 0 ? ["You have no " + kind + "s."] : mine.map((x) => x.name + ": " + state(x) + (x.branch === "" ? "" : ", branch " + x.branch) + used(x.id, ", ") + (x.last === "" ? "" : ", last: " + line(x.last, 80)));
+      return ok([...rows, ...Setup.listed(agent), ...(kind === "subagent" ? ["This computer: " + Room.said(Room.now(agent)) + "."] : [])].join("\n"));
     }
     const s = mine.find((x) => x.name === arg("name"));
     if (s === undefined) {
@@ -771,6 +775,12 @@ export namespace Sessions {
       }
     }
     return no("action is start, send, read, stop, list, archive or setup.");
+  }
+
+  // what its processes use, after lead; "": not measured
+  function used(id: string, lead: string): string {
+    const u = Room.used(id);
+    return u === null ? "" : lead + u;
   }
 
   // what a stopped one keeps
@@ -822,7 +832,7 @@ export namespace Sessions {
     const more = after !== null && shown.length > 0 && all.at(-1) !== shown.at(-1);
     const where = { folder: "Folder " + p.worktree, detached: "Worktree " + p.worktree + " at " + p.base + ", on no branch", branch: "Branch " + p.branch + " from " + p.base + ", worktree " + p.worktree }[place(s)];
     const how = Session.kind(s) === "subagent" ? " Model " + s.model + (s.effort === "" ? "" : ", effort " + s.effort) + "." : "";
-    const head = Session.label(s) + ": " + state(p) + (run === null ? "" : ", run " + run.n + (run.attempts > 1 ? " (attempt " + run.attempts + ")" : "")) + ". " + where + ", media " + path.join(s.dir, MEDIA) + "." + how;
+    const head = Session.label(s) + ": " + state(p) + (run === null ? "" : ", run " + run.n + (run.attempts > 1 ? " (attempt " + run.attempts + ")" : "")) + used(s.id, ", ") + ". " + where + ", media " + path.join(s.dir, MEDIA) + "." + how;
     const lines = [
       head,
       ...p.parked.map((c) => "Waits on the user's approval, in the app (you can't give it): " + c.what + " (" + c.tool + " " + line(c.input, 200) + ")"),

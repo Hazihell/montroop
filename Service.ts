@@ -809,26 +809,139 @@ export function reap(): void {
   }
 }
 
-// a process that runs, not a zombie, of the detached unit name (so not one
-// that took the id of one since)
-function marked(pid: number, name: string): boolean {
+// the detached unit a process that runs, not a zombie, is of (so not one
+// that took the id of one since); null: none
+function mark_of(pid: number): string | null {
   try {
     const stat = fs.readFileSync("/proc/" + pid + "/stat", "utf8");
-    return !stat.slice(stat.lastIndexOf(")") + 2).startsWith("Z") && fs.readFileSync("/proc/" + pid + "/environ", "utf8").split("\0").includes(UNIT_MARK + "=" + name);
+    if (stat.slice(stat.lastIndexOf(")") + 2).startsWith("Z")) {
+      return null;
+    }
+    const own = fs.readFileSync("/proc/" + pid + "/environ", "utf8").split("\0").find((v) => v.startsWith(UNIT_MARK + "="));
+    return own === undefined ? null : own.slice(UNIT_MARK.length + 1);
   } catch {
-    return false;
+    return null;
   }
+}
+
+function marked(pid: number, name: string): boolean {
+  return mark_of(pid) === name;
+}
+
+function running_pids(): number[] {
+  return fs.readdirSync("/proc").filter((d) => /^\d+$/.test(d)).map(Number);
 }
 
 // every process of the unit's but this one, signalled
 function sweep(name: string, signal: "SIGTERM" | "SIGKILL"): void {
-  for (const pid of fs.readdirSync("/proc").filter((d) => /^\d+$/.test(d)).map(Number)) {
+  for (const pid of running_pids()) {
     if (pid !== process.pid && marked(pid, name)) {
       try {
         process.kill(pid, signal);
       } catch {}
     }
   }
+}
+
+// what a unit's processes hold and have spent: memory their own, in
+// bytes (anonymous and shared, not the page cache, which the computer can
+// drop); CPU time in µs, by counter: a systemd unit's cgroup counts all
+// its processes ever had in one, a detached unit's each process that runs
+// (by its pid and start) its own, as one that ends takes its time with it
+type Usage = { memory: number; cpu: Map<string, number> };
+
+// the kernel's clock ticks per second in /proc, the same on every Linux
+const HZ = 100;
+
+// a systemd unit's cgroup folder, by unit name, once systemd told it; or
+// when systemd last found no such unit (one not started yet), asked again
+// only AGAIN later
+const CGROUPS = new Map<string, string | number>();
+const AGAIN = 30e3;
+
+// each unit's that runs, by name, read now: the detached ones' processes
+// found in one pass over /proc
+export function usages(units: Unit[]): Map<string, Usage> {
+  const out = new Map<string, Usage>();
+  const names = new Set(units.map((u) => u.name));
+  [...CGROUPS.keys()].filter((n) => !names.has(n)).forEach((n) => CGROUPS.delete(n));
+  const detached = new Set<string>();
+  for (const u of units) {
+    if (kind(u) === DETACHED) {
+      detached.add(u.name);
+      continue;
+    }
+    const dir = cgroup(u.name);
+    const used = dir === null ? null : cgroup_usage(dir);
+    if (used !== null) {
+      out.set(u.name, used);
+    }
+  }
+  if (detached.size > 0) {
+    const theirs = new Map<string, number[]>();
+    for (const pid of running_pids()) {
+      const name = mark_of(pid);
+      if (name !== null && detached.has(name)) {
+        theirs.set(name, [...(theirs.get(name) ?? []), pid]);
+      }
+    }
+    theirs.forEach((list, name) => out.set(name, procs_usage(list)));
+  }
+  return out;
+}
+
+function cgroup(name: string): string | null {
+  const had = CGROUPS.get(name);
+  if (typeof had === "string") {
+    return had;
+  }
+  if (!systemd() || (had !== undefined && Date.now() - had < AGAIN)) {
+    return null;
+  }
+  const r = run(["systemctl", "--user", "show", "-p", "ControlGroup", "--value", name]);
+  CGROUPS.set(name, r.code === 0 && r.out !== "" ? path.join("/sys/fs/cgroup", r.out) : Date.now());
+  const now = CGROUPS.get(name);
+  return typeof now === "string" ? now : null;
+}
+
+// a cgroup's: its CPU time from cpu.stat, its memory from memory.stat;
+// where the memory controller isn't on for it, its processes'
+function cgroup_usage(dir: string): Usage | null {
+  const usec = /^usage_usec (\d+)$/m.exec(read(path.join(dir, "cpu.stat")) ?? "")?.[1];
+  if (usec === undefined) {
+    return null;
+  }
+  const stat = read(path.join(dir, "memory.stat"));
+  const field = (k: string) => Number(new RegExp("^" + k + " (\\d+)$", "m").exec(stat ?? "")?.[1] ?? 0);
+  return { memory: stat === null ? procs_usage(cgroup_pids(dir)).memory : field("anon") + field("shmem"), cpu: new Map([["", Number(usec)]]) };
+}
+
+// the processes of a cgroup and of those under it
+function cgroup_pids(dir: string): number[] {
+  const own = (read(path.join(dir, "cgroup.procs")) ?? "").split("\n").filter((l) => l !== "").map(Number);
+  let under: string[] = [];
+  try {
+    under = fs.readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => path.join(dir, d.name));
+  } catch {}
+  return [...own, ...under.flatMap(cgroup_pids)];
+}
+
+// processes' memory (status' RssAnon and RssShmem) and CPU time (stat's
+// utime and stime), each keyed by its pid and start time
+function procs_usage(list: number[]): Usage {
+  const out: Usage = { memory: 0, cpu: new Map() };
+  for (const pid of list) {
+    const stat = read("/proc/" + pid + "/stat");
+    const status = read("/proc/" + pid + "/status");
+    if (stat === null || status === null) {
+      continue;
+    }
+    // the fields after the name: state is the 3rd of stat's, utime the 14th
+    const f = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+    out.cpu.set(pid + "@" + f[19], ((Number(f[11]) + Number(f[12])) * 1e6) / HZ);
+    out.memory += ["RssAnon", "RssShmem"].reduce((n, k) => n + Number(new RegExp("^" + k + ":\\s+(\\d+) kB", "m").exec(status)?.[1] ?? 0) * 1024, 0);
+  }
+  return out;
 }
 
 export function run(cmd: string[], env: Record<string, string> = {}): { code: number; out: string; err: string } {

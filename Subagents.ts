@@ -7,8 +7,9 @@
 // view and the memory tools on its agent's chat; repo, a worktree of its
 // own on a new branch (troop/<name> unless named), or (write false) on
 // none, its edit tools denied; without one, a folder of its own. Every
-// task is checked before any starts, and none past the computer's room
-// for them (Room); the rest of what the tool does is Sessions'.
+// task is checked before any starts, and none starts while the computer
+// is nearly out of memory (Room); how many to start is the agent's call.
+// The rest of what the tool does is Sessions'.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -49,9 +50,6 @@ const ACCOUNTS: Record<Vendor, (claude: string) => Job["account"]> = {
 // a repo's work needs a provider with tools of its own in a folder
 const OWN_TOOLS: Vendor[] = ["claude-sub"];
 
-// the most tasks one start takes
-export const TASKS = 10;
-
 // the server's: its tools; an agent's view now, or why there's none; its
 // pick, null for no such agent
 const HOOKS = {
@@ -78,12 +76,9 @@ export namespace Subagents {
     if (typeof view === "string") {
       return { text: view + " Nothing started.", fail: true };
     }
-    // checked with no wait before the starts, so a start that comes
-    // meanwhile counts these
-    const room = Room.now();
-    const fits = Room.fit(room);
-    if (tasks.length > fits) {
-      return { text: (fits === 0 ? "No room for another subagent on this computer now: wait for some to finish, or do the work yourself." : "Only " + fits + " more subagent" + (fits === 1 ? " fits" : "s fit") + " on this computer now: start at most " + fits + ", the rest as these finish.") + " Nothing started. This computer: " + Room.said(room) + ".", fail: true };
+    const no = Room.refused(Room.now(agent));
+    if (no !== null) {
+      return { text: no, fail: true };
     }
     const made = tasks.map((t) => start(agent, t, t.memory ? view : []));
     const ids = made.flatMap((m) => (typeof m === "string" ? [] : [m.id]));
@@ -95,7 +90,7 @@ export namespace Subagents {
       return typeof m === "string" ? t.name + " not started: " + m : s?.status === "failed" ? t.name + " didn't start: " + (Session.run(m.id)?.why ?? "") : t.name + " (" + knobs.join(", ") + ")";
     });
     const any = ids.some((id) => Session.get(id)?.status !== "failed");
-    return { text: (any ? "Started " : "") + said.join("; ") + "." + (any ? " Each works on its own: you get one message \"[Subagent name] …\" when it's done (with its result), fails, waits on the user's approval or a usage limit, or asks you something. Don't wait for them or read them to check: go on with other work, or end your turn." : ""), fail: !any };
+    return { text: (any ? "Started " : "") + said.join("; ") + "." + (any ? " Each works on its own: you get one message \"[Subagent name] …\" when it's done (with its result), fails, waits on the user's approval or a usage limit, or asks you something. Don't wait for them or read them to check: go on with other work, or end your turn. This computer now: " + Room.said(Room.now(agent)) + "." : ""), fail: !any };
   }
 
   // the tasks given, each checked, or why one can't start (then none does)
@@ -108,9 +103,6 @@ export namespace Subagents {
     const all = list(given);
     if (all.length === 0) {
       return "No tasks. Nothing started.";
-    }
-    if (all.length > TASKS) {
-      return "At most " + TASKS + " tasks at once. Nothing started.";
     }
     if (!transients()) {
       return "Subagents run as systemd user units, and systemd-run isn't here. Nothing started.";

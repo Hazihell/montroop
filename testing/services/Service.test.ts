@@ -3,7 +3,7 @@ import { expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { active, halt, transient } from "../../Service.ts";
+import { active, halt, transient, usages } from "../../Service.ts";
 import { procs, tag, until } from "../rig.ts";
 
 // the suite has no systemd: units run detached
@@ -68,4 +68,30 @@ test("a detached unit whose main process ended is inactive, and what it left run
 
 test("a unit that can't start says why", () => {
   expect(transient({ name: "u-" + tag(), dir: folder() }, "a test unit", ["/nonexistent/program"], {})).toStartWith("its process didn't start: ");
+});
+
+test("a detached unit uses what its processes and all they started hold and spent, another unit's not counted", async () => {
+  const dir = folder();
+  const t = tag();
+  const [unit, other] = [{ name: "u-" + t, dir }, { name: "o-" + t, dir }];
+  const spent = path.join(dir, "spent");
+  // its shell's child holds 200 MB and spends half a second of CPU time
+  const child = path.join(dir, "child.ts");
+  fs.writeFileSync(child, [
+    "const held = Buffer.alloc(200 * 2 ** 20, 1);",
+    "while (process.cpuUsage().user + process.cpuUsage().system < 5e5) {}",
+    "require(\"node:fs\").writeFileSync(" + JSON.stringify(spent) + ", \"\");",
+    "setInterval(() => held[0]++, 1e3);",
+  ].join("\n"));
+  expect(transient(unit, "a test unit", script(dir, process.execPath + " " + child), {})).toBeNull();
+  expect(transient(other, "a test unit", ["sleep", "300"], {})).toBeNull();
+  await until("its CPU time spent", () => fs.existsSync(spent));
+
+  const got = usages([unit, other]);
+  const its = got.get(unit.name);
+  expect(its?.memory).toBeGreaterThanOrEqual(200 * 2 ** 20);
+  expect([...(its?.cpu.values() ?? [])].reduce((a, n) => a + n, 0)).toBeGreaterThanOrEqual(5e5);
+  expect(got.get(other.name)?.memory).toBeLessThan(20 * 2 ** 20);
+  halt(unit);
+  halt(other);
 });

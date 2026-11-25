@@ -128,10 +128,6 @@ export let   ASK        = MADE.ask;
 
 export const MEDIA_MAX  = (Number(config_get("media_mb", "")) || 1024) * 2 ** 20;
 
-// the most subagents and work sessions that run at once on this computer;
-// 0: as its memory and cores allow (Room)
-export const WORKERS = Math.max(0, Math.floor(Number(config_get("submons", "")) || 0));
-
 const MCP_VAR = config_env_taken("TROOP_MCP");
 export const MCP_ENV_NOTE: string | null = config_mcp_some(MCP_VAR)
   ? "TROOP_MCP is set, but troop serve runs no MCP servers, so they are left out: put them in the mcp of a device's own ~/.montroop/config.json (for this computer, run troop device beside the server)."

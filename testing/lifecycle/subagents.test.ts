@@ -264,22 +264,28 @@ for (const via of VIAS) {
   });
 }
 
-test.concurrent("the subagent tool starts none past the computer's room for them, saying how many fit, and its list tells the same room", async () => {
-  const k = await Troop.up({ submons: 2 });
+// what the computer is told as, with whatever numbers it has now
+const FACTS = /\d+ cores, \d+% busy; memory \d+\.\d GB available of \d+\.\d GB; /;
+
+test.concurrent("the subagent tool starts every task it's given, however many, an old config's most at once ignored, and its start and list tell the computer's resources", async () => {
+  const k = await Troop.up({ submons: 1 });
   await k.api("POST", "/api/agents/" + k.agent, { subagents: true });
   const t = tag();
-  await fake.next(t + ": start", { what: "tool", calls: [["subagent", { action: "start", tasks: ["one", "two", "three"].map((n) => ({ task: t + ": " + n, name: n, memory: false })) }]] });
-  await fake.next("Nothing started.", { what: "tool", calls: [["subagent", { action: "list" }]] });
+  const names = Array.from({ length: 11 }, (_, n) => "w" + n + "-" + t);
+  await fake.next(t + ": start", { what: "tool", calls: [["subagent", { action: "start", tasks: names.map((name) => ({ task: t + ": " + name, name, model: "gpt-6-luna", memory: false })) }]] });
+  await fake.next("Started w0-" + t, { what: "tool", calls: [["subagent", { action: "list" }]] });
   await k.tell(t + ": start");
 
-  await until("the start refused", async () => (await fake.seen("Only 2 more subagents fit on this computer now")).length > 0);
-  const listed = await until("the list", async () => (await fake.last("You have no subagents.")).at(-1)?.text);
-  expect(listed).toContain("room for 2 more now; Montroop's config lets 2 run at once");
-  expect((await k.api("GET", "/api/sessions?agent=" + k.agent)).json as unknown).toEqual([]);
+  const started = await until("the start", async () => (await fake.last("Started w0-" + t)).at(-1)?.text);
+  expect(started).toStartWith("Started w0-" + t + " (gpt-6-luna");
+  expect(started).toMatch(new RegExp("This computer now: " + FACTS.source));
+  const listed = await until("the list", async () => (await fake.last("w10-" + t + ": ")).at(-1)?.text);
+  expect(listed).toMatch(new RegExp("This computer: " + FACTS.source));
+  expect(((await k.api("GET", "/api/sessions?agent=" + k.agent)).json as unknown as Array<{ name: string }>).map((x) => x.name).sort()).toEqual([...names].sort());
 });
 
-test.concurrent("a mon whose subagents run on the engine is told to split work into as many submons as there is room for, and each turn the room; one whose don't, to use them only when asked", async () => {
-  const k = await Troop.up({ submons: 3 });
+test.concurrent("a mon whose subagents run on the engine is told to split work into subagents and judge how many from the computer's resources, which each turn tells; one whose don't, to use them only when asked", async () => {
+  const k = await Troop.up();
   const [off, on] = [tag(), tag()];
   await k.tell(off + ": hello");
   await until("its turn", async () => (await fake.seen(off + ": hello")).length > 0);
@@ -292,6 +298,6 @@ test.concurrent("a mon whose subagents run on the engine is told to split work i
   expect(await asked(off)).not.toContain("This computer as this turn started");
   expect(await asked(on)).not.toContain("Use subagents only when the user asks for them.");
   expect(await asked(on)).toContain("Split large or parallel work into subagents:");
-  expect(await asked(on)).toContain("This computer as this turn started: ");
-  expect(await asked(on)).toContain("room for 3 more now; Montroop's config lets 3 run at once.");
+  expect(await asked(on)).toContain("How many to start is your judgment.");
+  expect(await asked(on)).toMatch(new RegExp("This computer as this turn started: " + FACTS.source));
 });
