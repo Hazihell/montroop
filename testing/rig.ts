@@ -16,14 +16,11 @@ type Json = Record<string, unknown>;
 type Told = { seq: number; at: number; ev: Json & { k: string } };
 
 type Page = {
-  id: string; name: string; status: string; waits: string | null; branch: string; worktree: string;
+  status: string; waits: string | null; worktree: string;
   runs: Array<{ n: number; status: string; attempts: number; why: string; report: string }>;
   parked: Array<{ id: string; tool: string; input: string }>; questions: Array<{ id: string; text: string }>;
   says: Array<{ id: string; heard: number }>; log: Told[];
 };
-
-// what the fake was asked: the newest part of each call's last message
-type Call = { n: number; vendor: string; latest: string };
 
 export async function until<T>(what: string, f: () => T | null | undefined | false | Promise<T | null | undefined | false>, ms = 20000): Promise<T> {
   const end = Date.now() + ms;
@@ -46,15 +43,6 @@ export const fake = {
   // the next model call whose newest message has match gets order
   async next(match: string, order: Order): Promise<void> {
     await fetch(CONTROL + "/queue", { method: "POST", body: JSON.stringify({ ...order, match }) });
-  },
-  async calls(match: string): Promise<Call[]> {
-    const got = (await (await fetch(CONTROL + "/log?match=" + encodeURIComponent(match))).json()) as { log: Call[] };
-    return got.log;
-  },
-  // the last call whose newest message has match, as the app sent it
-  async last(match: string): Promise<{ latest: string; body: Json } | null> {
-    const got = (await (await fetch(CONTROL + "/last?match=" + encodeURIComponent(match))).json()) as { log: Array<{ latest: string; body: Json }> };
-    return got.log[0] ?? null;
   },
 };
 
@@ -118,10 +106,6 @@ export class Kny {
     this.proc = null;
     p?.kill(sig);
     await p?.exited;
-  }
-
-  log(): string {
-    return fs.readFileSync(path.join(this.home, "serve.log"), "utf8");
   }
 
   async login(): Promise<void> {
