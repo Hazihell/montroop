@@ -9,7 +9,8 @@
 // ignored (an event still acked), and a message's fields are only ever
 // added, never renamed or removed. v: the sender's VERSION, raised with
 // each change, so a side can tell what the other knows (2: the holder's
-// start names its driver).
+// start names its driver; 3: a start may give a whole job to the driver
+// its provider picks, and a run tells a usage limit it waits out).
 
 import type * as net from "node:net";
 import { rec } from "./Json.ts";
@@ -26,8 +27,9 @@ export type Asking = { id: string; text: string };
 
 // what a run did. began: the provider's session id, which resumes it;
 // heard: a message the server sent went in; replied: a question got its
-// answer; report: the run's result; turn: the model finished a turn; end:
-// the holder's run is over and it exits
+// answer; report: the run's result; turn: the model finished a turn;
+// limit: a usage limit stopped it, till until (ms since 1970), when it
+// goes on by itself; end: the holder's run is over and it exits
 export type Ev =
   | { k: "began"; sdk: string }
   | { k: "text"; text: string }
@@ -42,11 +44,12 @@ export type Ev =
   | { k: "report"; text: string }
   | { k: "compacted" }
   | { k: "turn"; ok: boolean; text: string }
+  | { k: "limit"; until: number }
   | { k: "end"; ok: boolean; text: string };
 
 export type Told = { seq: number; at: number; ev: Ev };
 
-export const VERSION = 2;
+export const VERSION = 3;
 
 const CLIP = 2000;
 

@@ -9,6 +9,7 @@
 
 import type { Database } from "bun:sqlite";
 import { Owner } from "./Owner.ts";
+import { clock } from "./View.ts";
 import { Wire, type Told } from "./Wire.ts";
 import { wake_text, type Wake } from "./Wake.ts";
 
@@ -192,6 +193,8 @@ export namespace Session {
       db.query("insert or ignore into work_questions (id, session, text, at) values (?, ?, ?, ?)").run(ev.id, s.id, ev.text, at);
       step(db, s.id, "ask");
       return noted(db, s, String(seq), "question", ev.text + "\n\nIt waits for your answer: give it with session send. If only the user knows, ask them first.");
+    } else if (ev.k === "limit" && live) {
+      return noted(db, s, String(seq), "waiting", "a usage limit, till " + clock(ev.until) + ". It goes on by itself then: nothing to do.");
     } else if (ev.k === "replied") {
       db.query("delete from work_questions where id = ?").run(ev.id);
       settle(db, s.id);

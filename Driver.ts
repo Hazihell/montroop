@@ -4,18 +4,42 @@
 // driver is given the job and the holder's Io, and runs until the work is
 // done. The holder keeps the rest: the socket to the server, what was told
 // and not acked, the log, the calls parked for the owner, the questions
-// waiting for an answer.
+// waiting for an answer. Providers picks a job's driver.
 
+import type { Out } from "./Agent.ts";
+import type { Block, Img } from "./AskAI.ts";
+import type { Spec } from "./Machine.ts";
 import type { Ev } from "./Wire.ts";
 
-// the credential a run uses: its sign-in folder
-type Account = { dir: string };
+// the credential a run uses: a plan's sign-in folder, or the server's API
+// key for its provider (Config's keys); id: the account's name
+// (Config.claude_accounts)
+type Account = { provider: string; id: string } & ({ kind: "plan"; dir: string } | { kind: "key"; dir: null });
 
-// a run's job: the holder's folder, the folder the model's own tools work
-// in, its account, its model ("": the account's default), its own part of
-// the system prompt, its context: the provider keeps it (native), in the
-// session it resumes ("": a new one)
-export type Job = { dir: string; cwd: string; account: Account; model: string; own: string; context: { kind: "native"; resume: string } };
+// a run's job: the holder's folder; its account, model (an API id; "":
+// the account's default, Claude Code's only), effort and speed ("": the
+// model's default); its system prompt, the part every worker of its kind
+// shares (it ends a cache entry) and its own; its context, given whole
+// (blocks: a main agent's turn, its view) or kept by the provider
+// (native: the session it resumes, "" for a new one, and the blocks a new
+// one's first message starts with, before the holder's first message);
+// the folder the provider's own tools work in (null: none); write: false
+// denies its edit tools; Kunumy's tools, each run through io.call; the
+// web searches a request may make
+export type Job = {
+  dir     : string;
+  account : Account;
+  model   : string;
+  effort  : string;
+  speed   : string;
+  system  : string;
+  own     : string;
+  context : { kind: "given"; blocks: Block[]; imgs: Img[] } | { kind: "native"; resume: string; first: Block[] };
+  cwd     : string | null;
+  write   : boolean;
+  tools   : Spec[];
+  web     : number;
+};
 
 // a tool call as the rules know it (tool and args: shell and its command),
 // and as the provider made it, which the owner's card shows
@@ -30,14 +54,16 @@ export type Gated = { ok: boolean; note: string };
 export type Inbox = { pending: () => boolean; next: () => Promise<string | null>; close: () => void };
 
 // emit: an event told to the server and logged; parks: whether a rule has
-// the owner answer the call first; gate: before a tool runs, parked if a
-// rule says so (stop: dropped); ask: a question to the agent that started
-// the run, waiting for its answer
+// the owner answer the call first; gate: before a tool of the provider's
+// own runs, parked if a rule says so (stop: dropped); call: one of
+// Kunumy's tools (Job.tools), run once; ask: a question to the agent that
+// started the run, waiting for its answer
 export type Io = {
   emit  : (ev: Ev) => void;
   inbox : Inbox;
   parks : (call: Call) => boolean;
   gate  : (call: Call, stop: AbortSignal) => Promise<Gated>;
+  call  : (call: Call) => Promise<Out>;
   ask   : (text: string) => Promise<string>;
 };
 

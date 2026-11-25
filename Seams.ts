@@ -5,14 +5,14 @@ const HERE = import.meta.dir;
 
 const LEGACY: Record<string, string[]> = {
   "Agent.ts": [
-    "Agent.loop", "Agent.step", "Agent.steered", "Agent.entries_queued_till_started", "Agent.paired",
+    "Agent.loop", "Agent.steered", "Agent.entries_queued_till_started",
     "Agent.token", "Agent.room", "Agent.seat", "Agent.import_seated_elsewhere",
     "Agent.take_seat", "Agent.leave_seat", "Agent.give_way", "Agent.request", "Agent.send", "Agent.reason",
     "Agent.limited", "Agent.passing", "Agent.stream", "Agent.events", "Agent.use", "Agent.server",
     "Agent.notes_of", "Agent.call",
   ],
   "Anthropic.ts": [
-    "Anthropic.headers", "Anthropic.body", "Anthropic.message", "Anthropic.image", "Anthropic.read",
+    "Anthropic.headers", "Anthropic.body", "Anthropic.message", "Anthropic.read",
     "Anthropic.usage", "Anthropic.delta", "Anthropic.step", "Anthropic.sources", "Anthropic.cited",
     "Anthropic.docs", "Anthropic.entry", "Anthropic.server_echo", "Anthropic.result_text",
   ],
@@ -31,12 +31,12 @@ const LEGACY: Record<string, string[]> = {
   "ClaudeSub.ts": [
     "SUMS", "ClaudeSub.carried", "ClaudeSub.platform", "ClaudeSub.extract_under_data_dir",
     "ClaudeSub.with_tmpdir", "ClaudeSub.claim", "ClaudeSub.prune", "ClaudeSub.used",
-    "ClaudeSub.account", "ClaudeSub.limit_key", "ClaudeSub.sign_in", "ClaudeSub.env", "ClaudeSub.cli",
-    "ClaudeSub.options", "ClaudeSub.mcp", "ClaudeSub.url", "ClaudeSub.slot", "ClaudeSub.grant",
+    "ClaudeSub.limit_key", "ClaudeSub.env", "ClaudeSub.cli",
+    "ClaudeSub.mcp", "ClaudeSub.url", "ClaudeSub.slot", "ClaudeSub.grant",
     "ClaudeSub.free", "ClaudeSub.start", "ClaudeSub.close", "ClaudeSub.read", "ClaudeSub.connect",
-    "ClaudeSub.reset", "ClaudeSub.note", "ClaudeSub.off", "ClaudeSub.run",
+    "ClaudeSub.note", "ClaudeSub.off", "ClaudeSub.run",
     "ClaudeSub.first_message", "ClaudeSub.go_on", "ClaudeSub.died_before_saying", "ClaudeSub.after_tools",
-    "ClaudeSub.limit_ended", "ClaudeSub.turn", "ClaudeSub.settle", "ClaudeSub.backs",
+    "ClaudeSub.turn", "ClaudeSub.settle", "ClaudeSub.backs",
   ],
   "Machine.ts": [
     "Machine.shell", "Machine.job_id", "Machine.fenced", "Machine.exit", "Machine.spawn_in_group_marked",

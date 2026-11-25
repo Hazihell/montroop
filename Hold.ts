@@ -12,10 +12,12 @@
 import * as fs from "node:fs";
 import * as net from "node:net";
 import * as path from "node:path";
-import { Code } from "./Code.ts";
-import type { Call, Driver, End, Gated, Inbox, Io, Job } from "./Driver.ts";
+import type { Out } from "./Agent.ts";
+import type { Call, End, Gated, Inbox, Io, Job } from "./Driver.ts";
 import { err_why } from "./Err.ts";
 import { rec, str } from "./Json.ts";
+import { spec, STR, type Spec as Tool } from "./Machine.ts";
+import { Providers } from "./Providers.ts";
 import { Rules, type Rule } from "./Rules.ts";
 import { reap } from "./Service.ts";
 import { VERSION, Wire, type Ask, type Asking, type Outbox, type Told } from "./Wire.ts";
@@ -25,10 +27,11 @@ import { VERSION, Wire, type Ask, type Asking, type Outbox, type Told } from "./
 // prompt adds, fixed at its start
 export type Spec = { cwd: string; claude: string; model: string; append: string };
 
-// what one holder starts with: the driver that runs it, its first message,
-// the provider's session it resumes ("": a new one), the rules that ask
-// the owner first, the socket it listens on
-export type Start = { driver: keyof typeof DRIVERS; prompt: string; resume: string; rules: Rule[]; sock: string };
+// what one holder starts with: the driver that runs it (claude-code: a
+// work session's, on its spec and the provider's session it resumes, ""
+// for a new one; provider: the one the job's provider picks), its first
+// message, the rules that ask the owner first, the socket it listens on
+export type Start = { driver: "claude-code" | "provider"; job?: Omit<Job, "dir">; prompt: string; resume: string; rules: Rule[]; sock: string };
 
 // a start written before drivers were named runs Claude Code
 type Written = Omit<Start, "driver"> & { driver?: string };
@@ -55,7 +58,12 @@ type Held = {
   emit  : Io["emit"];
 };
 
-const DRIVERS = { "claude-code": Code.native } satisfies Record<string, Driver>;
+// the holder's own tools, run by its call; the server's round trip
+// (Tools) replaces them
+export const HOLDS: Tool[] = [
+  spec("ask_owner", "Ask the agent that started this session a question, when you can't go on without its answer (a decision, missing information). The call waits for the answer, which can take a while; it comes back as this call's result.", { question: STR }, ["question"]),
+  spec("report", "Give your result to the agent that started this session, once, when you're done: what you did, where (branch, commits, files), how you checked it, what is left. Then end your turn.", { result: STR }, ["result"]),
+];
 
 export const SPEC = "spec.json";
 export const START = "start.json";
@@ -171,7 +179,7 @@ export namespace Hold {
 
   // a call a rule names parked till the owner answers it, or the driver
   // drops it
-  function gate(h: Held, cwd: string, call: Call, stop: AbortSignal): Promise<Gated> {
+  function gate(h: Held, cwd: string | null, call: Call, stop: AbortSignal): Promise<Gated> {
     const rule = Rules.match(h.rules, call.tool, call.args, cwd);
     if (rule === null) {
       return Promise.resolve({ ok: true, note: "" });
@@ -213,8 +221,39 @@ export namespace Hold {
     });
   }
 
-  export async function main(dir: string): Promise<void> {
+  // a work session's job: Claude Code on its plan, in its worktree, the
+  // way its spec says
+  function sessions(dir: string, start: Written): Omit<Job, "dir"> {
     const spec = JSON.parse(fs.readFileSync(path.join(dir, SPEC), "utf8")) as Spec;
+    return {
+      account : { provider: "claude", id: "", kind: "plan", dir: spec.claude },
+      model   : spec.model,
+      effort  : "",
+      speed   : "",
+      system  : "",
+      own     : spec.append,
+      context : { kind: "native", resume: start.resume, first: [] },
+      cwd     : spec.cwd,
+      write   : true,
+      tools   : [],
+      web     : 0,
+    };
+  }
+
+  // a call of the holder's own tools (HOLDS); the server's round trip
+  // replaces it
+  async function call(h: Held, c: Call): Promise<Out> {
+    if (c.tool === "ask_owner") {
+      return { text: "The answer: " + await ask(h, String(c.args.question)), fail: false };
+    }
+    if (c.tool === "report") {
+      h.emit({ k: "report", text: String(c.args.result) });
+      return { text: "Reported. End your turn now.", fail: false };
+    }
+    return { text: "No tool " + c.tool + ".", fail: true };
+  }
+
+  export async function main(dir: string): Promise<void> {
     const start = JSON.parse(fs.readFileSync(path.join(dir, START), "utf8")) as Written;
     const file = path.join(dir, LOG);
     const log = fs.openSync(file, "a");
@@ -244,12 +283,14 @@ export namespace Hold {
     await new Promise<void>((ok) => server.listen(start.sock, ok));
 
     const name = start.driver ?? "claude-code";
-    const driver: Driver | undefined = Object.hasOwn(DRIVERS, name) ? DRIVERS[name as keyof typeof DRIVERS] : undefined;
-    const job: Job = { dir, cwd: spec.cwd, account: { dir: spec.claude }, model: spec.model, own: spec.append, context: { kind: "native", resume: start.resume } };
-    const io: Io = { emit: h.emit, inbox: inbox(h.box), parks: (call) => Rules.match(h.rules, call.tool, call.args, spec.cwd) !== null, gate: (call, stop) => gate(h, spec.cwd, call, stop), ask: (text) => ask(h, text) };
+    const given = name === "claude-code" ? sessions(dir, start) : name === "provider" ? start.job ?? null : null;
+    const job: Job | null = given === null ? null : { ...given, dir, tools: [...HOLDS, ...given.tools] };
+    const driver = job === null ? null : Providers.driver(job);
+    const cwd = job?.cwd ?? null;
+    const io: Io = { emit: h.emit, inbox: inbox(h.box), parks: (call) => Rules.match(h.rules, call.tool, call.args, cwd) !== null, gate: (call, stop) => gate(h, cwd, call, stop), call: (c) => call(h, c), ask: (text) => ask(h, text) };
     let end: End;
     try {
-      end = driver === undefined ? { ok: false, text: "This holder has no driver " + name + ": a newer kny started it." } : await driver(job, io);
+      end = job === null || driver === null ? { ok: false, text: "This holder has no driver " + name + ": a newer kny started it." } : typeof driver === "string" ? { ok: false, text: driver } : await driver(job, io);
     } catch (err) {
       end = { ok: false, text: err_why(err) };
     }
