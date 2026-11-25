@@ -272,15 +272,15 @@ class Session {
 }
 
 // a checkout of the last commit whose holders spoke the wire's version
-// before this one (Wire's VERSION), so a test can start its server and
-// holders; made once per test file
-let OLDER: string | null = null;
-export function older(): string {
-  if (OLDER !== null) {
-    return OLDER;
+// before version (by default this one's, Wire's VERSION), so a test can
+// start its server and holders; made once per test file
+const OLDER = new Map<number, string>();
+export function older(version = Number(/export const VERSION = (\d+);/.exec(fs.readFileSync(path.join(ROOT, "Wire.ts"), "utf8"))?.[1])): string {
+  const had = OLDER.get(version);
+  if (had !== undefined) {
+    return had;
   }
-  const version = /export const VERSION = (\d+);/.exec(fs.readFileSync(path.join(ROOT, "Wire.ts"), "utf8"))?.[1];
-  const raised = git(ROOT, "log", "-1", "--format=%H", "-S", "export const VERSION = " + version + ";", "--", "Wire.ts");
+  const raised = git(ROOT, "log", "--reverse", "--format=%H", "-S", "export const VERSION = " + version + ";", "--", "Wire.ts").split("\n")[0];
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "older-"));
   const r = Bun.spawnSync(["sh", "-c", "git -C \"$1\" archive \"$2^\" | tar -x -C \"$3\"", "sh", ROOT, raised, dir], { stderr: "pipe" });
   if (r.exitCode !== 0 || raised === "") {
@@ -289,7 +289,7 @@ export function older(): string {
   fs.symlinkSync(path.join(ROOT, "node_modules"), path.join(dir, "node_modules"));
   fs.mkdirSync(path.join(dir, "ui"), { recursive: true });
   fs.symlinkSync(path.join(ROOT, "ui", "dist"), path.join(dir, "ui", "dist"));
-  OLDER = dir;
+  OLDER.set(version, dir);
   return dir;
 }
 

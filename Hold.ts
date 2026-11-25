@@ -20,7 +20,7 @@ import { rec, str, text_of } from "./Json.ts";
 import { spec, STR } from "./Machine.ts";
 import { Rules, type Rule } from "./Rules.ts";
 import { reap } from "./Service.ts";
-import { VERSION, Wire, type Ask, type Asking, type Calling, type Kit, type Outbox, type Scratch, type Told } from "./Wire.ts";
+import { TOOLS, VERSION, Wire, type Ask, type Asking, type Calling, type Kit, type Outbox, type Scratch, type Told } from "./Wire.ts";
 
 // what a session keeps for its life: its worktree, its Claude account's
 // folder, its model ("": the account's default) and what its system
@@ -146,7 +146,7 @@ export namespace Hold {
         h.conn.destroy();
       }
       h.conn = s;
-      h.old = Number(msg.v) < VERSION;
+      h.old = !(Number(msg.v) >= TOOLS);
       ruled(h, msg);
       Wire.ack(h.out, Number(msg.ack) || 0);
       Wire.send(s, { $: "welcome", v: VERSION, seq: h.out.seq, asks: [...h.asks.values()].map((a) => a.ask), questions: [...h.waits.values()].map((w) => w.q) });
@@ -273,6 +273,10 @@ export namespace Hold {
     if (!said.ok) {
       return { text: said.note, fail: true };
     }
+    // the server may have become an older one while the call waited
+    if (h.old) {
+      return OLD;
+    }
     const out = await new Promise<Out>((done) => {
       const calling: Calling = { id: c.id, tool: c.tool, input: c.args };
       h.calls.set(c.id, { calling, done });
@@ -316,6 +320,7 @@ export namespace Hold {
       s.on("close", () => {
         if (h.conn === s) {
           h.conn = null;
+          h.old = false;
         }
       });
     });

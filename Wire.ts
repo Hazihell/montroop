@@ -63,6 +63,9 @@ export type Told = { seq: number; at: number; ev: Ev };
 
 export const VERSION = 3;
 
+// the first version whose server runs Kunumy's tools for holders
+export const TOOLS = 3;
+
 const CLIP = 2000;
 
 // rules: the ask rules or the scratch folders changed; say: a message for

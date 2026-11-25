@@ -1,6 +1,7 @@
 import { afterAll, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { TOOLS } from "../../Wire.ts";
 import { chat, down, fake, gate, Kny, older, procs, repo, tag, until, waiting } from "../rig.ts";
 
 afterAll(down);
@@ -89,7 +90,7 @@ test.concurrent("a session's shell call on a device that an ask rule names waits
   expect(fs.readFileSync(count, "utf8")).toBe("once\n");
 });
 
-test.concurrent("a session's call of Kunumy's tools while a server of the version before owns its holder is told that server runs none", async () => {
+test.concurrent("a session's call of Kunumy's tools while a server from before they ran in sessions owns its holder is told that server runs none", async () => {
   const k = await Kny.up();
   const t = tag();
   await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
@@ -98,9 +99,26 @@ test.concurrent("a session's call of Kunumy's tools while a server of the versio
   const s = await k.session("ol", t + ": work", repo());
   await until("the command running", () => waiting(t));
   await k.kill();
-  k.root = older();
+  k.root = older(TOOLS);
   await k.start();
   s.open(t);
+
+  const done = await s.status("done");
+  expect(results(done.log, "runs no tools for work sessions")).toHaveLength(1);
+});
+
+test.concurrent("a session's call of Kunumy's tools approved under a server from before they ran in sessions is told that server runs none", async () => {
+  const k = await Kny.up({ ask: [{ what: "Zoom", tools: "zoom", args: "" }] });
+  const t = tag();
+  await fake.next(t + ": work", { what: "tool", calls: [["zoom", { id: 1 }]] });
+  await fake.next("runs no tools for work sessions", { what: "reply", text: t + " told" });
+  const s = await k.session("oa", t + ": work", repo());
+  await s.status("waiting");
+  await k.kill();
+  k.root = older(TOOLS);
+  await k.start();
+  const card = await until("its card", () => k.cards()[0]);
+  expect((await k.api("POST", "/api/approve", { id: card.id, ok: true, note: "" })).status).toBe(200);
 
   const done = await s.status("done");
   expect(results(done.log, "runs no tools for work sessions")).toHaveLength(1);
