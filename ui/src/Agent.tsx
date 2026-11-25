@@ -114,6 +114,33 @@ function Fields({ a, all }: { a: Agent | null; all: All }): ReactNode {
   const saves = useRef(Promise.resolve());
   const file = useRef<HTMLInputElement>(null);
   const accounts = all.accounts.includes(form.claude) || form.claude === "" ? all.accounts : [...all.accounts, form.claude];
+  // its settings changed elsewhere (by the mon itself, or another page): read
+  // again, each field not being edited here taken as the server has it now
+  const edited = useMontroop((s) => s.team.find((m) => m.id === a?.id)?.edited ?? 0);
+  const read = useRef(edited);
+  useEffect(() => {
+    if (a === null || edited === read.current) {
+      return;
+    }
+    read.current = edited;
+    const typed = form.prompt !== kept.current.prompt;
+    void agents_read().then((got) => {
+      const now = got?.agents.find((x) => x.id === a.id);
+      if (now === undefined) {
+        return;
+      }
+      const was = kept.current;
+      const fresh: Form = { name: now.name, about: now.about, picture: now.picture, prompt: now.prompt, leader: now.leader, manage: now.manage, subagents: now.subagents, claude: now.claude, lines: String(now.lines) };
+      kept.current = fresh;
+      setForm((f) => Object.fromEntries(Object.entries(f).map(([k, v]) => [k, v === was[k as keyof Form] ? fresh[k as keyof Form] : v])) as Form);
+      if (fresh.prompt !== was.prompt) {
+        setSaved((n) => n + 1);
+        if (!typed) {
+          setTemplate(now.own ? null : now.template);
+        }
+      }
+    });
+  }, [a, edited, form.prompt]);
 
   const send = (next: Form) => {
     holds("agent", true);

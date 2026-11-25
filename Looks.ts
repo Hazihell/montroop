@@ -15,7 +15,8 @@ export type Part = keyof typeof LOOKS;
 export const BODIES  = ["ff5fa2", "c95cf0", "a25bff", "3f6bff", "2bb3ff", "19c2a0", "7ed957", "ffc531", "ff7d3b", "ecebf5"];
 export const DETAILS = ["ff5fa2", "c95cf0", "a25bff", "3f6bff", "2bb3ff", "35d6c2", "7ed957", "ffc93c", "ff5a5f", "f4efe4"];
 
-const DRAWN = /^av:([a-z]+)\.([a-z]+)\.([a-z]+)\.([a-z]+)\.[0-9a-f]{6}\.[0-9a-f]{6}$/;
+// a drawn look's four parts and two colors
+export const DRAWN = /^av:([a-z]{1,12})\.([a-z]{1,12})\.([a-z]{1,12})\.([a-z]{1,12})\.([0-9a-f]{6})\.([0-9a-f]{6})$/;
 
 // why a drawn look the app can't draw, or null (not a drawn look: null too)
 export function look_wrong(picture: string): string | null {

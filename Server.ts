@@ -2091,7 +2091,7 @@ export namespace Main {
   export function mates(): Mate[] {
     return Team.all().map((a) => {
       const chat = Main.chats.get(a.id);
-      return { id: a.id, name: a.name, about: a.about, picture: a.picture, unread: a.unread, last: chat === undefined ? "" : Chat.last(chat), busy: chat?.main.busy === true, asks: chat === undefined ? 0 : Gate.shown(chat.tools.gate, chat.id).length, archived: a.archived, subs: chat === undefined ? [] : [...chat.subs.values()].map((sub) => Chat.sub_row(chat, sub)), works: Session.list(a.id).map(Sessions.row) };
+      return { id: a.id, name: a.name, about: a.about, picture: a.picture, unread: a.unread, last: chat === undefined ? "" : Chat.last(chat), busy: chat?.main.busy === true, edited: EDITED.get(a.id) ?? 0, asks: chat === undefined ? 0 : Gate.shown(chat.tools.gate, chat.id).length, archived: a.archived, subs: chat === undefined ? [] : [...chat.subs.values()].map((sub) => Chat.sub_row(chat, sub)), works: Session.list(a.id).map(Sessions.row) };
     });
   }
 
@@ -2184,7 +2184,7 @@ export namespace Main {
     chat.mem.subagents = get(x, "subagents") === true;
     Memory.save(chat.mem);
     if (chat.mem.subagents) {
-      submons_on(chat);
+      subagents_on(chat);
     }
     const agent = Team.set(made.id, { ...fields, picture: Main.own_picture(chat, fields.picture) }, null) ?? made;
     Main.team_soon();
@@ -2252,9 +2252,10 @@ export namespace Main {
     }
     const x: unknown = await req.json().catch(() => null);
     if (what === "prompts") {
-      return out(Main.revert(agent, get(x, "id")));
+      return out(Main.revert(chat, agent, get(x, "id")));
     }
-    const edited = edit(chat, x, null);
+    const sent = rec(x) ? Object.fromEntries(Object.entries(x).filter(([k]) => APP_FIELDS.includes(k))) : x;
+    const edited = edit_mon(chat, sent, null);
     return out(typeof edited === "string" ? { error: edited } : {});
   }
 
@@ -2290,7 +2291,7 @@ export namespace Main {
     }
     if (action === "edit") {
       const sent = Object.fromEntries(["rename", "about", "picture", "prompt", "claude", "model", "effort", "mcp"].filter((k) => args[k] !== undefined).map((k) => [k === "rename" ? "name" : k, args[k]]));
-      return told(edit(there, sent, chat), false);
+      return edit_answer(edit_mon(there, sent, chat), false);
     }
     if (action === "archive") {
       if (them.archived !== 0) {
@@ -2353,18 +2354,13 @@ export namespace Main {
   }
 
   // back to a version of an agent's prompt, as the owner's change
-  export function revert(a: Agent, id: unknown): Answer {
+  export function revert(chat: Chat, a: Agent, id: unknown): Answer {
     const version = Team.versions(a).find((v) => v.id === id);
     if (version === undefined) {
       return { error: "That version is no longer kept." };
     }
-    const fields = Team.edit(a, { prompt: version.prompt });
-    if (typeof fields === "string") {
-      return { error: fields };
-    }
-    Team.set(a.id, fields, null);
-    Main.chats.forEach((c) => Chat.change(c));
-    return {};
+    const edited = edit_mon(chat, { prompt: version.prompt }, null);
+    return typeof edited === "string" ? { error: edited } : {};
   }
 
   // an agent's default prompt, its name left as {Name}
@@ -2753,22 +2749,17 @@ export namespace Main {
 // follows a new name)
 type Edited = { agent: Agent; changes: string[]; prompt: [string, string] | null; kept: boolean };
 
-// what only the owner changes of an agent, in the app, and why the
-// settings tool takes none of it
-const OWNERS: Record<string, string> = {
-  manage : "Manage mons, which gives power over the other mons, is the user's to turn on or off, in your settings in the app.",
-  claude : "Your Claude account is the user's to pick, in your settings in the app.",
-  mcp    : "The MCP servers are switched for every mon at once, by the user in the app.",
-};
+// when each agent's settings last changed (Mate's edited)
+const EDITED = new Map<string, number>();
 
-// what the settings tool sets
-const OWN_SETTINGS = ["name", "about", "picture", "prompt", "model", "effort", "leader", "lines", "subagents"];
+// what the app's settings of an agent send
+const APP_FIELDS = ["name", "about", "picture", "prompt", "claude", "leader", "lines", "manage", "subagents"];
 
 // an edit of there's settings, whoever makes it: the owner in the app (by
 // null), an agent with the agents tool, or there itself with the settings
 // tool. What x doesn't give (or gives as null) stays; every value is
 // checked before any is saved
-function edit(there: Chat, x: unknown, by: Chat | null): Edited | string {
+function edit_mon(there: Chat, x: unknown, by: Chat | null): Edited | string {
   const a = Team.get(there.id);
   if (a === null) {
     return "No agent " + there.id + ".";
@@ -2793,7 +2784,7 @@ function edit(there: Chat, x: unknown, by: Chat | null): Edited | string {
     }
     pick = to;
   }
-  const flag = ["manage", "subagents"].find((k) => sent[k] !== undefined && typeof sent[k] !== "boolean");
+  const flag = ["leader", "manage", "subagents"].find((k) => sent[k] !== undefined && typeof sent[k] !== "boolean");
   if (flag !== undefined) {
     return flag + " is true or false.";
   }
@@ -2824,12 +2815,13 @@ function edit(there: Chat, x: unknown, by: Chat | null): Edited | string {
     there.mem.subagents = sent.subagents;
     Memory.save(there.mem);
     if (sent.subagents) {
-      submons_on(there);
+      subagents_on(there);
     }
   }
   if (Pick.label(pick) !== Pick.label(there.pick) || pick.profile !== there.pick.profile) {
     Chat.pick_to(there, pick);
   }
+  EDITED.set(a.id, Date.now());
   Main.chats.forEach((c) => Chat.change(c));
   const after = new Map(Main.settings_of(now, there));
   const changes = before.flatMap(([k, v]) => (after.get(k) === v ? [] : [k + ": " + v + " → " + (after.get(k) ?? "")]));
@@ -2838,7 +2830,7 @@ function edit(there: Chat, x: unknown, by: Chat | null): Edited | string {
 }
 
 // an edit's answer to the agents tool, or (own) to the settings tool
-function told(out: Edited | string, own: boolean): Done {
+function edit_answer(out: Edited | string, own: boolean): Done {
   if (typeof out === "string") {
     return { text: out, fail: true };
   }
@@ -2868,24 +2860,14 @@ function own_settings(chat: Chat, args: Record<string, unknown>): Done {
   if (action !== "set") {
     return { text: "action is show or set.", fail: true };
   }
-  const given = Object.keys(args).filter((k) => k !== "action" && args[k] !== null && args[k] !== undefined);
-  const owners = given.find((k) => Object.hasOwn(OWNERS, k));
-  if (owners !== undefined) {
-    return { text: OWNERS[owners] + " Nothing was changed.", fail: true };
-  }
-  const odd = given.find((k) => !OWN_SETTINGS.includes(k));
-  if (odd !== undefined) {
-    return { text: "No setting " + odd + ": set takes " + OWN_SETTINGS.join(", ") + ".", fail: true };
-  }
-  if (given.includes("lines") && !(given.includes("leader") ? args.leader === true : chat.mem.leader)) {
-    return { text: "lines is Leader mode's: set it with leader true, or once Leader mode is on.", fail: true };
-  }
-  return told(edit(chat, Object.fromEntries(given.map((k) => [k, args[k]])), chat), true);
+  const change = Object.fromEntries(Object.entries(args).filter(([k, v]) => k !== "action" && v !== null && v !== undefined));
+  const why = Team.mine_refused(change, chat.mem.leader);
+  return why === null ? edit_answer(edit_mon(chat, change, chat), true) : { text: why, fail: true };
 }
 
 // an agent's Lasting submons turned on: one message from the app, which
 // starts its turn (an archived one's waits for its restore)
-function submons_on(chat: Chat): void {
+function subagents_on(chat: Chat): void {
   const post: Pending = { kind: "note", text: Prompts.prompt("subagents-setup"), images: [] };
   if (Chat.archived(chat)) {
     Chat.held(chat, post);

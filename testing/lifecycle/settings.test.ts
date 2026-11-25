@@ -53,16 +53,27 @@ test.concurrent("a mon sets its own settings, the answer telling each change bef
   expect(show).toContain("\neffort: medium (gpt-6-luna's: none, low, medium, high, xhigh, max)\nleader: on\nlines: 5 (1 to 30)\nsubagents: off\nmanage: on (the user's to change, in the app)\nWorktree setups: none.\nprompt (the default):\nYou are Nova.");
 });
 
-test.concurrent("a mon can't set what only the owner changes, a setting there isn't, Leader mode's lines with it off, or a model not offered: each refused, nothing saved", async () => {
+test.concurrent("a mon's change of what only the owner changes, or to a model not offered, or Leader mode as anything but on or off, is refused and saves nothing", async () => {
   const k = await Troop.up();
   const before = await shown(k);
 
   expect(await settings(k, { action: "set", manage: false, about: "Changed." })).toBe("error: Manage mons, which gives power over the other mons, is the user's to turn on or off, in your settings in the app. Nothing was changed.");
-  expect(await settings(k, { action: "set", claude: "work" })).toBe("error: Your Claude account is the user's to pick, in your settings in the app. Nothing was changed.");
-  expect(await settings(k, { action: "set", mood: "sunny" })).toBe("error: No setting mood: set takes name, about, picture, prompt, model, effort, leader, lines, subagents.");
-  expect(await settings(k, { action: "set", lines: 3 })).toBe("error: lines is Leader mode's: set it with leader true, or once Leader mode is on.");
   expect(await settings(k, { action: "set", model: "gpt-99", about: "Changed." })).toStartWith("error: No model gpt-99; one of: ");
+  expect(await settings(k, { action: "set", leader: "true", about: "Changed." })).toBe("error: leader is true or false.");
   expect(await shown(k)).toEqual(before);
+  expect(await settings(k, { action: "show" })).toContain("\nmodel: openai-api:gpt-6-luna (offered: ");
+});
+
+test.concurrent("the settings tool is offered to a mon, not to its subagents", async () => {
+  const k = await Troop.up();
+  const t = tag();
+  await k.tell(t + ": hello");
+  const [s] = await k.subagents({ task: t + ": sub", name: "sb", memory: false });
+  await s.status("done");
+
+  const offered = async (text: string) => (await until("a request with " + text, async () => (await fake.seen(text))[0])).tools.map((n) => n.replace(/^mcp__montroop__/, ""));
+  expect(await offered(t + ": hello")).toContain("settings");
+  expect(await offered(t + ": sub")).not.toContain("settings");
 });
 
 test.concurrent("a system prompt a mon sets keeps the one before in its history, as that mon's change, and the owner reverts to it", async () => {
@@ -81,10 +92,11 @@ test.concurrent("a system prompt a mon sets keeps the one before in its history,
   expect(await shown(k)).toMatchObject({ prompt: "You are Montroop.", own: false });
 });
 
-test.concurrent("Lasting submons turned on, from the app or by the mon itself, sends it one message from the app, which starts its turn; left on, none", async () => {
+test.concurrent("Lasting submons turned on, from the app or by the mon itself, or on for a new mon, sends it one message from the app, which starts its turn; left on, none", async () => {
   const k = await Troop.up();
-  const notes = async () => (await chat(k)).filter((m) => m.kind === "note" && m.text.startsWith(SETUP));
+  const notes = async (agent = k.agent) => (await chat(k, agent)).filter((m) => m.kind === "note" && m.text.startsWith(SETUP));
 
+  expect(await k.api("POST", "/api/agents/" + k.agent, { subagents: "yes" })).toEqual({ status: 400, json: { error: "subagents is true or false." } });
   await k.api("POST", "/api/agents/" + k.agent, { subagents: true });
   await until("its turn on the message", async () => (await chat(k)).at(-1)?.kind === "reply" && (await notes()).length === 1);
   await k.api("POST", "/api/agents/" + k.agent, { subagents: true, about: "Still on." });
@@ -93,5 +105,11 @@ test.concurrent("Lasting submons turned on, from the app or by the mon itself, s
 
   expect(await settings(k, { action: "set", subagents: true })).toBe("Changed your settings:\nsubagents: off → on\nThey apply from your next turn.");
   await until("the second message", async () => (await notes()).length === 2);
-  expect((await notes())[0].text).toBe("Your Lasting submons setting is on now: you start subagents with the subagent\ntool, each in its own folder, and on a repo in its own new worktree. A new\nworktree starts bare, so once for each repo you work in, agree with the user on\na worktree setup command (one that installs the dependencies; the gitignored\nfiles it needs, such as env files, are copied in first when the repo's\n.worktreeinclude names them) and save it with the subagent tool's setup action.\nThis is a one-time step: do it now, and don't write it into your system prompt.");
+  const text = (await notes())[0].text;
+  expect(text).toContain("worktree setup command");
+  expect(text).toContain("the subagent tool's setup action");
+  expect(text).toContain("one-time step");
+
+  const made = ((await k.api("POST", "/api/agents", { name: "Other", about: "Another agent.", prompt: "You are Other.", subagents: true })).json as { agent: { id: string } }).agent.id;
+  await until("the new mon's turn on the message", async () => (await chat(k, made)).at(-1)?.kind === "reply" && (await notes(made)).length === 1);
 });

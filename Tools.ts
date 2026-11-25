@@ -567,7 +567,7 @@ export namespace Tools {
         return seat.agents?.on() === true ? seat.agents.run(args) : { text: "Your Manage agents setting is off.", fail: true };
       }
       case "settings": {
-        return seat.settings === undefined ? { text: "A submon has no settings of its own.", fail: true } : seat.settings(args);
+        return seat.settings === undefined ? { text: "A subagent has no settings of its own.", fail: true } : seat.settings(args);
       }
       case "schedules": {
         const lines = mem.timers.map(Timer.timer_line);

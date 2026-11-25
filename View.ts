@@ -33,7 +33,9 @@ export type Live = { kind: Kind; text: string; of?: string };
 
 // an agent as the chat list shows it: last, its last message's gist; asks,
 // how many of its calls wait for the owner's yes; works, its work sessions
-export type Mate = { id: string; name: string; about: string; picture: string; unread: number; last: string; busy: boolean; asks?: number; archived: number; subs?: SubRow[]; works?: SessionRow[] };
+// edited: when its settings last changed while this server runs, so a
+// settings page open on it reads them again
+export type Mate = { id: string; name: string; about: string; picture: string; unread: number; last: string; busy: boolean; asks?: number; archived: number; subs?: SubRow[]; works?: SessionRow[]; edited?: number };
 
 // what a work session waits on: the owner's approval of a call it parked,
 // its agent's answer to its question, or a usage limit's reset

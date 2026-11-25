@@ -1,5 +1,5 @@
 import { useId, type CSSProperties, type ReactNode } from "react";
-import { BODIES, DETAILS, LOOKS } from "../../Looks.ts";
+import { BODIES, DETAILS, DRAWN, LOOKS } from "../../Looks.ts";
 
 // An agent's avatar: a character drawn as one SVG from four picks and two
 // colors. avatar.css moves it from the mood class on its root, so the
@@ -156,8 +156,6 @@ const FX =
   `<g class="fx-done">${star(20, 34, 1)}${star(101, 26, 1.25)}${star(106, 62, 0.8)}</g>` +
   `<g class="fx-error"><path d="M94 40q5 7 5 10a5 5 0 0 1-10 0q0-3 5-10Z" fill="#7cc4ff"/></g>` +
   `<g class="fx-listen" fill="none" stroke="var(--av-act)" stroke-width="3" stroke-linecap="round"><path d="M14 54q-7 12 0 24"/><path d="M5 47q-11 19 0 38"/><path d="M106 54q7 12 0 24"/><path d="M115 47q11 19 0 38"/></g>`;
-
-const DRAWN = /^av:([a-z]+)\.([a-z]+)\.([a-z]+)\.([a-z]+)\.([0-9a-f]{6})\.([0-9a-f]{6})$/;
 
 // the look an agent has before its owner draws one: picked by its id, so it
 // is the same on every screen
