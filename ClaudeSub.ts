@@ -79,6 +79,8 @@ const STEERING = "new messages came in; they follow, each saying who sent it";
 
 const NO_OWNER = "This call needs the user's approval, and no one can give it here. Don't do it another way.";
 
+const UNCHECKED = "This call needs the user's approval, and it couldn't be asked for. Don't do it another way. Why: ";
+
 
 
 type Sdk = typeof import("@anthropic-ai/claude-agent-sdk");
@@ -546,15 +548,30 @@ export namespace ClaudeSub {
 
   // a call Claude Code runs itself (a claude.ai connector's, a web search)
   // asks the owner by the rules Kunumy's endpoint gates its own tools by
-  // (Tools.gated); with no endpoint (a compaction), a call they name is refused
+  // (Tools.gated); with no endpoint (a compaction), a call they name is refused.
+  // Others it refuses itself (dontAsk), or they're Kunumy's, gated there
   async function gate(ask: Ask, input: HookInput, signal: AbortSignal): Promise<SyncHookJSONOutput> {
-    if (input.hook_event_name !== "PreToolUse" || input.tool_name.startsWith("mcp__" + MCP + "__")) {
+    const deny = (why: string): SyncHookJSONOutput => ({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: why } });
+    if (input.hook_event_name !== "PreToolUse") {
       return {};
     }
+    const name = input.tool_name;
     const args = rec(input.tool_input) ? input.tool_input : {};
-    const said = ask.server !== "" ? await Agent.rpc(ask.server, signal, "gate", { name: input.tool_name, arguments: args }) : Rules.match(config.ASK, input.tool_name, args, null) === null ? { ok: true, text: "" } : { ok: false, text: NO_OWNER };
+    const runs = TOOLS.includes(name) || CONNECTORS.some((c) => name.startsWith(c + "__"));
+    if (!runs || Rules.match(config.ASK, name, args, null) === null) {
+      return {};
+    }
+    if (ask.server === "") {
+      return deny(NO_OWNER);
+    }
+    let said: { ok: boolean; text: string };
+    try {
+      said = await Agent.rpc(ask.server, signal, "gate", { name, arguments: args });
+    } catch (err) {
+      return deny(UNCHECKED + err_why(err));
+    }
     if (!said.ok) {
-      return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: said.text } };
+      return deny(said.text);
     }
     return said.text === "" ? {} : { hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: said.text } };
   }

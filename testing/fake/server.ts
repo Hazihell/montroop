@@ -353,6 +353,9 @@ function connectors(): Response {
 
 // the connector over MCP, as Claude Code reaches it through claude.ai's proxy
 async function gmail(req: Request): Promise<Response> {
+  if (req.method !== "POST") {
+    return new Response(null, { status: 405 });
+  }
   const msg: unknown = await req.json().catch(() => ({}));
   const [rpc, method, params] = [get(msg, "id"), str(get(msg, "method")), get(msg, "params")];
   if (rpc === undefined) {
@@ -426,7 +429,7 @@ async function control(req: Request): Promise<Response> {
     return json(200, {});
   }
   const match = url.searchParams.get("match") ?? "";
-  const seen = LOG.filter((s) => s.latest.includes(match));
+  const seen = LOG.filter((s) => s.latest.includes(match) && (url.pathname !== "/last" || s.model !== ""));
   const brief = (s: Seen) => ({ ...s, body: undefined, said: undefined, system: undefined, headers: undefined, latest: s.latest.slice(0, 120) });
   return json(200, { queue: QUEUE, log: url.pathname === "/last" ? seen.slice(-1) : seen.map(brief) });
 }

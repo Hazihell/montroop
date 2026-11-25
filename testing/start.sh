@@ -12,15 +12,16 @@ tar -C /src --exclude=./node_modules --exclude=./.git -cf - . | tar -C /app -xf 
 ln -s /deps/node_modules /app/node_modules
 (cd /app && bun run ui > $R/logs/ui.log 2>&1)
 
-if [ ! -f $R/certs/server.pem ]; then
-  mkdir -p $R/certs && cd $R/certs
+SAN="subjectAltName=DNS:${HOSTS// /,DNS:}"
+if ! grep -qxsF "$SAN" $R/certs/san.ext; then
+  rm -rf $R/certs && mkdir -p $R/certs && cd $R/certs
   openssl req -x509 -newkey rsa:2048 -nodes -keyout ca.key -out ca.pem -days 365 -subj "/CN=Kunumy test rig" 2> /dev/null
   openssl req -newkey rsa:2048 -nodes -keyout server.key -out server.csr -subj "/CN=fake" 2> /dev/null
-  echo "subjectAltName=DNS:${HOSTS// /,DNS:}" > san.ext
+  echo "$SAN" > san.ext
   openssl x509 -req -in server.csr -CA ca.pem -CAkey ca.key -CAcreateserial -days 365 -extfile san.ext -out server.pem 2> /dev/null
   cd /
 fi
-grep -q "api.anthropic.com" /etc/hosts || echo "127.0.0.1 $HOSTS" >> /etc/hosts
+grep -qxF "127.0.0.1 $HOSTS" /etc/hosts || echo "127.0.0.1 $HOSTS" >> /etc/hosts
 
 setsid bun /app/testing/fake/server.ts $R/certs > $R/logs/fake.log 2>&1 &
 up fake.log "fake up"
@@ -32,6 +33,8 @@ if [ ! -f ~/.kunumy/config.json ]; then
   echo '{"claudeAiOauth":{"accessToken":"sk-ant-oat01-rig-fake","refreshToken":"sk-ant-ort01-rig-fake","expiresAt":4102444800000,"scopes":["user:inference","user:profile","user:sessions:claude_code","user:mcp_servers"],"subscriptionType":"max"}}' > ~/.kunumy/claude-sub/.credentials.json
   kny serve chatgpt login > $R/logs/chatgpt-login.log
 fi
+# a rig signed in before the claude.ai connectors' scope was
+sed -i 's/"user:sessions:claude_code"\]/"user:sessions:claude_code","user:mcp_servers"]/' ~/.kunumy/claude-sub/.credentials.json 2> /dev/null || true
 
 setsid kny serve 8788 > $R/logs/serve.log 2>&1 &
 up serve.log "^kny: serving"
