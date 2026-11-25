@@ -40,6 +40,8 @@ import * as config from "./Config.ts";
 import { err_stack, err_why } from "./Err.ts";
 import { get, rec, text_of } from "./Json.ts";
 import { wake_read, wake_relayed, wake_text, type Wake } from "./Wake.ts";
+import { Wire } from "./Wire.ts";
+import { Holders } from "./Holders.ts";
 import hello_md from "./prompts/hello.md" with { type: "text" };
 
 // agent: the chat a browser shows, by its agent's id
@@ -1803,7 +1805,7 @@ export namespace Chat {
         return {};
       }
       case "out": {
-        Tools.done(chat.tools, device, String(msg.job), Tools.out(msg.out));
+        Tools.done(chat.tools, device, String(msg.job), Wire.out(msg.out));
         return {};
       }
       case "done": {
@@ -2108,6 +2110,7 @@ export namespace Main {
     }
     const link = { send: (msg: object) => Chat.send(sock, msg), live: () => Main.socks.has(sock), work, scratch, shell };
     sock.data.device = Tools.attach(Main.tools, tab, host, sock.data.who, link, Owner.kept());
+    Holders.rules();
     void Main.scratch_sweep(sock.data.device);
     if (sock.data.device !== host) {
       Chat.send(sock, { $: "note", text: host + " was taken: the server calls this computer " + sock.data.device + "." });
@@ -2604,7 +2607,7 @@ export namespace Main {
     };
     Limit.answering(() => ({ queued: [...Main.chats.values()].some((c) => Run.waiting(c.main)), busy: [...Main.chats.values()].some((c) => c.main.busy) }));
     Team.all().forEach((agent) => Chat.open(agent.id, Main.tools, agent.id === hello));
-    Sessions.boot(Main.tools.gate, (a) => Main.asked(a), async (w) => {
+    Sessions.boot(Main.tools, (a) => Main.asked(a), async (w) => {
       const chat = Main.chats.get(w.agent);
       return chat !== undefined && (await Chat.wake(chat, w)).error === undefined;
     }, () => Main.team_soon());

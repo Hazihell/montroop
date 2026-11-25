@@ -56,15 +56,13 @@ export type Inbox = { pending: () => boolean; next: () => Promise<string | null>
 // emit: an event told to the server and logged; parks: whether a rule has
 // the owner answer the call first; gate: before a tool of the provider's
 // own runs, parked if a rule says so (stop: dropped); call: one of
-// Kunumy's tools (Job.tools), run once; ask: a question to the agent that
-// started the run, waiting for its answer
+// Kunumy's tools (Job.tools), gated, then run once
 export type Io = {
   emit  : (ev: Ev) => void;
   inbox : Inbox;
   parks : (call: Call) => boolean;
   gate  : (call: Call, stop: AbortSignal) => Promise<Gated>;
   call  : (call: Call) => Promise<Out>;
-  ask   : (text: string) => Promise<string>;
 };
 
 export type End = { ok: boolean; text: string };

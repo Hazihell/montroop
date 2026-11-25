@@ -26,9 +26,12 @@ export namespace Brief {
   }
 
   // a work session's addition to its system prompt, for its agent, with
-  // its browser's media folder if it has one
-  export function append(agent: string, media: string | null, brief: string): string {
-    const own = Prompts.prompt("session", { agent }) + (media === null ? "" : "\n" + Prompts.prompt("session-browser", { media }));
-    return [own, brief.trim(), Pins.block(false).text.trim()].filter((t) => t !== "").join("\n\n");
+  // its browser's media folder if it has one, and the devices and skills
+  // its agent's tools reach now
+  export function append(agent: { id: string; name: string }, media: string | null, brief: string, tools: Tools | null): string {
+    const own = Prompts.prompt("session", { agent: agent.name }) + (media === null ? "" : "\n" + Prompts.prompt("session-browser", { media }));
+    const dir = tools === null ? undefined : Tools.seat(tools, agent.id)?.mem.dir;
+    const kit = tools === null || dir === undefined ? [] : [Tools.devices(tools, agent.id, dir).text, Tools.skills(tools).text];
+    return [own, brief.trim(), ...kit.map((t) => t.trim()), Pins.block(false).text.trim()].filter((t) => t !== "").join("\n\n");
   }
 }

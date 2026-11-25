@@ -19,6 +19,7 @@ import { Sub, type Spawn } from "./Sub.ts";
 import { err_why } from "./Err.ts";
 import { get, list as items, rec, text_of } from "./Json.ts";
 import { wake_relayed, wake_text } from "./Wake.ts";
+import type { Kit, Scratch } from "./Wire.ts";
 
 type Device = {
   who    : string;
@@ -33,6 +34,12 @@ type Device = {
 };
 
 type Running = { term: string; job: Job; out: Promise<Out>; end: (out: Out) => void };
+
+// a device's job a server before this one started for a work session's
+// call, kept till the call asks for it again: its device's job again once
+// the device is back (tracked), its result out; settled: its outcome told
+// unknown, its device not back in time
+type Kept = { device: string; job: Job; out: Promise<Out>; end: (out: Out) => void; tracked: boolean; settled: boolean };
 
 type Link = { send: (msg: object) => void; live: () => boolean; work: string; scratch: string | null; shell: string | null };
 
@@ -82,11 +89,18 @@ export type Tools = {
   // the tools last left out of an agent's list for their names' length
   short   : Map<string, string>;
   gate    : Gate;
+  kept    : Map<string, Kept>;
+  // when the server started
+  since   : number;
 };
 
 export const SEARCHES = 10;
 
 const GRACE = 3 * PING;
+
+// what a work session's Claude Code puts before each of Kunumy's tools'
+// names
+const HELD = "mcp__kunumy__";
 
 const CHATS = new Map<string, Tools>();
 let HTTP: ReturnType<typeof Bun.serve> | null = null;
@@ -177,7 +191,7 @@ export namespace Tools {
     const run = (device: string, job: Job, signal: AbortSignal) => Tools.job(tools, device, job, signal, crypto.randomUUID());
     const mcp = Mcp.servers((text) => hub.note(text), run, (device) => Tools.live(tools.devices.get(device)), () => hub.off());
     const gate = Gate.open(config.DIR + "/asks.json", () => hub.change());
-    const tools: Tools = { devices: new Map(), seats: new Map(), mcp, held: new Map(), left: false, key, url, hub, owner: () => undefined, short: new Map(), gate };
+    const tools: Tools = { devices: new Map(), seats: new Map(), mcp, held: new Map(), left: false, key, url, hub, owner: () => undefined, short: new Map(), gate, kept: new Map(), since: Date.now() };
     CHATS.set(key, tools);
     return tools;
   }
@@ -527,14 +541,84 @@ export namespace Tools {
         const n = Limit.resume();
         return { text: n === 0 ? "No call was waiting for a usage limit." : "Woke " + n + " call" + (n === 1 ? "" : "s") + " waiting for a usage limit; any still limited waits again.", fail: false };
       }
-      case "skill": {
-        return Tools.job(tools, String(args.device), { name, input: { name: String(args.name) }, cwd: "main" }, signal, id);
-      }
       default: {
-        const { device, ...input } = args;
-        return Tools.job(tools, String(device), { name, input, cwd: who }, signal, id);
+        const at = job_of(who, name, args);
+        return Tools.job(tools, at.device, at.job, signal, id);
       }
     }
+  }
+
+  // the device and job a tool of the devices' runs as
+  function job_of(who: string, name: string, args: Record<string, unknown>): { device: string; job: Job } {
+    if (name === "skill") {
+      return { device: String(args.device), job: { name, input: { name: String(args.name) }, cwd: "main" } };
+    }
+    const { device, ...input } = args;
+    return { device: String(device), job: { name, input, cwd: who } };
+  }
+
+  // Kunumy's tools a work session of who's is offered: a subagent's (who's
+  // memory, the devices' tools and skills), and the devices' MCP tools as
+  // last listed, each with the device it runs on
+  export function kit(tools: Tools, who: string): Kit[] {
+    const servers = tools.seats.get(who)?.mcp === false ? [] : [...Tools.held(tools, who).values()].sort((a, b) => Mcp.by_name(a.conf.name, b.conf.name));
+    const mcp = servers.flatMap((s) => (Mcp.kept(s) ?? []).map((t) => ({ ...t, device: s.conf.device })));
+    return [...Tools.list(true).map((t) => ({ ...t, device: null })), ...mcp.filter((t) => t.name.length <= NAME_MOST - HELD.length)];
+  }
+
+  // each open device's scratch folder
+  export function scratch(tools: Tools): Scratch {
+    return Object.fromEntries(Tools.opened(tools).flatMap(([name, d]) => {
+      const at = [...d.terms.values()][0]?.scratch;
+      return typeof at === "string" ? [[name, at]] : [];
+    }));
+  }
+
+  // a work session's call (who: its agent), gated in its holder already:
+  // one of the tools kit offers. again: a server before this one started
+  // it: a device's job is found again by its id (id: the call's), the
+  // memory's tools run again, and an MCP tool's outcome is unknown. Its
+  // holder outlives the server, so a call soon after the server started
+  // waits a while for its device to be back
+  export async function held_call(tools: Tools, who: string, name: string, args: Record<string, unknown>, id: string, again: boolean, signal: AbortSignal): Promise<Out> {
+    if (name === SKILL.name || KIT.some((t) => t.name === name)) {
+      const { device } = job_of(who, name, args);
+      while (!Tools.live(tools.devices.get(device)) && Date.now() - tools.since < GRACE && !signal.aborted) {
+        await Bun.sleep(100);
+      }
+    }
+    if (Tools.list(true).some((t) => t.name === name)) {
+      return await Tools.call(tools, who, name, args, signal, id);
+    }
+    const mcp = tools.seats.get(who)?.mcp === false ? null : Mcp.find(Tools.held(tools, who), name);
+    if (mcp === null) {
+      return { text: "No tool " + name + ".", fail: true };
+    }
+    if (again) {
+      return { text: "The server restarted during this call, so whether it ran is unknown: check before calling it again.", fail: true };
+    }
+    Mcp.used(tools.mcp);
+    return await Mcp.call(tools.mcp, mcp, name, args, signal);
+  }
+
+  // a work session's call of a device's tool, which a server before this
+  // one started (id: the call's), kept till its device is back: then it's
+  // the device's job again, so the device neither stops it nor runs it
+  // twice; a device not back in time leaves its outcome unknown
+  export function adopt(tools: Tools, who: string, name: string, args: Record<string, unknown>, id: string): void {
+    if (tools.kept.has(id) || !(name === SKILL.name || KIT.some((t) => t.name === name))) {
+      return;
+    }
+    const { device, job } = job_of(who, name, args);
+    const { promise, resolve } = Promise.withResolvers<Out>();
+    const k: Kept = { device, job, out: promise, end: resolve, tracked: false, settled: false };
+    tools.kept.set(id, k);
+    setTimeout(() => {
+      if (!k.tracked) {
+        k.settled = true;
+        k.end({ text: "The device " + device + " that ran this wasn't back soon after the server restarted, so whether it ran is unknown: check before running it again.", fail: true });
+      }
+    }, GRACE).unref();
   }
 
   export function seat(tools: Tools, id: string): Seat | undefined {
@@ -591,6 +675,12 @@ export namespace Tools {
     for (const old of [...d.terms.keys()]) {
       if (old !== term) {
         Tools.detach(tools, old, name, "restarted");
+      }
+    }
+    for (const [id, k] of tools.kept) {
+      if (k.device === name && !k.tracked && !k.settled) {
+        k.tracked = true;
+        void Tools.track(d, id, term, k.job).out.then(k.end);
       }
     }
     Tools.sync(d, term, () => true);
@@ -776,7 +866,9 @@ export namespace Tools {
   }
 
   export function job(tools: Tools, device: string, job: Job, signal: AbortSignal, id: string): Promise<Out> {
-    const run = tools.devices.get(device)?.jobs.get(id) ?? Tools.start_job(tools, device, job, id);
+    const kept = tools.kept.get(id);
+    tools.kept.delete(id);
+    const run = tools.devices.get(device)?.jobs.get(id) ?? kept ?? Tools.start_job(tools, device, job, id);
     if (typeof run === "string") {
       return Promise.resolve({ text: run, fail: true });
     }
@@ -808,14 +900,6 @@ export namespace Tools {
     const run = { term, job, out: promise, end };
     d.jobs.set(id, run);
     return run;
-  }
-
-  export function out(x: unknown): Out {
-    const imgs = items(get(x, "imgs")).flatMap((img) => {
-      const [type, data] = [get(img, "type"), get(img, "data")];
-      return typeof type === "string" && typeof data === "string" ? [{ type, data }] : [];
-    });
-    return { text: text_of(get(x, "text")), fail: get(x, "fail") === true, ...(get(x, "imgs") === undefined ? {} : { imgs }) };
   }
 
   export function done(tools: Tools, device: string, id: string, out: Out): void {

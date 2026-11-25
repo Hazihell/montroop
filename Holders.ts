@@ -4,8 +4,9 @@
 // its own (Service), so a server restart or deploy leaves it running. The
 // server links to it over its socket, takes in what it tells (Wire) and
 // acks it, tries again while it runs, and once it's gone takes in what its
-// log holds past the last ack. What a holder runs for (a work session) is
-// its owner's business, told through the hooks given at boot.
+// log holds past the last ack. What a holder runs for (a work session), and
+// the calls of Kunumy's tools it sends, are its owner's business, told
+// through the hooks given at boot.
 
 import * as fs from "node:fs";
 import * as net from "node:net";
@@ -15,7 +16,7 @@ import { err_why } from "./Err.ts";
 import { Hold, START, type Start } from "./Hold.ts";
 import { get, rec, str } from "./Json.ts";
 import { active, command, halt, transient } from "./Service.ts";
-import { VERSION, Wire, type Ev, type Told, type ToHold } from "./Wire.ts";
+import { VERSION, Wire, type Ev, type Scratch, type Told, type ToHold } from "./Wire.ts";
 
 // a holder as its owner keeps it: the id it goes by, its folder (with its
 // log), and the unit and socket of its latest launch ("": none yet)
@@ -25,12 +26,17 @@ export type Holder = { id: string; dir: string; unit: string; sock: string };
 // the last of its events taken in; null: none. told: an event, taken in
 // once, returning what's left to do once it's acked. welcome: a link's
 // first message, with the ids of the calls the holder has parked and of
-// the questions waiting. gone: the holder ended, its log taken in
+// the questions waiting. gone: the holder ended, its log taken in. call:
+// one of Kunumy's tools to run for it; took: it has the result of a call.
+// scratch: the devices' scratch folders, which its rules read
 type On = {
   held    : (id: string) => { holder: Holder; ack: number } | null;
   told    : (id: string, t: Told) => () => void;
   welcome : (id: string, asks: string[], questions: string[]) => void;
   gone    : (id: string, holder: Holder) => void;
+  call    : (id: string, call: string, tool: string, input: Record<string, unknown>) => void;
+  took    : (id: string, call: string) => void;
+  scratch : () => Scratch;
 };
 
 // a link to a holder: the socket (null: none now), the tries to connect
@@ -45,14 +51,20 @@ const ENV = ["PATH", "LANG", "SHELL", "SSH_AUTH_SOCK", "XDG_CONFIG_HOME", "XDG_D
 
 const LINKS = new Map<string, Link>();
 
-const ON: On = { held: () => null, told: () => () => {}, welcome: () => {}, gone: () => {} };
+const ON: On = { held: () => null, told: () => () => {}, welcome: () => {}, gone: () => {}, call: () => {}, took: () => {}, scratch: () => ({}) };
 
 export namespace Holders {
 
   // at the server's start, before any holder is adopted or launched
   export function boot(on: On): void {
     Object.assign(ON, on);
-    config.RELOADED.add(() => LINKS.forEach((l) => Wire.send(l.sock, { $: "rules", rules: config.ASK })));
+    config.RELOADED.add(rules);
+  }
+
+  // the ask rules and scratch folders as they are now, to every holder linked
+  export function rules(): void {
+    const scratch = ON.scratch();
+    LINKS.forEach((l) => Wire.send(l.sock, { $: "rules", rules: config.ASK, scratch }));
   }
 
   // the unit and socket of a holder's launch n
@@ -126,7 +138,7 @@ export namespace Holders {
     sock.setEncoding("utf8");
     sock.on("connect", () => {
       l.tries = 0;
-      Wire.send(sock, { $: "hello", v: VERSION, ack: ON.held(id)?.ack ?? 0, rules: config.ASK });
+      Wire.send(sock, { $: "hello", v: VERSION, ack: ON.held(id)?.ack ?? 0, rules: config.ASK, scratch: ON.scratch() });
     });
     sock.on("data", Wire.lines((msg) => {
       try {
@@ -193,6 +205,10 @@ export namespace Holders {
       const then = ON.told(id, { seq: msg.seq, at: Number(msg.at) || Date.now(), ev: msg.ev as Ev });
       Wire.send(sock, { $: "ack", seq: msg.seq });
       then();
+    } else if (msg.$ === "call" && typeof msg.id === "string" && typeof msg.tool === "string") {
+      ON.call(id, msg.id, msg.tool, rec(msg.input) ? msg.input : {});
+    } else if (msg.$ === "took" && typeof msg.id === "string") {
+      ON.took(id, msg.id);
     }
   }
 

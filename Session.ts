@@ -4,10 +4,12 @@
 // repo, in its own branch and worktree, kept across server restarts. A
 // session has runs (a message it works on until it's done with it), each
 // tried again (an attempt) when its holder died; the calls it has parked
-// for the owner's answer; the questions it asked its agent; the messages
-// sent to it not yet taken in; the messages that wake its agent.
+// for the owner's answer; the calls of Kunumy's tools its holder had the
+// server run; the questions it asked its agent; the messages sent to it
+// not yet taken in; the messages that wake its agent.
 
 import type { Database } from "bun:sqlite";
+import type { Out } from "./Agent.ts";
 import { Owner } from "./Owner.ts";
 import { clock } from "./View.ts";
 import { Wire, type Told } from "./Wire.ts";
@@ -35,6 +37,10 @@ export type Run = { session: string; n: number; prompt: string; status: Status; 
 // ok: the owner's answer, null till then; it stays till the holder says it
 // took it
 export type Parked = { id: string; session: string; tool: string; input: string; what: string; ok: number | null; note: string; at: number };
+
+// input: its arguments as JSON; out: what it did as JSON, null while it
+// runs; kept till its holder took the result, or the session's work ended
+type Called = { id: string; session: string; tool: string; input: string; out: string | null; at: number };
 
 // queue: taken in once the run at work ends; steer: into it now; answer:
 // the answer to the question the session waits on
@@ -74,6 +80,7 @@ const TABLES: Record<string, string[]> = {
   work_runs       : ["session text not null", "n integer not null", "prompt text not null", "status text not null", "attempts integer not null default 1", "why text not null default ''", "report text not null default ''", "started integer not null", "ended integer", "primary key (session, n)"],
   work_asks       : ["id text primary key", "session text not null", "tool text not null", "input text not null", "what text not null", "ok integer", "note text not null default ''", "at integer not null"],
   work_says       : ["id text primary key", "session text not null", "text text not null", "mode text not null default 'steer'", "heard integer not null default 0", "at integer not null"],
+  work_calls      : ["id text primary key", "session text not null", "tool text not null", "input text not null", "out text", "at integer not null"],
   work_questions  : ["id text primary key", "session text not null", "text text not null", "at integer not null"],
   work_wakes      : ["id text primary key", "agent text not null", "text text not null", "sent integer not null default 0", "at integer not null"],
 };
@@ -233,6 +240,7 @@ export namespace Session {
     if (!LIVE.includes(to)) {
       db.query("delete from work_asks where session = ?").run(id);
       db.query("delete from work_questions where session = ?").run(id);
+      db.query("delete from work_calls where session = ?").run(id);
     }
     if (to === "stopped") {
       db.query("update work_says set heard = -1 where session = ? and heard = 0").run(id);
@@ -319,6 +327,29 @@ export namespace Session {
 
   export function answer(id: string, ok: boolean, note: string): void {
     opened().query("update work_asks set ok = ?, note = ? where id = ? and ok is null").run(ok ? 1 : 0, note, id);
+  }
+
+  export function call(id: string): Called | null {
+    return (opened().query("select * from work_calls where id = ?").get(id) as Called | null) ?? null;
+  }
+
+  // the calls its holder sent that run or ran
+  export function calls(session: string): Called[] {
+    return opened().query("select * from work_calls where session = ?").all(session) as Called[];
+  }
+
+  // a call its holder sent, once; false: it came already, or the session
+  // is out of work
+  export function calling(c: Omit<Called, "out">): boolean {
+    return opened().query("insert or ignore into work_calls (id, session, tool, input, at) select ?, ?, ?, ?, ? where exists (select 1 from work_sessions where id = ? and status in ('running', 'waiting'))").run(c.id, c.session, c.tool, c.input, c.at, c.session).changes > 0;
+  }
+
+  export function called(id: string, out: Out): void {
+    opened().query("update work_calls set out = ? where id = ?").run(JSON.stringify(out), id);
+  }
+
+  export function took(id: string): void {
+    opened().query("delete from work_calls where id = ?").run(id);
   }
 
   // a message for the session; false: one with that id came already

@@ -3,7 +3,9 @@
 // The server's side of work sessions: each run is a holder's (Holders),
 // running Claude Code in the session's worktree; what it tells goes into
 // the session's record (Session); each call it parks shows as the owner's
-// Ask card (Gate), whose answer goes back to it. On boot the holders still
+// Ask card (Gate), whose answer goes back to it; each call of Kunumy's
+// tools it sends runs here once (Tools), its result kept till the holder
+// took it. On boot the holders still
 // running are adopted, and the sessions whose holder is gone marked as
 // failed, to resume. When a run ends, or waits on the owner or on its
 // agent's answer, the agent gets one message that starts its turn
@@ -20,6 +22,7 @@ import * as config from "./Config.ts";
 import { Gate, type Asked } from "./Gate.ts";
 import { Hold, SPEC, type Spec } from "./Hold.ts";
 import { Holders, type Holder } from "./Holders.ts";
+import { err_why } from "./Err.ts";
 import { get, rec, str, text_of } from "./Json.ts";
 import { Machine } from "./Machine.ts";
 import { Owner } from "./Owner.ts";
@@ -28,8 +31,9 @@ import { transients } from "./Service.ts";
 import { LIVE, Session, type Effect, type Mode, type Parked, type Run } from "./Session.ts";
 import type { Wake } from "./Wake.ts";
 import { Team } from "./Team.ts";
+import { Tools } from "./Tools.ts";
 import { clock, PICTURE, SESSION, VIDEO, type SessionPage, type SessionRow, type Waits } from "./View.ts";
-import type { Ev, Told } from "./Wire.ts";
+import { Wire, type Ev, type Told } from "./Wire.ts";
 import { Worktree } from "./Worktree.ts";
 
 // what a new session needs: its agent; a repo on this computer, the ref
@@ -87,10 +91,12 @@ const CARDS = new Map<string, Map<string, AbortController>>();
 const LATEST = new Map<string, string>();
 // the wakes being delivered
 const SENDING = new Set<string>();
-// the server's: the owner's cards; wake, a message into an agent's chat
-// once (id: its act), false if it didn't take it; change, a session's row
-// changed
-const HOOKS = { gate: null as Gate | null, asked: (_: Asked) => {}, wake: (_: Wake) => Promise.resolve(false), change: () => {} };
+// the calls of Kunumy's tools running here, by id, with their session
+const CALLS = new Map<string, { session: string; stop: AbortController }>();
+// the server's: its tools, with the owner's cards; wake, a message into an
+// agent's chat once (id: its act), false if it didn't take it; change, a
+// session's row changed
+const HOOKS = { tools: null as Tools | null, asked: (_: Asked) => {}, wake: (_: Wake) => Promise.resolve(false), change: () => {} };
 
 export namespace Sessions {
 
@@ -107,21 +113,24 @@ export namespace Sessions {
   // at the server's start, before it takes requests, once the agents'
   // chats are open: the wake messages not yet in a chat are sent again;
   // the cards of calls still parked wait again, so an answer given at once
-  // finds them, and those of a holder gone are taken down; a stopped
-  // session's holder still running (its server killed midway) is stopped
-  export function boot(gate: Gate, asked: (a: Asked) => void, wake: (w: Wake) => Promise<boolean>, change: () => void): void {
-    HOOKS.gate = gate;
+  // finds them, and those of a holder gone are taken down; the devices'
+  // jobs of calls a server before this one ran are kept for their devices;
+  // a stopped session's holder still running (its server killed midway) is
+  // stopped
+  export function boot(tools: Tools, asked: (a: Asked) => void, wake: (w: Wake) => Promise<boolean>, change: () => void): void {
+    HOOKS.tools = tools;
     HOOKS.asked = asked;
     HOOKS.wake = wake;
     HOOKS.change = change;
     Holders.boot({ held, told: (id, t) => {
       const fx = take(id, t);
       return () => after(id, fx);
-    }, welcome, gone });
+    }, welcome, gone, call, took: (_, c) => Session.took(c), scratch: () => Tools.scratch(tools) });
     Session.unsent().forEach(deliver);
     for (const s of Session.list(null)) {
       if (LIVE.includes(s.status)) {
         Session.parked(s.id).forEach((p) => arm(s, p));
+        Session.calls(s.id).filter((c) => c.out === null).forEach((c) => Tools.adopt(tools, s.agent, c.tool, args_of(c.input), c.id));
         Holders.adopt(s.id);
       } else if (s.status === "stopped" && Holders.alive(holder(s))) {
         Holders.stop(holder(s));
@@ -168,7 +177,7 @@ export namespace Sessions {
     const dir = path.join(DIR, id);
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     const media = Browser.make(dir, id) ? path.join(dir, MEDIA) : null;
-    const spec: Spec = { cwd: worktree, claude: config.claude_dir(agent.claude), model: b.model, append: Brief.append(agent.name, media, b.brief) };
+    const spec: Spec = { cwd: worktree, claude: config.claude_dir(agent.claude), model: b.model, append: Brief.append(agent, media, b.brief, HOOKS.tools) };
     fs.writeFileSync(path.join(dir, SPEC), JSON.stringify(spec, null, 1) + "\n", { mode: 0o600 });
     const s = Session.add({ id, name: b.name, agent: b.agent, repo: top.dir, base, branch, worktree, account: agent.claude, model: b.model, dir }, b.prompt);
     const why = launch(s, b.prompt, null);
@@ -185,7 +194,8 @@ export namespace Sessions {
     const h = Holders.named(s.id, s.dir, launches);
     Session.set(s.id, { launches, unit: h.unit, sock: h.sock });
     const first = s.launches > 0 && s.sdk === "" ? Session.runs(s.id)[0]?.prompt ?? prompt : prompt;
-    const why = Holders.launch(h, "Kunumy work session " + s.name, { driver: "claude-code", prompt: first === prompt ? prompt : first + "\n\n" + prompt, resume: s.sdk, rules: config.ASK });
+    const t = HOOKS.tools;
+    const why = Holders.launch(h, "Kunumy work session " + s.name, { driver: "claude-code", prompt: first === prompt ? prompt : first + "\n\n" + prompt, resume: s.sdk, rules: config.ASK, scratch: t === null ? {} : Tools.scratch(t), tools: t === null ? [] : Tools.kit(t, s.agent) });
     if (why !== null) {
       after(s.id, Session.move(s.id, "failed", why, about === null ? null : { about, text: why }) ?? []);
       return why;
@@ -219,6 +229,41 @@ export namespace Sessions {
     Session.unheard(id).filter((say) => say.mode !== "queue").forEach((say) => Holders.send(id, { $: "say", id: say.id, text: say.text, answer: say.mode === "answer" }));
   }
 
+  // a call of Kunumy's tools its holder sent, run once: its result sent
+  // as soon as it's in, and again each time the holder tells the call
+  // again till it took it. One a server before this one started runs
+  // again, as Tools.held_call says
+  function call(id: string, c: string, tool: string, input: Record<string, unknown>): void {
+    const s = Session.get(id);
+    const kept = Session.call(c);
+    if (s === null || HOOKS.tools === null || CALLS.has(c)) {
+      return;
+    }
+    if (kept !== null && kept.out !== null) {
+      Holders.send(id, { $: "result", id: c, out: Wire.out(JSON.parse(kept.out)) });
+      return;
+    }
+    if (kept === null && !Session.calling({ id: c, session: id, tool, input: JSON.stringify(input), at: Date.now() })) {
+      return;
+    }
+    const stop = new AbortController();
+    CALLS.set(c, { session: id, stop });
+    void Tools.held_call(HOOKS.tools, s.agent, tool, input, c, kept !== null, stop.signal).catch((err: unknown) => ({ text: err_why(err), fail: true })).then((out) => {
+      CALLS.delete(c);
+      Session.called(c, out);
+      Holders.send(id, { $: "result", id: c, out });
+    });
+  }
+
+  function args_of(input: string): Record<string, unknown> {
+    try {
+      const x: unknown = JSON.parse(input);
+      return rec(x) ? x : {};
+    } catch {
+      return {};
+    }
+  }
+
   // one event taken into the record, once: what's left to do after it
   function take(id: string, told: Told): Effect[] {
     const fx = Session.apply(id, told);
@@ -242,6 +287,7 @@ export namespace Sessions {
         }
       } else if (f.do === "uncard") {
         (f.ask === null ? [...(waits?.values() ?? [])] : [waits?.get(f.ask)]).forEach((w) => w?.abort());
+        (f.ask === null ? [...CALLS.values()].filter((c) => c.session === id) : []).forEach((c) => c.stop.abort());
       } else {
         next_run(id);
       }
@@ -269,17 +315,12 @@ export namespace Sessions {
   // for an answer, which goes to the holder
   function arm(s: Session, p: Parked): void {
     const waits = cards(s.id);
-    if (HOOKS.gate === null || waits.has(p.id) || p.ok !== null) {
+    if (HOOKS.tools === null || waits.has(p.id) || p.ok !== null) {
       return;
     }
     const stop = new AbortController();
     waits.set(p.id, stop);
-    let input: Record<string, unknown> = {};
-    try {
-      const x: unknown = JSON.parse(p.input);
-      input = rec(x) ? x : {};
-    } catch {}
-    void Gate.wait(HOOKS.gate, s.agent, SESSION + s.name, "session", p.tool, input, p.what, stop.signal, HOOKS.asked).then((said) => {
+    void Gate.wait(HOOKS.tools.gate, s.agent, SESSION + s.name, "session", p.tool, args_of(p.input), p.what, stop.signal, HOOKS.asked).then((said) => {
       waits.delete(p.id);
       if (said !== null) {
         Session.answer(p.id, said.ok, said.note);
