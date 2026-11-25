@@ -95,7 +95,6 @@ test.concurrent("a session's call of Kunumy's tools while a server from before t
   const t = tag();
   await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
   await fake.next(t + "-done", { what: "tool", calls: [["search", { query: "heron-" + t }]] });
-  await fake.next("runs no tools for work sessions", { what: "reply", text: t + " told" });
   const s = await k.session("ol", t + ": work", repo());
   await until("the command running", () => waiting(t));
   await k.kill();
@@ -111,7 +110,6 @@ test.concurrent("a session's call of Kunumy's tools approved under a server from
   const k = await Kny.up({ ask: [{ what: "Zoom", tools: "zoom", args: "" }] });
   const t = tag();
   await fake.next(t + ": work", { what: "tool", calls: [["zoom", { id: 1 }]] });
-  await fake.next("runs no tools for work sessions", { what: "reply", text: t + " told" });
   const s = await k.session("oa", t + ": work", repo());
   await s.status("waiting");
   await k.kill();
