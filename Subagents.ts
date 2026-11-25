@@ -116,8 +116,8 @@ export namespace Subagents {
       return "Subagents run as systemd user units, and systemd-run isn't here. Nothing started.";
     }
     const taken = new Set(Session.list(agent).map((s) => s.name));
-    // each task's repo and branch, so two don't take the same
-    const branches = new Set<string>();
+    // each task's branch and its repo's git folder, so no two clash
+    const branches: Array<{ git: string; branch: string }> = [];
     const offered = new Set(Pick.models(config.OFFER.vendors, config.OFFER.models).map(([, m]) => m.label));
     const out: Task[] = [];
     for (const [k, x] of all.entries()) {
@@ -126,7 +126,7 @@ export namespace Subagents {
       const role: Role = { model: t.model === undefined ? null : text_of(t.model, "null"), effort: t.effort === undefined ? null : text_of(t.effort, "null") };
       const name = t.name === undefined ? fresh(taken) : text_of(t.name, "").trim();
       const repo = t.repo === undefined ? "" : text_of(t.repo, "").trim();
-      const top = repo === "" ? { dir: "" } : Worktree.top(Machine.home(repo));
+      const top = repo === "" ? { dir: "", git: "" } : Worktree.top(Machine.home(repo));
       const pick = role.model !== null && !offered.has(role.model) ? null : picked(base, role, name);
       const vendor = pick?.vendor;
       const bad = task === "" ? "no task text" :
@@ -138,17 +138,18 @@ export namespace Subagents {
         return Sub.refused(k, task, bad ?? "");
       }
       const write = t.write !== false;
-      const given = text_of(t.branch, "").trim();
-      const branch = top.dir !== "" && write ? given || "troop/" + name : "";
-      const no_branch = given !== "" && branch === "" ? (top.dir === "" ? "branch needs a repo: without one it works in a folder of its own" : "branch needs write true: with write false it works on no branch") :
+      const named = text_of(t.branch, "").trim();
+      const branch = top.dir !== "" && write ? named || "troop/" + name : "";
+      const other = branch === "" ? undefined : branches.find((b) => b.git === top.git && Worktree.clash(b.branch, branch))?.branch;
+      const no_branch = named !== "" && branch === "" ? (top.dir === "" ? "branch needs a repo: without one it works in a folder of its own" : "branch needs write true: with write false it works on no branch") :
         branch === "" ? null :
-        branches.has(top.dir + "\0" + branch) ? "another of these tasks works on branch " + branch + " in " + top.dir + " already: give each its own" :
+        other !== undefined ? "another of these tasks works on branch " + other + " in this repo" + (other === branch ? " already: give each its own" : ", which git can't keep beside " + branch + ": pick another name") :
         Worktree.taken(top.dir, branch);
       if (no_branch !== null) {
         return Sub.refused(k, task, no_branch);
       }
       taken.add(name);
-      branches.add(top.dir + "\0" + branch);
+      branches.push({ git: top.git, branch });
       out.push({ task, name, role, pick, account: ACCOUNTS[pick.vendor](a.claude), memory: typeof t.memory === "boolean" ? t.memory : top.dir === "", repo: top.dir, base: top.dir === "" ? "" : Worktree.named(top.dir, text_of(t.base ?? "", "").trim() || "HEAD"), branch, write, mcp: t.mcp !== false, browser: t.browser !== false });
     }
     return out;

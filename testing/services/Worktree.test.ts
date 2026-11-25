@@ -31,6 +31,16 @@ test("a branch the repo has already, locally or on a remote, is refused", () => 
   expect(Worktree.make(r, "main", "feat/remote-only", place(r, "b"))).toBe("The repo has a branch origin/feat/remote-only already: a session works on a new branch, so pick another name");
 });
 
+test("a branch git can't keep beside one the repo has, a folder of it or its parent, is refused", () => {
+  const r = repo();
+  git(r, "branch", "feat/x", "main");
+  git(r, "push", "-q", "origin", "main:release/1");
+  git(r, "fetch", "-q", "origin");
+  expect(Worktree.make(r, "main", "feat", place(r, "a"))).toBe("The repo has a branch feat/x already, which git can't keep beside feat: pick another name");
+  expect(Worktree.make(r, "main", "release/1/hotfix", place(r, "b"))).toBe("The repo has a branch origin/release/1 already, which git can't keep beside release/1/hotfix: pick another name");
+  expect(Worktree.make(r, "main", "feat-x", place(r, "c"))).toBeNull();
+});
+
 test("a session started from HEAD starts from the repo's branch", () => {
   const r = repo();
   expect(Worktree.named(r, "HEAD")).toBe("main");

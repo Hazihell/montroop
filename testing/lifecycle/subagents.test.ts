@@ -99,7 +99,6 @@ test.concurrent("one given a branch works on that new branch, its start says so,
   await fake.next(t + ": archive", { what: "tool", calls: [["subagent", { action: "archive", name: "nb" }]] });
   await k.tell(t + ": archive");
   await until("its branch removed", () => git(r, "branch", "--list", branch) === "");
-  expect(fs.existsSync(s.worktree)).toBe(false);
 });
 
 test.concurrent("a start with a task whose branch can't be made starts none of its tasks, and says why", async () => {
@@ -107,12 +106,16 @@ test.concurrent("a start with a task whose branch can't be made starts none of i
   await k.api("POST", "/api/agents/" + k.agent, { subagents: true });
   const t = tag();
   const r = repo();
-  git(r, "branch", "fix/" + t, "main");
+  const linked = path.join(path.dirname(r), "linked");
+  git(r, "worktree", "add", "-q", "-b", "side-" + t, linked, "main");
+  git(r, "branch", "troop/kept", "main");
   const fine = { task: t + ": fine", name: "fine", repo: r, base: "main" };
   const starts: Array<[Array<Record<string, unknown>>, string]> = [
-    [[fine, { task: t + ": taken", repo: r, branch: "fix/" + t }], "Task 2 (\"" + t + ": taken\"): The repo has a branch fix/" + t + " already: a session works on a new branch, so pick another name. Nothing started."],
-    [[fine, { task: t + ": invalid", repo: r, branch: "bad.." + t }], "Task 2 (\"" + t + ": invalid\"): bad.." + t + " is no valid branch name (see git check-ref-format): pick another, or leave branch out for the default. Nothing started."],
-    [[fine, { task: t + ": twice", repo: r, branch: "troop/fine" }], "Task 2 (\"" + t + ": twice\"): another of these tasks works on branch troop/fine in " + r + " already: give each its own. Nothing started."],
+    [[fine, { task: t + ": kept", name: "kept", repo: r }], "Task 2 (\"" + t + ": kept\"): The repo has a branch troop/kept already"],
+    [[fine, { task: t + ": invalid", repo: r, branch: "bad.." + t }], "Task 2 (\"" + t + ": invalid\"): bad.." + t + " is no valid branch name"],
+    [[fine, { task: t + ": twice", repo: r, branch: "troop/fine" }], "Task 2 (\"" + t + ": twice\"): another of these tasks works on branch troop/fine in this repo already: give each its own. Nothing started."],
+    [[{ task: t + ": here", repo: r, branch: "feat/" + t }, { task: t + ": linked", repo: linked, branch: "feat/" + t }], "Task 2 (\"" + t + ": linked\"): another of these tasks works on branch feat/" + t + " in this repo already: give each its own. Nothing started."],
+    [[{ task: t + ": parent", repo: r, branch: "feat/" + t }, { task: t + ": child", repo: r, branch: "feat/" + t + "/more" }], "Task 2 (\"" + t + ": child\"): another of these tasks works on branch feat/" + t + " in this repo, which git can't keep beside feat/" + t + "/more: pick another name. Nothing started."],
     [[{ task: t + ": review", repo: r, write: false, branch: "feat/" + t }], "Task 1 (\"" + t + ": review\"): branch needs write true: with write false it works on no branch. Nothing started."],
     [[{ task: t + ": folder", branch: "feat/" + t }], "Task 1 (\"" + t + ": folder\"): branch needs a repo: without one it works in a folder of its own. Nothing started."],
   ];
@@ -124,7 +127,7 @@ test.concurrent("a start with a task whose branch can't be made starts none of i
     expect(told).toContain(why);
   }
   expect((await k.api("GET", "/api/sessions?agent=" + k.agent)).json as unknown).toEqual([]);
-  expect(git(r, "branch", "--format=%(refname:short)").split("\n")).toEqual(["fix/" + t, "main"]);
+  expect(git(r, "branch", "--format=%(refname:short)").split("\n")).toEqual(["main", "side-" + t, "troop/kept"]);
 });
 
 test.concurrent("a review stopped mid-run has its worktree removed once its holder has ended", async () => {

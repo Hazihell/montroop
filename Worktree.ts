@@ -15,10 +15,18 @@ export namespace Worktree {
     return { ok: r.code === 0, out: output(r) };
   }
 
-  // the repo's top folder, or why it's none
-  export function top(repo: string): { dir: string } | { why: string } {
-    const r = git(repo, ["rev-parse", "--show-toplevel"]);
-    return r.ok ? { dir: r.out } : { why: repo + " is no git repository: " + r.out };
+  // the repo's top folder and the git folder its worktrees share, or why
+  // it's none
+  export function top(repo: string): { dir: string; git: string } | { why: string } {
+    const r = git(repo, ["rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir"]);
+    const [dir, shared] = r.out.split("\n");
+    return r.ok ? { dir, git: shared } : { why: repo + " is no git repository: " + r.out };
+  }
+
+  // whether git can't keep branches a and b in one repo: the same name,
+  // or one a folder of the other
+  export function clash(a: string, b: string): boolean {
+    return a === b || a.startsWith(b + "/") || b.startsWith(a + "/");
   }
 
   // the ref a session starts from, as one that means the same in its
@@ -35,16 +43,22 @@ export namespace Worktree {
   }
 
   // why branch can't be a session's new branch: no valid name, or one
-  // the repo has already, locally or on a remote; null: it can
+  // the repo has already, locally or on a remote, or can't keep beside
+  // one it has; null: it can
   export function taken(repo: string, branch: string): string | null {
     const name = git(repo, ["check-ref-format", "--branch", branch]);
     if (!name.ok || name.out !== branch) {
       return branch + " is no valid branch name (see git check-ref-format): pick another, or leave branch out for the default";
     }
-    const remotes = git(repo, ["remote"]).out.split("\n").filter((r) => r !== "");
-    const refs = ["refs/heads/" + branch, ...remotes.map((r) => "refs/remotes/" + r + "/" + branch)];
-    const had = refs.find((ref) => git(repo, ["rev-parse", "--verify", "--quiet", ref]).ok);
-    return had === undefined ? null : "The repo has a branch " + had.replace(/^refs\/(heads|remotes)\//, "") + " already: a session works on a new branch, so pick another name";
+    const spaces = ["refs/heads/", ...git(repo, ["remote"]).out.split("\n").filter((r) => r !== "").map((r) => "refs/remotes/" + r + "/")];
+    const refs = git(repo, ["for-each-ref", "--format=%(refname)", ...spaces]).out.split("\n");
+    for (const ref of refs) {
+      const had = spaces.filter((p) => ref.startsWith(p)).map((p) => ref.slice(p.length)).find((b) => clash(b, branch));
+      if (had !== undefined) {
+        return "The repo has a branch " + ref.replace(/^refs\/(heads|remotes)\//, "") + " already" + (had === branch ? ": a session works on a new branch, so pick another name" : ", which git can't keep beside " + branch + ": pick another name");
+      }
+    }
+    return null;
   }
 
   // null: made; else why not
