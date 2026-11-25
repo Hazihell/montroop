@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import * as path from "node:path";
 import { chromium, type Browser, type Page } from "playwright-core";
-import { fake, Kny, repo, ROOT, tag, until } from "../rig.ts";
+import { fake, Kny, repo, until } from "../rig.ts";
 
 let browser: Browser;
 
@@ -62,10 +62,8 @@ test.concurrent("the owner opens a work session from what runs, reads its report
   await k.kill();
 });
 
-// its agent on another vendor, which the limit doesn't stop
 test.concurrent("the owner sees in what runs a subagent's task and model, and that it waits on a usage limit till its reset, and opens it", async () => {
-  const model = "openai-api:gpt-6-luna:low:slow";
-  const k = await Kny.up({ vendors: "claude-sub,openai-api", pick: model, compactor: model, agents: model }, ROOT, { openai: "sk-proj-test-" + tag() });
+  const k = await Kny.up();
   await fake.next("j3: tally the herons", { what: "error", kind: "usage-limit", reset: Date.now() + 3600e3 });
   const [s] = await k.subagents({ task: "j3: tally the herons", name: "tally", model: "haiku-5.5", memory: false });
   await until("it waits on the limit", async () => (await s.page()).waits === "limit");

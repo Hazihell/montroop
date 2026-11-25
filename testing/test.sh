@@ -47,4 +47,7 @@ bun testing/fake/server.ts "$T/certs" > "$T/fake.log" 2>&1 &
 for _ in $(seq 100); do grep -q "fake up" "$T/fake.log" && break; sleep 0.05; done
 grep -q "fake up" "$T/fake.log" || { cat "$T/fake.log"; exit 1; }
 
-bun test --parallel --timeout 30000 "${@:-testing/}"
+# at most 4 of a file's tests at once: each lifecycle test starts a server,
+# holders and Claude Code, and more at once stretch every one of them toward
+# the whole run's length
+bun test --parallel --max-concurrency 4 --timeout 30000 "${@:-testing/}"

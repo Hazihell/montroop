@@ -10,7 +10,7 @@
 
 ## How to test
 
-`bun run test` runs the suite (`bun run check` runs it last), in about 10 s; `bun run test testing/lifecycle/crash.test.ts` runs a part. It runs in namespaces of its own: no network, so no real model is ever called, its own processes, ports and home, and no systemd. It needs unprivileged user namespaces (Ubuntu: `sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0`) and Playwright's browser (`bunx playwright-core install chromium-headless-shell`). Its layers, in `testing/`:
+`bun run test` runs the suite (`bun run check` runs it last), in about 20 s; `bun run test testing/lifecycle/crash.test.ts` runs a part. It runs in namespaces of its own: no network, so no real model is ever called, its own processes, ports and home, and no systemd. It needs unprivileged user namespaces (Ubuntu: `sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0`) and Playwright's browser (`bunx playwright-core install chromium-headless-shell`). Its layers, in `testing/`:
 
 - `rules/`: pure logic, literal inputs and outputs.
 - `services/`: modules on a real database and files of the test file's own (`home.ts`, imported first) and real git repos; nothing of ours mocked.

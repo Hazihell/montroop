@@ -2,7 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { chat, down, fake, gate, git, Kny, repo, ROOT, said, tag, until, VIAS, waiting } from "../rig.ts";
+import { chat, down, fake, gate, git, Kny, repo, ROOT, said, SUB, tag, until, VIAS, waiting } from "../rig.ts";
 
 afterAll(down);
 
@@ -14,13 +14,13 @@ function results(log: Log, text: string): Log {
 }
 
 // the earliest model call whose newest message has match, as ms since 1970
-// (a summary of its agent's chat aside)
 async function asked(match: string): Promise<number> {
-  return Math.min(...(await fake.seen(match)).filter((s) => !s.latest.startsWith("Compaction:")).map((s) => Date.parse(s.at)));
+  return Math.min(...(await fake.seen(match)).map((s) => Date.parse(s.at)));
 }
 
+// its chat on claude-sub, which lists Kunumy's tools through Claude Code
 test.concurrent("the subagent tool is offered, in place of spawn, tell, stop and session, only to an agent whose setting turns it on", async () => {
-  const k = await Kny.up();
+  const k = await Kny.up(SUB);
   const [off, on] = [tag(), tag()];
   await k.tell(off + ": hello");
   await until("its turn", async () => (await fake.seen(off + ": hello")).length > 0);
@@ -33,8 +33,9 @@ test.concurrent("the subagent tool is offered, in place of spawn, tell, stop and
   expect(await tools(on)).toEqual(["subagent"]);
 });
 
+// its chat on claude-sub, which calls Kunumy's subagent tool through Claude Code
 test.concurrent("one with no repo starts with its agent's view, in a folder of its own, and zooms its agent's memory", async () => {
-  const k = await Kny.up();
+  const k = await Kny.up(SUB);
   const t = tag();
   await fake.next(t + ": remember", { what: "reply", text: "Noted." });
   await k.tell(t + ": remember the heron-" + t);
@@ -105,14 +106,12 @@ test.concurrent("one lists with its task, model and effort, and how full its con
   expect(await s.status("done")).toMatchObject({ task: t + ": count the herons", model: "haiku-5.5", effort: "low", meter: { tokens: 32000, window: 1e6 } });
 });
 
-// its agent on another vendor, which the limit doesn't stop
 test.concurrent("one waiting out a usage limit lists as waiting on it, with its reset, till it is stopped, and not once resumed", async () => {
-  const model = "openai-api:gpt-6-luna:low:slow";
-  const k = await Kny.up({ vendors: "claude-sub,openai-api", pick: model, compactor: model, agents: model }, ROOT, { openai: "sk-proj-test-" + tag() });
+  const k = await Kny.up();
   const t = tag();
   const reset = Date.now() + 3600e3;
   await fake.next(t + ": work", { what: "error", kind: "usage-limit", reset });
-  const [s] = await k.subagents({ task: t + ": work", name: "lw", model: "haiku-5.5", memory: false });
+  const [s] = await k.subagents({ task: t + ": work", name: "lw", memory: false });
 
   const parked = await until("it waits on the limit", async () => {
     const p = await s.page();
@@ -145,14 +144,12 @@ test.concurrent("a usage limit is waited out in its holder, and it goes on by it
   expect(await said(k, s.woke("failed:"))).toBe(0);
 });
 
-// its agent on another vendor, which the limit doesn't stop
 test.concurrent("a long usage limit wakes its agent once, and the user's word that it was reset early (resume) has it ask again", async () => {
-  const model = "openai-api:gpt-6-luna:low:slow";
-  const k = await Kny.up({ vendors: "claude-sub,openai-api", pick: model, compactor: model, agents: model }, ROOT, { openai: "sk-proj-test-" + tag() });
+  const k = await Kny.up();
   const t = tag();
   const reset = Date.now() + 3600e3;
   await fake.next(t + ": work", { what: "error", kind: "usage-limit", reset });
-  const [s] = await k.subagents({ task: t + ": work", name: "lr", model: "haiku-5.5", memory: false });
+  const [s] = await k.subagents({ task: t + ": work", name: "lr", memory: false });
   await until("the limit's wake", async () => await said(k, s.woke("waiting: a usage limit, till ")) === 1);
   await fake.lift(reset);
   await fake.next(t + ": it was reset", { what: "tool", calls: [["resume", {}]] });
@@ -183,7 +180,7 @@ test.concurrent("one at work through a server restart goes on in the same holder
 
 test.concurrent("one on an API key runs Kunumy's loop, and its calls of Kunumy's tools, on a device and on its agent's memory, are answered; its latest request's tokens make its meter", async () => {
   const model = "claude-api:haiku-5.5:low:slow";
-  const k = await Kny.up({ vendors: "claude-api", pick: model, compactor: model, agents: model }, ROOT, { anthropic: "sk-ant-api03-test-" + tag() });
+  const k = await Kny.up({ vendors: "claude-api", pick: model, compactor: model }, ROOT, { anthropic: "sk-ant-api03-test-" + tag() });
   const t = tag();
   await k.device("box");
   await fake.next(t + ": work", { what: "tool", calls: [["shell", { device: "box", command: "echo " + t + "-ran" }], ["search", { query: "heron-" + t }]] });

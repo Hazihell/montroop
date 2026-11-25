@@ -11,7 +11,8 @@ import type { Spec } from "../../Machine.ts";
 import { Rules, type Rule } from "../../Rules.ts";
 import { Tools } from "../../Tools.ts";
 import type { Ev, Told } from "../../Wire.ts";
-import { fake, ROOT, tag, until } from "../rig.ts";
+import { EMAIL } from "../fake/server.ts";
+import { claude_signed, fake, ROOT, tag, until } from "../rig.ts";
 
 const jwt = (claims: object) => [{ alg: "none" }, { exp: Math.floor(Date.now() / 1e3) + 10 * 86400, ...claims }].map((x) => Buffer.from(JSON.stringify(x)).toString("base64url")).join(".") + ".fake";
 
@@ -19,11 +20,10 @@ const jwt = (claims: object) => [{ alg: "none" }, { exp: Math.floor(Date.now() /
 // each credential its own, as the fake keeps a usage limit per credential
 function signed(dir: string): string {
   const own = crypto.randomUUID().slice(0, 8);
-  fs.mkdirSync(path.join(dir, "claude-sub"), { recursive: true });
-  fs.writeFileSync(path.join(dir, "claude-sub", ".credentials.json"), JSON.stringify({ claudeAiOauth: { accessToken: "sk-ant-oat01-test-" + own, refreshToken: "sk-ant-ort01-test-" + own, expiresAt: 4102444800000, scopes: ["user:inference", "user:profile", "user:sessions:claude_code", "user:mcp_servers"], subscriptionType: "max" } }));
+  claude_signed(path.join(dir, "claude-sub"), own);
   fs.writeFileSync(path.join(dir, "keys.json"), JSON.stringify({ anthropic: "sk-ant-api03-test-" + own, openai: "sk-proj-test-" + own }));
   const auth = { "https://api.openai.com/auth": { chatgpt_account_id: own, chatgpt_plan_type: "plus" } };
-  fs.writeFileSync(path.join(dir, "chatgpt.json"), JSON.stringify({ auth_mode: "chatgpt", OPENAI_API_KEY: null, tokens: { id_token: jwt({ email: "tester@example.com", ...auth }), access_token: jwt(auth), refresh_token: "rt_" + own, account_id: own }, last_refresh: new Date().toISOString() }));
+  fs.writeFileSync(path.join(dir, "chatgpt.json"), JSON.stringify({ auth_mode: "chatgpt", OPENAI_API_KEY: null, tokens: { id_token: jwt({ email: EMAIL, ...auth }), access_token: jwt(auth), refresh_token: "rt_" + own, account_id: own }, last_refresh: new Date().toISOString() }));
   return dir;
 }
 

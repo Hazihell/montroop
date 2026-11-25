@@ -8,7 +8,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Hold } from "../Hold.ts";
 import { wake_text } from "../Wake.ts";
-import type { Order } from "./fake/server.ts";
+import { ACCOUNT, EMAIL, type Order } from "./fake/server.ts";
 
 export const ROOT = path.resolve(import.meta.dir, "..");
 const CONTROL = "http://127.0.0.1:9999";
@@ -96,6 +96,14 @@ function port(): number {
   throw new Error("no port left");
 }
 
+// the agent's chat and compactor run on Kunumy's own loop, so a turn starts
+// no Claude Code and a usage limit on claude-sub doesn't stop them: work
+// sessions and subagents (subagents()) run Claude Code on claude-sub all
+// the same. A test of the chat on claude-sub passes SUB.
+const CHAT = "openai-api:gpt-6-luna:low:slow";
+const SUB_MODEL = "claude-sub:haiku-5.5:low:slow";
+export const SUB = { pick: SUB_MODEL, compactor: SUB_MODEL };
+
 // a Kunumy server on a data folder of its own, with fake sign-ins to
 // Claude; root: the checkout it runs (another version's, see older())
 export class Kny {
@@ -116,13 +124,11 @@ export class Kny {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "kny-"));
     const k = new Kny(path.join(home, ".kunumy"), port(), root);
     UP.push(k);
-    fs.mkdirSync(path.join(k.dir, "claude-sub"), { recursive: true });
-    const model = "claude-sub:haiku-5.5:low:slow";
-    fs.writeFileSync(path.join(k.dir, "config.json"), JSON.stringify({ owner: "tester@example.com", vendors: "claude-sub", pick: model, compactor: model, agents: model, ...more }));
-    fs.writeFileSync(path.join(k.dir, "keys.json"), JSON.stringify(keys));
-    // a sign-in of its own, as the fake keeps a usage limit per credential
+    // a sign-in and key of its own, as the fake keeps a usage limit per credential
     const own = tag();
-    fs.writeFileSync(path.join(k.dir, "claude-sub", ".credentials.json"), JSON.stringify({ claudeAiOauth: { accessToken: "sk-ant-oat01-test-" + own, refreshToken: "sk-ant-ort01-test-" + own, expiresAt: 4102444800000, scopes: ["user:inference", "user:profile", "user:sessions:claude_code", "user:mcp_servers"], subscriptionType: "max" } }));
+    claude_signed(path.join(k.dir, "claude-sub"), own);
+    fs.writeFileSync(path.join(k.dir, "config.json"), JSON.stringify({ owner: "tester@example.com", vendors: "claude-sub,openai-api", pick: CHAT, compactor: CHAT, ...more }));
+    fs.writeFileSync(path.join(k.dir, "keys.json"), JSON.stringify({ openai: "sk-proj-test-" + own, ...keys }));
     await k.start();
     await k.login();
     const agents = (await k.api("GET", "/api/agents")).json as { agents: Array<{ id: string }> };
@@ -228,11 +234,12 @@ export class Kny {
   }
 
   // a subagent or several its agent starts in one call of the subagent
-  // tool (its setting turned on first), each on its task's options
+  // tool (its setting turned on first), each on its task's options, by
+  // default on claude-sub's haiku-5.5
   async subagents(...tasks: Json[]): Promise<Session[]> {
     await this.api("POST", "/api/agents/" + this.agent, { subagents: true });
     const t = tag();
-    await fake.next(t + ": start", { what: "tool", calls: [["subagent", { action: "start", tasks }]] });
+    await fake.next(t + ": start", { what: "tool", calls: [["subagent", { action: "start", tasks: tasks.map((task) => ({ model: "haiku-5.5", ...task })) }]] });
     await this.tell(t + ": start");
     return await Promise.all(tasks.map(async (task) => {
       const row = await until("subagent " + String(task.name), async () => ((await this.api("GET", "/api/sessions?agent=" + this.agent)).json as unknown as Array<{ id: string; name: string }>).find((x) => x.name === task.name));
@@ -341,6 +348,15 @@ export function older(version = Number(/export const VERSION = (\d+);/.exec(fs.r
 export async function down(): Promise<void> {
   DEVICES.splice(0).forEach((p) => p.kill("SIGKILL"));
   await Promise.all(UP.splice(0).map((k) => k.kill()));
+}
+
+// a Claude Code config folder signed in to the fake's account, with the
+// account as `claude auth login` keeps it: without it, Claude Code fetches
+// it while its first requests go out, which then lack it
+export function claude_signed(dir: string, own: string): void {
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, ".credentials.json"), JSON.stringify({ claudeAiOauth: { accessToken: "sk-ant-oat01-test-" + own, refreshToken: "sk-ant-ort01-test-" + own, expiresAt: 4102444800000, scopes: ["user:inference", "user:profile", "user:sessions:claude_code", "user:mcp_servers"], subscriptionType: "max" } }));
+  fs.writeFileSync(path.join(dir, ".claude.json"), JSON.stringify({ oauthAccount: { accountUuid: ACCOUNT, emailAddress: EMAIL, organizationUuid: ACCOUNT } }));
 }
 
 // a text of the test's own, so the fake's orders reach only its calls

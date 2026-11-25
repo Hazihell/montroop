@@ -11,7 +11,7 @@ export type Order =
 
 type Said = { role: string; text: string; marked: boolean };
 
-type Seen = { n: number; at: string; vendor: string; path: string; model: string; answer: string; system: string; tools: string[]; said: Said[]; latest: string; headers: Record<string, string>; body: unknown };
+type Seen = { n: number; at: string; vendor: string; path: string; model: string; answer: string; system: string; tools: string[]; said: Said[]; latest: string; compaction: boolean; headers: Record<string, string>; body: unknown };
 
 type Used = { input: number; read: number; write: number };
 
@@ -32,8 +32,8 @@ const CACHED = new Set<string>();
 // as each account has its own limits
 const LIMITED = new Map<string, number>();
 const REFUSE = new Set<string>();
-const EMAIL = "tester@example.com";
-const ACCOUNT = crypto.randomUUID();
+export const EMAIL = "tester@example.com";
+export const ACCOUNT = "5e1f0c2a-7d3b-4f6e-9a8c-1b2d3e4f5a6b";
 const B62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 // a claude.ai connector the fake account has, its calls answered by the
@@ -117,11 +117,14 @@ function cache(segs: string[], marks: number[], lookback = Infinity): Used {
   return { input: Math.max(1, total - read - write), read, write };
 }
 
-// the compactor's calls take only what's matched to their task,
-// "Compaction:" and, if any, a text the task has
+// whether match names a call: a compactor's only by "Compaction:" and, if
+// any, a text its task has, as its orders and lookups are the test's own
+function names(match: string, latest: string, compaction: boolean): boolean {
+  return compaction ? match.startsWith("Compaction:") && latest.includes(match.slice("Compaction:".length).trim()) : latest.includes(match);
+}
+
 function pick(latest: string, compaction: boolean): Order {
-  const task = (match: string) => match.startsWith("Compaction:") && latest.includes(match.slice("Compaction:".length).trim());
-  const k = QUEUE.findIndex((o) => (compaction ? task(o.match) : o.match === "" || latest.includes(o.match)));
+  const k = QUEUE.findIndex((o) => names(o.match, latest, compaction));
   if (k >= 0) {
     return QUEUE.splice(k, 1)[0];
   }
@@ -402,7 +405,7 @@ async function model(req: Request, vendor: Vendor, url: URL): Promise<Response> 
   const until = LIMITED.get(limited) ?? 0;
   const order: Order = until > Date.now() ? { what: "error", kind: "usage-limit", reset: until } : pick(latest, compaction);
   const tools = list(get(body, "tools")).map((t) => str(get(t, "name")) ?? str(get(t, "type")) ?? "");
-  LOG.push({ n: LOG.length + 1, at: new Date().toISOString(), vendor, path: url.pathname, model: name, answer: JSON.stringify(order), system: got.system, tools, said: got.said, latest, headers: Object.fromEntries(req.headers), body });
+  LOG.push({ n: LOG.length + 1, at: new Date().toISOString(), vendor, path: url.pathname, model: name, answer: JSON.stringify(order), system: got.system, tools, said: got.said, latest, compaction, headers: Object.fromEntries(req.headers), body });
   LOG.splice(0, LOG.length - 1000);
   const claude = vendor.startsWith("claude");
   if (order.what === "error") {
@@ -442,7 +445,7 @@ async function control(req: Request): Promise<Response> {
     return json(200, {});
   }
   const match = url.searchParams.get("match") ?? "";
-  const seen = LOG.filter((s) => s.latest.includes(match) && (url.pathname !== "/last" || s.model !== ""));
+  const seen = LOG.filter((s) => (match === "" || names(match, s.latest, s.compaction)) && (url.pathname !== "/last" || s.model !== ""));
   const brief = (s: Seen) => ({ ...s, body: undefined, said: undefined, system: undefined, headers: undefined, latest: s.latest.slice(0, 120) });
   return json(200, { queue: QUEUE, log: url.pathname === "/last" ? seen.slice(-1) : seen.map(brief) });
 }
@@ -461,7 +464,7 @@ if (import.meta.main) {
         return json(200, { input_tokens: tokens(await req.text()) });
       }
       const { answer, called } = url.pathname === "/v1/mcp_servers" ? { answer: connectors(), called: "" } : url.hostname === "mcp-proxy.anthropic.com" ? await gmail(req) : { answer: await sign_in(url, req), called: "" };
-      LOG.push({ n: LOG.length + 1, at: new Date().toISOString(), vendor: url.hostname, path: url.pathname, model: "", answer: answer === null ? "{}" : String(answer.status), system: "", tools: [], said: [], latest: called, headers: Object.fromEntries(req.headers), body: null });
+      LOG.push({ n: LOG.length + 1, at: new Date().toISOString(), vendor: url.hostname, path: url.pathname, model: "", answer: answer === null ? "{}" : String(answer.status), system: "", tools: [], said: [], latest: called, compaction: false, headers: Object.fromEntries(req.headers), body: null });
       return answer ?? json(200, {});
     },
   });
