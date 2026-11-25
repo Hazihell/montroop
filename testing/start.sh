@@ -2,7 +2,7 @@
 set -eu
 R=/rig
 B=http://127.0.0.1:8788
-HOSTS="api.anthropic.com claude.com platform.claude.com console.anthropic.com claude.ai api.openai.com auth.openai.com chatgpt.com"
+HOSTS="api.anthropic.com claude.com platform.claude.com console.anthropic.com mcp-proxy.anthropic.com claude.ai api.openai.com auth.openai.com chatgpt.com"
 mkdir -p $R/logs
 up() { for _ in $(seq 300); do grep -q "$2" "$R/logs/$1" 2> /dev/null && return; sleep 0.2; done; echo "$1: no \"$2\" in 60 s"; tail -20 "$R/logs/$1"; exit 1; }
 
@@ -29,7 +29,7 @@ if [ ! -f ~/.kunumy/config.json ]; then
   mkdir -p ~/.kunumy/claude-sub
   echo '{ "owner": "tester@example.com", "vendors": "claude-sub,claude-api,openai-sub,openai-api", "pick": "claude-sub:sonnet-5.5:low:slow", "compactor": "claude-sub:haiku-5.5:low:slow", "agents": "claude-sub:sonnet-5.5:low:slow" }' > ~/.kunumy/config.json
   echo '{ "anthropic": "sk-ant-api03-rig-fake-key", "openai": "sk-proj-rig-fake-key" }' > ~/.kunumy/keys.json
-  echo '{"claudeAiOauth":{"accessToken":"sk-ant-oat01-rig-fake","refreshToken":"sk-ant-ort01-rig-fake","expiresAt":4102444800000,"scopes":["user:inference","user:profile","user:sessions:claude_code"],"subscriptionType":"max"}}' > ~/.kunumy/claude-sub/.credentials.json
+  echo '{"claudeAiOauth":{"accessToken":"sk-ant-oat01-rig-fake","refreshToken":"sk-ant-ort01-rig-fake","expiresAt":4102444800000,"scopes":["user:inference","user:profile","user:sessions:claude_code","user:mcp_servers"],"subscriptionType":"max"}}' > ~/.kunumy/claude-sub/.credentials.json
   kny serve chatgpt login > $R/logs/chatgpt-login.log
 fi
 

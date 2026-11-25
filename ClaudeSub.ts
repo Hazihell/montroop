@@ -1,7 +1,7 @@
 import * as child from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { Options, Query, SDKMessage, SDKRateLimitInfo, SDKUserMessage, SpawnOptions, SyncHookJSONOutput } from "@anthropic-ai/claude-agent-sdk";
+import type { HookInput, Options, Query, SDKMessage, SDKRateLimitInfo, SDKUserMessage, SpawnOptions, SyncHookJSONOutput } from "@anthropic-ai/claude-agent-sdk";
 import * as Prompts from "./Prompts.ts";
 import { AskAI, type Ask, type End, type Event, type Img, type Try } from "./AskAI.ts";
 import { Agent, BUSY, TOO_LONG, type Emit } from "./Agent.ts";
@@ -11,7 +11,8 @@ import { Machine } from "./Machine.ts";
 import { live_push, type Live } from "./View.ts";
 import * as config from "./Config.ts";
 import { err_why } from "./Err.ts";
-import { get, text_of } from "./Json.ts";
+import { Rules } from "./Rules.ts";
+import { get, rec, text_of } from "./Json.ts";
 
 export const SUMS = 4;
 
@@ -57,6 +58,9 @@ const HOUR = { type: "ephemeral", ttl: "1h" };
 
 const OUTLASTS_CLAUDE_CODES_MCP_TIMEOUT = 1e8;
 
+// seconds a call Claude Code runs itself may wait for the owner's answer
+const OWNER_ANSWERS = 7 * 24 * 3600;
+
 // Kunumy's one MCP server in Claude Code, which names each of its tools for
 // the model mcp__kunumy__<name> (#190)
 const MCP = "kunumy";
@@ -72,6 +76,8 @@ const DIED = "Claude Code ended early";
 const OVERAGE = "usage limit: extra usage";
 
 const STEERING = "new messages came in; they follow, each saying who sent it";
+
+const NO_OWNER = "This call needs the user's approval, and no one can give it here. Don't do it another way.";
 
 
 
@@ -351,6 +357,7 @@ export namespace ClaudeSub {
       return proc;
     };
     const hooks = {
+      PreToolUse    : [{ hooks: [(input: HookInput, _: unknown, { signal }: { signal: AbortSignal }) => gate(ask, input, signal)], timeout: OWNER_ANSWERS, onFailure: "block" as const }],
       PostToolBatch : [{ hooks: [() => Promise.resolve(ClaudeSub.after_tools(code, ask))] }],
     };
     const options = { ...ClaudeSub.options(ask, new AbortController(), sdk.BUILTIN_TOOL_NAMES, sdk.SYSTEM_PROMPT_DYNAMIC_BOUNDARY), pathToClaudeCodeExecutable: bin, spawnClaudeCodeProcess: spawn, hooks };
@@ -535,6 +542,21 @@ export namespace ClaudeSub {
   export function after_tools(code: Code, ask: Ask): SyncHookJSONOutput {
     code.cut = code.over ? "over" : ask.steer?.pending() === true ? "steer" : null;
     return code.cut === null ? {} : { continue: false, stopReason: code.cut === "over" ? OVERAGE : STEERING };
+  }
+
+  // a call Claude Code runs itself (a claude.ai connector's, a web search)
+  // asks the owner by the rules Kunumy's endpoint gates its own tools by
+  // (Tools.gated); with no endpoint (a compaction), a call they name is refused
+  async function gate(ask: Ask, input: HookInput, signal: AbortSignal): Promise<SyncHookJSONOutput> {
+    if (input.hook_event_name !== "PreToolUse" || input.tool_name.startsWith("mcp__" + MCP + "__")) {
+      return {};
+    }
+    const args = rec(input.tool_input) ? input.tool_input : {};
+    const said = ask.server !== "" ? await Agent.rpc(ask.server, signal, "gate", { name: input.tool_name, arguments: args }) : Rules.match(config.ASK, input.tool_name, args, null) === null ? { ok: true, text: "" } : { ok: false, text: NO_OWNER };
+    if (!said.ok) {
+      return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: said.text } };
+    }
+    return said.text === "" ? {} : { hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: said.text } };
   }
 
   export function limit_ended(whole: boolean, hit: boolean, over: boolean, info: SDKRateLimitInfo | null): boolean {

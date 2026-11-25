@@ -36,6 +36,14 @@ const EMAIL = "tester@example.com";
 const ACCOUNT = crypto.randomUUID();
 const B62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
+// a claude.ai connector the fake account has, its calls answered by the
+// fake: one tool that only reads, one that acts
+const CONNECTOR = { id: "mcpsrv_01FakeGmail000000000000", name: "Gmail" };
+const GMAIL_TOOLS = [
+  { name: "list_messages", description: "List the inbox's latest messages.", inputSchema: { type: "object", properties: {} } },
+  { name: "send_message", description: "Send an email.", inputSchema: { type: "object", properties: { to: { type: "string" }, body: { type: "string" } }, required: ["to", "body"] } },
+];
+
 const id = (prefix: string, n = 24, abc = B62) => prefix + Array.from(crypto.randomBytes(n), (b) => abc[b % abc.length]).join("");
 const hex = (prefix: string) => prefix + crypto.randomBytes(25).toString("hex");
 const tokens = (s: string) => Math.ceil(s.length / 4);
@@ -319,7 +327,7 @@ async function sign_in(url: URL, req: Request): Promise<Response | null> {
           ? json(400, { error: "invalid_grant", error_description: "Refresh token not found or invalid" })
           : json(401, { error: { message: "Your refresh token has expired. Please log out and sign in again.", type: "invalid_request_error", code: "refresh_token_expired", param: null } });
       }
-      return json(200, claude ? { token_type: "Bearer", access_token: id("sk-ant-oat01-", 80), refresh_token: id("sk-ant-ort01-", 80), expires_in: 28800, scope: "user:inference user:profile user:sessions:claude_code", account: { uuid: ACCOUNT, email_address: EMAIL }, organization: { uuid: ACCOUNT, name: EMAIL + "'s Organization" } } : chatgpt_tokens());
+      return json(200, claude ? { token_type: "Bearer", access_token: id("sk-ant-oat01-", 80), refresh_token: id("sk-ant-ort01-", 80), expires_in: 28800, scope: "user:inference user:profile user:sessions:claude_code user:mcp_servers", account: { uuid: ACCOUNT, email_address: EMAIL }, organization: { uuid: ACCOUNT, name: EMAIL + "'s Organization" } } : chatgpt_tokens());
     }
     case "/cai/oauth/authorize": {
       const back = new URL(url.searchParams.get("redirect_uri") ?? "");
@@ -337,6 +345,33 @@ async function sign_in(url: URL, req: Request): Promise<Response | null> {
     }
   }
   return null;
+}
+
+function connectors(): Response {
+  return json(200, { data: [{ type: "mcp_server", id: CONNECTOR.id, display_name: CONNECTOR.name, url: "https://gmail.example.com/mcp", created_at: "2026-01-01T00:00:00Z" }], has_more: false, next_page: null });
+}
+
+// the connector over MCP, as Claude Code reaches it through claude.ai's proxy
+async function gmail(req: Request): Promise<Response> {
+  const msg: unknown = await req.json().catch(() => ({}));
+  const [rpc, method, params] = [get(msg, "id"), str(get(msg, "method")), get(msg, "params")];
+  if (rpc === undefined) {
+    return new Response(null, { status: 202 });
+  }
+  const answer = (result: object) => json(200, { jsonrpc: "2.0", id: rpc, result });
+  switch (method) {
+    case "initialize":
+      return answer({ protocolVersion: str(get(params, "protocolVersion")) ?? "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "fake-gmail", version: "1" } });
+    case "tools/list":
+      return answer({ tools: GMAIL_TOOLS });
+    case "tools/call": {
+      const name = str(get(params, "name")) ?? "";
+      const text = name === "send_message" ? "Sent to " + (str(get(get(params, "arguments"), "to")) ?? "") + "." : "No new messages.";
+      return answer({ content: [{ type: "text", text }], isError: false });
+    }
+    default:
+      return answer({});
+  }
 }
 
 async function model(req: Request, vendor: Vendor, url: URL): Promise<Response> {
@@ -409,7 +444,7 @@ if (import.meta.main) {
       if (url.pathname === "/v1/messages/count_tokens") {
         return json(200, { input_tokens: tokens(await req.text()) });
       }
-      const answer = await sign_in(url, req);
+      const answer = url.pathname === "/v1/mcp_servers" ? connectors() : url.hostname === "mcp-proxy.anthropic.com" ? await gmail(req) : await sign_in(url, req);
       LOG.push({ n: LOG.length + 1, at: new Date().toISOString(), vendor: url.hostname, path: url.pathname, model: "", answer: answer === null ? "{}" : String(answer.status), system: "", tools: [], said: [], latest: "", headers: Object.fromEntries(req.headers), body: null });
       return answer ?? json(200, {});
     },

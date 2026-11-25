@@ -315,6 +315,12 @@ export namespace Tools {
         const imgs = (out.imgs ?? []).map((img) => ({ type: "image", data: img.data, mimeType: img.type }));
         return { content: [{ type: "text", text: out.text }, ...imgs], isError: out.fail };
       }
+      // a call the caller's harness runs itself (ClaudeSub): may it run
+      case "gate": {
+        const name = String(params.name);
+        const out = await Tools.gated(tools, who, name, rec(params.arguments) ? params.arguments : {}, null, signal, () => Promise.resolve({ text: "", fail: false }));
+        return { ok: !out.fail, text: out.text.trim() };
+      }
       case "ping": {
         return {};
       }

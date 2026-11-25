@@ -9,7 +9,7 @@ const LEGACY: Record<string, string[]> = {
     "Agent.reset", "Agent.token", "Agent.room", "Agent.seat", "Agent.import_seated_elsewhere",
     "Agent.take_seat", "Agent.leave_seat", "Agent.give_way", "Agent.request", "Agent.send", "Agent.reason",
     "Agent.limited", "Agent.passing", "Agent.stream", "Agent.events", "Agent.use", "Agent.server",
-    "Agent.notes_of", "Agent.call", "Agent.rpc",
+    "Agent.notes_of", "Agent.call",
   ],
   "Anthropic.ts": [
     "Anthropic.headers", "Anthropic.body", "Anthropic.message", "Anthropic.image", "Anthropic.read",
