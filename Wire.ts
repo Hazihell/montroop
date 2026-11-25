@@ -9,16 +9,31 @@
 // ignored (an event still acked), and a message's fields are only ever
 // added, never renamed or removed. v: the sender's VERSION, raised with
 // each change, so a side can tell what the other knows (2: the holder's
-// start names its driver).
+// start names its driver; 3: Kunumy's tools, run by the server, and the
+// devices' scratch folders the rules read).
 
 import type * as net from "node:net";
-import { rec } from "./Json.ts";
+import type { Out } from "./Agent.ts";
+import { get, list, rec, text_of } from "./Json.ts";
+import type { Spec } from "./Machine.ts";
 import type { Rule } from "./Rules.ts";
 
 // a call a rule named, parked until the owner answers it (id: the
 // provider's tool use id, which the answer names; tool and input: the
 // provider's own)
 export type Ask = { id: string; tool: string; input: Record<string, unknown>; what: string };
+
+// a call of one of Kunumy's tools, which the server runs, once however
+// often it's told (id: the provider's tool use id)
+export type Calling = { id: string; tool: string; input: Record<string, unknown> };
+
+// one of Kunumy's tools as a run is offered it; device: the device whose
+// scratch folder the rules read its arguments with, null for the one they
+// name, if any
+export type Kit = Spec & { device: string | null };
+
+// each open device's scratch folder, by its name
+export type Scratch = Record<string, string>;
 
 // a question the run asked its agent (ask_owner), its call waiting
 // for the answer
@@ -46,22 +61,28 @@ export type Ev =
 
 export type Told = { seq: number; at: number; ev: Ev };
 
-export const VERSION = 2;
+export const VERSION = 3;
 
 const CLIP = 2000;
 
-// rules: the ask rules changed; say: a message for the run (answer: the
-// answer to its first question waiting, if one still waits)
+// rules: the ask rules or the scratch folders changed; say: a message for
+// the run (answer: the answer to its first question waiting, if one still
+// waits); result: what a call did, kept by the server till the holder took it
 export type ToHold =
-  | { $: "hello"; v: number; ack: number; rules: Rule[] }
+  | { $: "hello"; v: number; ack: number; rules: Rule[]; scratch: Scratch }
   | { $: "ack"; seq: number }
-  | { $: "rules"; rules: Rule[] }
+  | { $: "rules"; rules: Rule[]; scratch: Scratch }
   | { $: "answer"; id: string; ok: boolean; note: string }
-  | { $: "say"; id: string; text: string; answer: boolean };
+  | { $: "say"; id: string; text: string; answer: boolean }
+  | { $: "result"; id: string; out: Out };
 
+// call: told when made and again after each welcome till its result comes;
+// took: a result is in, the server forgets it
 type FromHold =
   | { $: "welcome"; v: number; seq: number; asks: Ask[]; questions: Asking[] }
-  | ({ $: "ev" } & Told);
+  | ({ $: "ev" } & Told)
+  | ({ $: "call" } & Calling)
+  | { $: "took"; id: string };
 
 export type Outbox = { seq: number; kept: Told[] };
 
@@ -97,6 +118,16 @@ export namespace Wire {
   // a text told cut to what a message carries
   export function clip(text: string): string {
     return text.length > CLIP ? text.slice(0, CLIP) + "…" : text;
+  }
+
+  // what a tool did, as a message carries it (an image's type and data
+  // only, the rest dropped)
+  export function out(x: unknown): Out {
+    const imgs = list(get(x, "imgs")).flatMap((img) => {
+      const [type, data] = [get(img, "type"), get(img, "data")];
+      return typeof type === "string" && typeof data === "string" ? [{ type, data }] : [];
+    });
+    return { text: text_of(get(x, "text")), fail: get(x, "fail") === true, ...(get(x, "imgs") === undefined ? {} : { imgs }) };
   }
 
   export function outbox(seq: number): Outbox {

@@ -16,9 +16,10 @@ type Json = Record<string, unknown>;
 
 type Told = { seq: number; at: number; ev: Json & { k: string } };
 
-// the servers a test file started, killed after it (afterAll(down)), so a
-// failed test leaves none running
+// the servers and devices a test file started, killed after it
+// (afterAll(down)), so a failed test leaves none running
 const UP: Kny[] = [];
+const DEVICES: Bun.Subprocess[] = [];
 
 type Page = {
   status: string; waits: string | null; worktree: string;
@@ -175,6 +176,28 @@ export class Kny {
     }
   }
 
+  // a device of this server's: kny device in a home of its own, signed in,
+  // once the server has used it
+  async device(name: string): Promise<Device> {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "device-"));
+    const conf = path.join(home, ".config");
+    fs.mkdirSync(path.join(conf, "kunumy"), { recursive: true });
+    fs.writeFileSync(path.join(conf, "kunumy", "device.json"), JSON.stringify({ name, work: path.join(home, "work") }));
+    const proc = Bun.spawn(["bun", path.join(this.root, "Cli.ts"), "device", this.url], { cwd: home, env: { ...process.env as Record<string, string>, HOME: home, KNY_DIR: path.join(home, ".kunumy"), XDG_CONFIG_HOME: conf }, stdio: ["ignore", "pipe", "ignore"] });
+    DEVICES.push(proc);
+    let out = "";
+    void (async () => {
+      for await (const chunk of proc.stdout.pipeThrough(new TextDecoderStream())) {
+        out += chunk;
+      }
+    })();
+    const [, t, code] = await until("its sign-in", () => /auth\?t=(\S+)[\s\S]*type this code: (\d+)/.exec(out));
+    await fetch(this.url + "/auth", { method: "POST", headers: { cookie: this.cookie }, body: new URLSearchParams({ t, code }), redirect: "manual" });
+    const d = new Device(home);
+    await until("the server using " + name, () => d.used());
+    return d;
+  }
+
   async session(name: string, prompt: string, repo: string, more: Json = {}): Promise<Session> {
     const r = await this.api("POST", "/api/sessions", { agent: this.agent, repo, base: "main", name, brief: "", prompt, ...more });
     if (r.status !== 200) {
@@ -183,6 +206,24 @@ export class Kny {
     const s = new Session(this, String(r.json.id), name);
     s.worktree = (await s.page()).worktree;
     return s;
+  }
+}
+
+// a device's home, and its scratch folder, where its jobs run
+class Device {
+  readonly scratch: string;
+
+  constructor(readonly home: string) {
+    this.scratch = path.join(home, ".kunumy", "scratch");
+  }
+
+  // whether a server has run a job on it since forget()
+  used(): boolean {
+    return fs.existsSync(path.join(this.scratch, "main"));
+  }
+
+  forget(): void {
+    fs.rmSync(path.join(this.scratch, "main"), { recursive: true, force: true });
   }
 }
 
@@ -253,6 +294,7 @@ export function older(): string {
 }
 
 export async function down(): Promise<void> {
+  DEVICES.splice(0).forEach((p) => p.kill("SIGKILL"));
   await Promise.all(UP.splice(0).map((k) => k.kill()));
 }
 

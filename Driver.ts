@@ -6,6 +6,8 @@
 // and not acked, the log, the calls parked for the owner, the questions
 // waiting for an answer.
 
+import type { Out } from "./Agent.ts";
+import type { Spec } from "./Machine.ts";
 import type { Ev } from "./Wire.ts";
 
 // the credential a run uses: its sign-in folder
@@ -14,8 +16,8 @@ type Account = { dir: string };
 // a run's job: the holder's folder, the folder the model's own tools work
 // in, its account, its model ("": the account's default), its own part of
 // the system prompt, its context: the provider keeps it (native), in the
-// session it resumes ("": a new one)
-export type Job = { dir: string; cwd: string; account: Account; model: string; own: string; context: { kind: "native"; resume: string } };
+// session it resumes ("": a new one); Kunumy's tools, run through io.call
+export type Job = { dir: string; cwd: string; account: Account; model: string; own: string; context: { kind: "native"; resume: string }; tools: Spec[] };
 
 // a tool call as the rules know it (tool and args: shell and its command),
 // and as the provider made it, which the owner's card shows
@@ -31,13 +33,15 @@ export type Inbox = { pending: () => boolean; next: () => Promise<string | null>
 
 // emit: an event told to the server and logged; parks: whether a rule has
 // the owner answer the call first; gate: before a tool runs, parked if a
-// rule says so (stop: dropped); ask: a question to the agent that started
-// the run, waiting for its answer
+// rule says so (stop: dropped); call: one of Kunumy's tools (job.tools),
+// gated, then run once; ask: a question to the agent that started the run,
+// waiting for its answer
 export type Io = {
   emit  : (ev: Ev) => void;
   inbox : Inbox;
   parks : (call: Call) => boolean;
   gate  : (call: Call, stop: AbortSignal) => Promise<Gated>;
+  call  : (call: Call) => Promise<Out>;
   ask   : (text: string) => Promise<string>;
 };
 

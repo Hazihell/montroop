@@ -4,21 +4,23 @@
 // starts, Holders) so the run in it outlives a server restart. Its driver
 // (Driver) does the run, until it has nothing left to do; the holder tells
 // the server everything it does (Wire), parks each call a rule names until
-// the server sends the owner's answer, and passes on the questions the run
-// asks its agent and the messages sent to it. What it tells is also kept in
-// its log, which the server reads what it missed from once the holder is
-// gone.
+// the server sends the owner's answer, has the server run Kunumy's tools,
+// and passes on the questions the run asks its agent and the messages sent
+// to it. What it tells is also kept in its log, which the server reads what
+// it missed from once the holder is gone.
 
 import * as fs from "node:fs";
 import * as net from "node:net";
 import * as path from "node:path";
 import { Code } from "./Code.ts";
+import type { Out } from "./Agent.ts";
 import type { Call, Driver, End, Gated, Inbox, Io, Job } from "./Driver.ts";
 import { err_why } from "./Err.ts";
-import { rec, str } from "./Json.ts";
+import { rec, str, text_of } from "./Json.ts";
+import { spec, STR } from "./Machine.ts";
 import { Rules, type Rule } from "./Rules.ts";
 import { reap } from "./Service.ts";
-import { VERSION, Wire, type Ask, type Asking, type Outbox, type Told } from "./Wire.ts";
+import { VERSION, Wire, type Ask, type Asking, type Calling, type Kit, type Outbox, type Scratch, type Told } from "./Wire.ts";
 
 // what a session keeps for its life: its worktree, its Claude account's
 // folder, its model ("": the account's default) and what its system
@@ -27,13 +29,17 @@ export type Spec = { cwd: string; claude: string; model: string; append: string 
 
 // what one holder starts with: the driver that runs it, its first message,
 // the provider's session it resumes ("": a new one), the rules that ask
-// the owner first, the socket it listens on
-export type Start = { driver: keyof typeof DRIVERS; prompt: string; resume: string; rules: Rule[]; sock: string };
+// the owner first and the devices' scratch folders they read, Kunumy's
+// tools the server runs for it, the socket it listens on
+export type Start = { driver: keyof typeof DRIVERS; prompt: string; resume: string; rules: Rule[]; scratch: Scratch; tools: Kit[]; sock: string };
 
-// a start written before drivers were named runs Claude Code
-type Written = Omit<Start, "driver"> & { driver?: string };
+// a start written before drivers were named runs Claude Code; one before
+// the server ran tools for holders offers none
+type Written = Omit<Start, "driver" | "scratch" | "tools"> & { driver?: string; scratch?: Scratch; tools?: Kit[] };
 
 type Parked = { ask: Ask; done: (g: Gated) => void };
+
+type Sent = { calling: Calling; done: (out: Out) => void };
 
 type Waiting = { q: Asking; done: (answer: string) => void };
 
@@ -41,21 +47,34 @@ type Waiting = { q: Asking; done: (answer: string) => void };
 type Box = { queue: string[]; wake: () => void; shut: boolean };
 
 // a holder's state: what it told and the server hasn't acked, the calls
-// parked, the questions waiting for an answer, the messages the server
-// sent (by id), the driver's, the rules that park a call, the connection
-// that owns it now, how it tells an event
+// parked, the calls the server runs till their results come, the
+// questions waiting for an answer, the messages the server sent (by id),
+// the driver's, the rules that park a call and the devices' scratch
+// folders they read, the connection that owns it now, how it tells an event
 type Held = {
-  out   : Outbox;
-  asks  : Map<string, Parked>;
-  waits : Map<string, Waiting>;
-  says  : Set<string>;
-  box   : Box;
-  rules : Rule[];
-  conn  : net.Socket | null;
-  emit  : Io["emit"];
+  out     : Outbox;
+  asks    : Map<string, Parked>;
+  calls   : Map<string, Sent>;
+  waits   : Map<string, Waiting>;
+  says    : Set<string>;
+  box     : Box;
+  rules   : Rule[];
+  scratch : Scratch;
+  conn    : net.Socket | null;
+  emit    : Io["emit"];
 };
 
 const DRIVERS = { "claude-code": Code.native } satisfies Record<string, Driver>;
+
+// Kunumy's tools the holder answers itself, before those the server runs
+const OWN = [
+  spec("ask_owner", "Ask the agent that started this session a question, when you can't go on without its answer (a decision, missing information). The call waits for the answer, which can take a while; it comes back as this call's result.", { question: STR }, ["question"]),
+  spec("report", "Give your result to the agent that started this session, once, when you're done: what you did, where (branch, commits, files), how you checked it, what is left. Then end your turn.", { result: STR }, ["result"]),
+];
+
+// a gate's wait no one ends: a call of Kunumy's waits for its answer
+// while the run does
+const NEVER = new AbortController().signal;
 
 export const SPEC = "spec.json";
 export const START = "start.json";
@@ -122,16 +141,22 @@ export namespace Hold {
         h.conn.destroy();
       }
       h.conn = s;
-      h.rules = Array.isArray(msg.rules) ? (msg.rules as Rule[]) : h.rules;
+      ruled(h, msg);
       Wire.ack(h.out, Number(msg.ack) || 0);
       Wire.send(s, { $: "welcome", v: VERSION, seq: h.out.seq, asks: [...h.asks.values()].map((a) => a.ask), questions: [...h.waits.values()].map((w) => w.q) });
       h.out.kept.forEach((t) => Wire.send(s, { $: "ev", ...t }));
+      h.calls.forEach((c) => Wire.send(s, { $: "call", ...c.calling }));
     } else if (s !== h.conn) {
       return;
     } else if (msg.$ === "ack") {
       Wire.ack(h.out, Number(msg.seq) || 0);
-    } else if (msg.$ === "rules" && Array.isArray(msg.rules)) {
-      h.rules = msg.rules as Rule[];
+    } else if (msg.$ === "rules") {
+      ruled(h, msg);
+    } else if (msg.$ === "result" && typeof msg.id === "string") {
+      const sent = h.calls.get(msg.id);
+      h.calls.delete(msg.id);
+      Wire.send(s, { $: "took", id: msg.id });
+      sent?.done(Wire.out(msg.out));
     } else if (msg.$ === "answer") {
       answer(h, String(msg.id), msg.ok === true, str(msg.note) ?? "");
     } else if (msg.$ === "say" && typeof msg.id === "string" && typeof msg.text === "string" && !h.says.has(msg.id) && !h.box.shut) {
@@ -146,6 +171,13 @@ export namespace Hold {
       }
       h.emit({ k: "heard", id: msg.id });
     }
+  }
+
+  // the rules and scratch folders a hello or a change gives, each kept as
+  // it was if not given
+  function ruled(h: Held, msg: Record<string, unknown>): void {
+    h.rules = Array.isArray(msg.rules) ? (msg.rules as Rule[]) : h.rules;
+    h.scratch = rec(msg.scratch) ? Object.fromEntries(Object.entries(msg.scratch).filter((e): e is [string, string] => typeof e[1] === "string")) : h.scratch;
   }
 
   function put(box: Box, text: string): void {
@@ -170,14 +202,15 @@ export namespace Hold {
   }
 
   // a call a rule names parked till the owner answers it, or the driver
-  // drops it
-  function gate(h: Held, cwd: string, call: Call, stop: AbortSignal): Promise<Gated> {
-    const rule = Rules.match(h.rules, call.tool, call.args, cwd);
+  // drops it; scratch: the folder the rules read as <scratch>; the card
+  // shows the tool as shown
+  function gate(h: Held, scratch: string | null, call: Call, stop: AbortSignal, shown = call.native): Promise<Gated> {
+    const rule = Rules.match(h.rules, call.tool, call.args, scratch);
     if (rule === null) {
       return Promise.resolve({ ok: true, note: "" });
     }
     return new Promise((ok) => {
-      const ask: Ask = { id: call.id, tool: call.native, input: call.input, what: rule.what };
+      const ask: Ask = { id: call.id, tool: shown, input: call.input, what: rule.what };
       const off = () => {
         if (h.asks.delete(call.id)) {
           h.emit({ k: "dropped", id: call.id });
@@ -203,6 +236,35 @@ export namespace Hold {
     parked.done(ok ? { ok, note: note === "" ? "" : "The user approved this with a note: “" + note + "”" } : { ok, note: "The user denied this (" + parked.ask.what.toLowerCase() + ")" + said + " Don't do it another way; if it's still needed, say so when you finish." });
   }
 
+  // one of Kunumy's tools: the holder's own answered here; the server's
+  // gated as the in-server endpoint gates them (by Kunumy's name, reading
+  // the scratch folder of the device it runs on), then sent to the server,
+  // and again after each hello till its result comes
+  async function call(h: Held, kit: Kit[], c: Call): Promise<Out> {
+    if (c.tool === "ask_owner") {
+      return { text: "The answer: " + await ask(h, text_of(c.args.question)), fail: false };
+    }
+    if (c.tool === "report") {
+      h.emit({ k: "report", text: text_of(c.args.result) });
+      return { text: "Reported. End your turn now.", fail: false };
+    }
+    const tool = kit.find((t) => t.name === c.tool);
+    if (tool === undefined) {
+      return { text: "No tool " + c.tool + ".", fail: true };
+    }
+    const on = tool.device ?? (typeof c.args.device === "string" ? c.args.device : null);
+    const said = await gate(h, on === null ? null : h.scratch[on] ?? null, c, NEVER, c.tool);
+    if (!said.ok) {
+      return { text: said.note, fail: true };
+    }
+    const out = await new Promise<Out>((done) => {
+      const calling: Calling = { id: c.id, tool: c.tool, input: c.args };
+      h.calls.set(c.id, { calling, done });
+      Wire.send(h.conn, { $: "call", ...calling });
+    });
+    return said.note === "" ? out : { ...out, text: out.text + "\n\n(" + said.note + ")" };
+  }
+
   // a question for the run's agent, answered by the next message the
   // server sends as an answer
   function ask(h: Held, text: string): Promise<string> {
@@ -223,7 +285,7 @@ export namespace Hold {
     if (size > 0 && fs.readFileSync(file).at(size - 1) !== 0x0a) {
       fs.writeSync(log, "\n");
     }
-    const h: Held = { out: Wire.outbox(Hold.told(dir).at(-1)?.seq ?? 0), asks: new Map(), waits: new Map(), says: new Set(), box: { queue: [start.prompt], wake: () => {}, shut: false }, rules: start.rules, conn: null, emit: () => {} };
+    const h: Held = { out: Wire.outbox(Hold.told(dir).at(-1)?.seq ?? 0), asks: new Map(), calls: new Map(), waits: new Map(), says: new Set(), box: { queue: [start.prompt], wake: () => {}, shut: false }, rules: start.rules, scratch: start.scratch ?? {}, conn: null, emit: () => {} };
     h.emit = (ev) => {
       const told = Wire.push(h.out, ev, Date.now());
       fs.writeSync(log, JSON.stringify(told) + "\n");
@@ -245,8 +307,9 @@ export namespace Hold {
 
     const name = start.driver ?? "claude-code";
     const driver: Driver | undefined = Object.hasOwn(DRIVERS, name) ? DRIVERS[name as keyof typeof DRIVERS] : undefined;
-    const job: Job = { dir, cwd: spec.cwd, account: { dir: spec.claude }, model: spec.model, own: spec.append, context: { kind: "native", resume: start.resume } };
-    const io: Io = { emit: h.emit, inbox: inbox(h.box), parks: (call) => Rules.match(h.rules, call.tool, call.args, spec.cwd) !== null, gate: (call, stop) => gate(h, spec.cwd, call, stop), ask: (text) => ask(h, text) };
+    const kit = start.tools ?? [];
+    const job: Job = { dir, cwd: spec.cwd, account: { dir: spec.claude }, model: spec.model, own: spec.append, context: { kind: "native", resume: start.resume }, tools: [...OWN, ...kit] };
+    const io: Io = { emit: h.emit, inbox: inbox(h.box), parks: (call) => Rules.match(h.rules, call.tool, call.args, spec.cwd) !== null, gate: (call, stop) => gate(h, spec.cwd, call, stop), call: (c) => call(h, kit, c), ask: (text) => ask(h, text) };
     let end: End;
     try {
       end = driver === undefined ? { ok: false, text: "This holder has no driver " + name + ": a newer kny started it." } : await driver(job, io);

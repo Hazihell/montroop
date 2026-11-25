@@ -47,7 +47,7 @@ const LEGACY: Record<string, string[]> = {
     "Machine.write", "Machine.edit", "Machine.skills", "Machine.skill",
   ],
   "Mcp.ts": [
-    "Mcp.tools", "Mcp.starting", "Mcp.kept", "Mcp.left_note", "Mcp.start", "Mcp.open", "Mcp.listed",
+    "Mcp.tools", "Mcp.starting", "Mcp.left_note", "Mcp.start", "Mcp.open", "Mcp.listed",
     "Mcp.schema", "Mcp.tell", "Mcp.say", "Mcp.out", "Mcp.close", "Mcp.name", "Mcp.reason", "Mcp.answer",
     "Mcp.texts", "Mcp.stdio", "Mcp.device", "Mcp.http",
   ],
@@ -106,7 +106,7 @@ const LEGACY: Record<string, string[]> = {
   ],
   "Tools.ts": [
     "Tools.base", "Tools.fetch", "Tools.answer", "Tools.asker", "Tools.gated", "Tools.shortened",
-    "Tools.listed", "Tools.call", "Tools.seat", "Tools.schedule", "Tools.device_name", "Tools.sync",
+    "Tools.listed", "Tools.call", "Tools.schedule", "Tools.device_name", "Tools.sync",
     "Tools.jobs_gone", "Tools.detach_unless_back", "Tools.forget", "Tools.same_prefix_note", "Tools.plug",
     "Tools.live", "Tools.held", "Tools.open", "Tools.track", "Tools.report",
   ],
