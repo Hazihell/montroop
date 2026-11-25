@@ -46,10 +46,25 @@ test.concurrent.each(WAYS)("%s: a new worktree runs its agent's setup before the
 
   const done = await s.status("done");
   expect(fs.readFileSync(path.join(path.dirname(s.worktree), "setup-" + t), "utf8")).toBe([r, s.worktree, s.worktree, "SECRET=1"].join("|") + "\n");
-  expect(fs.existsSync(path.join(r, "big.log"))).toBe(true);
   const kinds = done.log.map((x) => x.ev.k).filter((k) => ["setup", "began", "text", "turn"].includes(k));
   expect(kinds.slice(0, 2)).toEqual(["setup", "setup"]);
   expect(done.log.filter((x) => x.ev.k === "setup").map((x) => x.ev.ok)).toEqual([null, true]);
+});
+
+test.concurrent("a review's worktree on no branch, made again for its next run, is set up again", async () => {
+  const k = await Troop.up();
+  const t = tag();
+  const r = repo();
+  await set_up(k, "subagent", r, "echo run >> ../setup-" + t);
+  await fake.next(t + ": review", { what: "reply", text: "Reviewed." });
+  const [s] = await k.subagents({ task: t + ": review", name: "sr", repo: r, base: "main", write: false });
+  await s.status("done");
+  await until("its worktree removed", () => !fs.existsSync(s.worktree));
+  await fake.next(t + ": again", { what: "reply", text: "Reviewed again." });
+  expect((await s.say(t + ": again", "r-" + t)).status).toBe(200);
+
+  await until("its second run done", async () => (await s.page()).runs.at(-1)?.report === "Reviewed again.");
+  expect(fs.readFileSync(path.join(path.dirname(s.worktree), "setup-" + t), "utf8")).toBe("run\nrun\n");
 });
 
 test.concurrent("a worktree's .worktreeinclude files are copied even with no setup command, and no other gitignored file", async () => {

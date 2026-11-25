@@ -736,7 +736,7 @@ export namespace Sessions {
     }
     if (action === "list") {
       const rows = mine.length === 0 ? ["You have no " + kind + "s."] : mine.map((x) => x.name + ": " + state(x) + (x.branch === "" ? "" : ", branch " + x.branch) + (x.last === "" ? "" : ", last: " + line(x.last, 80)));
-      return ok([...rows, ...Setup.listed(agent), ...(kind === "subagent" ? [Room.said(Room.now())] : [])].join("\n"));
+      return ok([...rows, ...Setup.listed(agent), ...(kind === "subagent" ? ["This computer: " + Room.said(Room.now()) + "."] : [])].join("\n"));
     }
     const s = mine.find((x) => x.name === arg("name"));
     if (s === undefined) {

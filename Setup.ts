@@ -8,9 +8,10 @@
 // holder, before the first turn, copies the repo's gitignored files that
 // the repo's .worktreeinclude names (as Claude Code does), then runs the
 // command in the worktree with TROOP_REPO (the repo's main checkout) and
-// TROOP_WORKTREE set, for at most TIMEOUT. The output's last lines go into
+// TROOP_WORKTREE set, for at most MINUTES. The output's last lines go into
 // the submon's log; a setup that failed is told to the submon in its first
-// message, so it can fix what it needs.
+// message (again by the next holder, if one dies before its run began), so
+// it can fix what it needs.
 
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
@@ -29,9 +30,13 @@ type Armed = { repo: string; worktree: string; command: string };
 
 const FILE = "setup.json";
 
+// what a failed setup tells the run's first message, kept till the run
+// began
+const FAILED = "setup-failed.txt";
+
 const INCLUDE = ".worktreeinclude";
 
-const TIMEOUT = 10 * 60e3;
+export const MINUTES = 10;
 
 // how long the output's pipes may stay open after the command exits,
 // held by something it left running
@@ -72,6 +77,9 @@ export namespace Setup {
   // shown (no command given), set, or cleared (an empty one)
   export function tool(agent: string, args: Record<string, unknown>): Out {
     const given = text_of(args.repo, "").trim();
+    if (given === "" && args.command !== undefined && args.command !== null) {
+      return { text: "A setup is for a repo: give repo with command.", fail: true };
+    }
     if (given === "") {
       const all = Setup.listed(agent);
       return { text: all.length === 0 ? "You have no worktree setups. Set one with repo and command." : all.join("\n"), fail: false };
@@ -92,7 +100,7 @@ export namespace Setup {
       return { text: "Cleared the worktree setup for " + repo + "." + include, fail: false };
     }
     opened().query("insert into setups (agent, repo, command) values (?, ?, ?) on conflict (agent, repo) do update set command = excluded.command").run(agent, repo, next);
-    return { text: "Set: each new worktree of " + repo + " that a submon of yours gets runs this in it before the submon's first turn, with TROOP_REPO=" + repo + " and TROOP_WORKTREE its path, for at most " + TIMEOUT / 60e3 + " minutes: " + next + include, fail: false };
+    return { text: "Set: each new worktree of " + repo + " that a submon of yours gets runs this in it before the submon's first turn, with TROOP_REPO=" + repo + " and TROOP_WORKTREE its path, for at most " + MINUTES + " minutes: " + next + include, fail: false };
   }
 
   // an agent gone: its setups with it
@@ -112,27 +120,43 @@ export namespace Setup {
   // in the holder, before the run's first turn: the setup armed in its
   // folder dir done, and disarmed, each step told; what the first message
   // starts with, "" for nothing (none armed, or it went well). A holder
-  // that dies midway leaves it armed, so the next one runs it again
+  // that dies midway leaves it armed, so the next one runs it again; one
+  // that dies after it failed, before its run began, leaves the failure to
+  // tell again
   export async function run(dir: string, emit: (ev: Ev) => void): Promise<string> {
-    const file = path.join(dir, FILE);
     let armed: Armed;
     try {
-      armed = JSON.parse(fs.readFileSync(file, "utf8")) as Armed;
+      armed = JSON.parse(fs.readFileSync(path.join(dir, FILE), "utf8")) as Armed;
     } catch {
-      return "";
+      return told(dir);
     }
     emit({ k: "setup", ok: null, text: armed.command });
     const copy = included(armed.repo, armed.worktree);
-    const ran = armed.command === "" ? { code: 0, out: "" } : await shell(armed);
+    const ran = armed.command === "" ? { why: null, out: "" } : await shell(armed);
     const out = last([copy, ran.out].filter((t) => t !== "").join("\n"));
-    const ok = ran.code === 0 && copy === "";
-    fs.rmSync(file, { force: true });
-    emit({ k: "setup", ok, text: out });
-    if (ok) {
+    const why = ran.why ?? (copy === "" ? null : "copying the files " + INCLUDE + " names failed");
+    const note = why === null ? "" : "The setup of your worktree failed (" + why + "). Your agent sets it to run in each new worktree of " + armed.repo + (armed.command === "" ? "" : ": " + armed.command) + "\nIts last lines:\n" + (out || "(none)") + "\n\nFix what your task needs of it (dependencies, env files) before you go on.";
+    if (note !== "") {
+      fs.writeFileSync(path.join(dir, FAILED), note, { mode: 0o600 });
+    }
+    fs.rmSync(path.join(dir, FILE), { force: true });
+    emit({ k: "setup", ok: why === null, text: out });
+    return note;
+  }
+
+  // the run in dir began: its first message, with a failure told, is the
+  // provider's now
+  export function began(dir: string): void {
+    fs.rmSync(path.join(dir, FAILED), { force: true });
+  }
+
+  // a failure a holder before this one told, its run not begun yet
+  function told(dir: string): string {
+    try {
+      return fs.readFileSync(path.join(dir, FAILED), "utf8");
+    } catch {
       return "";
     }
-    const how = ran.code === null ? "it was stopped after " + TIMEOUT / 60e3 + " minutes" : ran.code !== 0 ? "it exited with " + ran.code : "copying the files " + INCLUDE + " names failed";
-    return "The setup of your worktree failed (" + how + "). Your agent sets it to run in each new worktree of " + armed.repo + (armed.command === "" ? "" : ": " + armed.command) + "\nIts last lines:\n" + (out || "(none)") + "\n\nFix what your task needs of it (dependencies, env files) before you go on.";
   }
 
   // the repo's untracked, gitignored files that its .worktreeinclude
@@ -171,13 +195,12 @@ export namespace Setup {
   }
 
   // the command run with the user's shell in the worktree, in a process
-  // group of its own, killed whole when it exits or runs out of time;
-  // code null: it ran out of time
-  function shell(a: Armed): Promise<{ code: number | null; out: string }> {
+  // group of its own, killed whole when it exits or runs out of time; why:
+  // how it failed, null if it didn't
+  function shell(a: Armed): Promise<{ why: string | null; out: string }> {
     return new Promise((done) => {
       let out = "";
-      let late = false;
-      let exited: number | null = null;
+      let why: string | null = null;
       const p = spawn(process.env.SHELL || "/bin/sh", ["-c", a.command], { cwd: a.worktree, env: { ...process.env, TROOP_REPO: a.repo, TROOP_WORKTREE: a.worktree }, detached: true, stdio: ["ignore", "pipe", "pipe"] });
       const keep = (b: Buffer) => void (out = (out + b.toString("utf8")).slice(-KEPT));
       p.stdout.on("data", keep);
@@ -191,18 +214,21 @@ export namespace Setup {
       };
       const finish = () => {
         clearTimeout(timer);
-        done({ code: late ? null : exited ?? 1, out });
+        p.stdout.destroy();
+        p.stderr.destroy();
+        done({ why, out });
       };
       const timer = setTimeout(() => {
-        late = true;
+        why = "it was stopped after " + MINUTES + " minutes";
         kill();
-      }, TIMEOUT);
+      }, MINUTES * 60e3);
       p.on("error", (err) => {
-        out += String(err);
+        why = "it couldn't start: " + String(err);
         finish();
       });
-      p.on("exit", (code) => {
-        exited = code;
+      p.on("exit", (code, signal) => {
+        clearTimeout(timer);
+        why ??= code === 0 ? null : code !== null ? "it exited with " + code : "it was killed by " + String(signal);
         kill();
         setTimeout(finish, DRAIN).unref();
       });

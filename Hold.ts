@@ -335,6 +335,9 @@ export namespace Hold {
     }
     const h: Held = { out: Wire.outbox(Hold.told(dir).at(-1)?.seq ?? 0), asks: new Map(), calls: new Map(), waits: new Map(), says: new Set(), box: { queue: [start.prompt], wake: () => {}, shut: false }, rules: start.rules, scratch: start.scratch ?? {}, older: false, conn: null, emit: () => {} };
     h.emit = (ev) => {
+      if (ev.k === "began") {
+        Setup.began(dir);
+      }
       const told = Wire.push(h.out, ev, Date.now());
       fs.writeSync(log, JSON.stringify(told) + "\n");
       Wire.send(h.conn, { $: "ev", ...told });

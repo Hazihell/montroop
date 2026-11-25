@@ -129,7 +129,7 @@ function Setup({ ok, text }: { ok: boolean | null; text: string }): ReactNode {
   return (
     <div>
       <p className="cap text-bad">Its worktree's setup failed:</p>
-      <div className="prose mt-1.5"><Blocks x={Md.md_output(text || "(no output)")} /></div>
+      <div className="prose mt-1.5"><Blocks x={Md.md_output(text || "(no output)", "output")} /></div>
     </div>
   );
 }
