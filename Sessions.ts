@@ -1,9 +1,10 @@
 // Sessions
 // ========
 // The server's side of work sessions: it starts each run's holder (Hold) as
-// a systemd user unit of its own, so a server restart or deploy leaves it
-// running; links to it over its socket, taking in what it tells (Wire)
-// into the session's record (Session) and acking it; shows each call it
+// a systemd user unit of its own (where the user's systemd doesn't answer,
+// as in a container, as a detached process group), so a server restart or
+// deploy leaves it running; links to it over its socket, taking in what it
+// tells (Wire) into the session's record (Session) and acking it; shows each call it
 // parks as the owner's Ask card (Gate) and sends the answer back. On boot
 // it links again to the holders still running, and marks the sessions
 // whose holder is gone as failed, to resume. When a run ends, or waits on
@@ -70,7 +71,8 @@ const RETRY = 5000;
 // didn't take
 const REDELIVER = 60e3;
 
-// the variables a holder's Claude Code works with, from the server's
+// the variables a holder's Claude Code works with, from the server's (a
+// unit starts with none; a detached holder has them all)
 const ENV = ["PATH", "LANG", "SHELL", "SSH_AUTH_SOCK", "XDG_CONFIG_HOME", "XDG_DATA_HOME"];
 
 const AGAIN = "Your process was stopped before you were done, so the outcome of your last calls is unknown. Check what they did before doing any again, then go on with the task. The message you were working on:\n\n";
@@ -94,6 +96,12 @@ const SENT: Record<Sent, string> = {
 // download
 const FILE = /^[\w][\w.-]{0,200}$/;
 
+// how long a holder told to stop has before it's killed
+const STOP_MS = 10e3;
+
+// whether holders run as systemd units, once asked
+let SYSTEMD: boolean | null = null;
+
 const LINKS = new Map<string, Link>();
 // each session's latest log line, once known
 const LATEST = new Map<string, string>();
@@ -109,6 +117,39 @@ export namespace Sessions {
   function systemctl(args: string[]): string {
     const r = run(["systemctl", "--user", ...args]);
     return output(r);
+  }
+
+  function systemd(): boolean {
+    SYSTEMD ??= Bun.which("systemd-run") !== null && run(["systemctl", "--user", "show-environment"]).code === 0;
+    return SYSTEMD;
+  }
+
+  // a detached holder's process id, kept under its unit's name
+  function pid_file(s: { dir: string; unit: string }): string {
+    return path.join(s.dir, s.unit + ".pid");
+  }
+
+  // 0: none kept
+  function pid_of(s: Session): number {
+    try {
+      return Number(fs.readFileSync(pid_file(s), "utf8")) || 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  // the detached holder still runs: not a process that took its id since,
+  // nor its zombie
+  function runs(pid: number, s: Session): boolean {
+    if (pid <= 0 || !Machine.alive(pid)) {
+      return false;
+    }
+    try {
+      const stat = fs.readFileSync("/proc/" + pid + "/stat", "utf8");
+      return !stat.slice(stat.lastIndexOf(")") + 2).startsWith("Z") && fs.readFileSync("/proc/" + pid + "/cmdline", "utf8").includes(s.dir);
+    } catch {
+      return true;
+    }
   }
 
   // the unit and socket of a session's holder of launch n
@@ -135,8 +176,40 @@ export namespace Sessions {
     return { ...s, ...named };
   }
 
+  // a detached holder gone takes what it left running with it, as a
+  // unit's end does
   function alive(s: Session): boolean {
-    return s.unit !== "" && ["active", "activating", "deactivating"].includes(systemctl(["is-active", s.unit]));
+    if (s.unit === "") {
+      return false;
+    }
+    if (systemd()) {
+      return ["active", "activating", "deactivating"].includes(systemctl(["is-active", s.unit]));
+    }
+    const pid = pid_of(s);
+    if (runs(pid, s)) {
+      return true;
+    }
+    if (pid > 0) {
+      Machine.kill(-pid);
+      fs.rmSync(pid_file(s), { force: true });
+    }
+    return false;
+  }
+
+  // its holder and everything it started ended, as a unit's stop does:
+  // asked first, killed after TimeoutStopSec
+  function halt(s: Session): void {
+    if (systemd()) {
+      systemctl(["stop", "--no-block", s.unit]);
+      return;
+    }
+    const pid = pid_of(s);
+    if (runs(pid, s)) {
+      try {
+        process.kill(-pid, "SIGTERM");
+      } catch {}
+      setTimeout(() => Machine.kill(-pid), STOP_MS).unref();
+    }
   }
 
   function link_of(id: string): Link {
@@ -168,7 +241,7 @@ export namespace Sessions {
           gone(s.id);
         }
       } else if (s.status === "stopped" && alive(s)) {
-        systemctl(["stop", "--no-block", s.unit]);
+        halt(s);
       }
     }
   }
@@ -186,9 +259,6 @@ export namespace Sessions {
     }
     if (b.prompt.trim() === "") {
       return "A session starts with a message.";
-    }
-    if (Bun.which("systemd-run") === null) {
-      return "Work sessions run as systemd user units, and systemd-run isn't here.";
     }
     const top = Worktree.top(b.repo);
     if ("why" in top) {
@@ -225,10 +295,8 @@ export namespace Sessions {
     const first = s.launches > 0 && s.sdk === "" ? Session.runs(s.id)[0]?.prompt ?? prompt : prompt;
     const begin: Start = { prompt: first === prompt ? prompt : first + "\n\n" + prompt, resume: s.sdk, rules: config.ASK, sock };
     fs.writeFileSync(path.join(s.dir, START), JSON.stringify(begin, null, 1) + "\n", { mode: 0o600 });
-    const env = Object.entries({ ...Object.fromEntries(ENV.flatMap((k) => (process.env[k] ? [[k, process.env[k]]] : []))), KNY_DIR: config.DIR });
-    const r = run(["systemd-run", "--user", "--collect", "--quiet", "--unit=" + unit, "--description=Kunumy work session " + s.name, "-p", "TimeoutStopSec=10", ...env.map(([k, v]) => "--setenv=" + k + "=" + v), "--", ...command(), "hold", s.dir]);
-    if (r.code !== 0) {
-      const why = "systemd-run failed: " + output(r);
+    const why = systemd() ? unit_run(s, unit) : detach(s, unit);
+    if (why !== null) {
       after(s.id, Session.move(s.id, "failed", why, about === null ? null : { about, text: why }) ?? []);
       return why;
     }
@@ -236,6 +304,27 @@ export namespace Sessions {
     link(s.id);
     HOOKS.change();
     return null;
+  }
+
+  function unit_run(s: Session, unit: string): string | null {
+    const env = Object.entries({ ...Object.fromEntries(ENV.flatMap((k) => (process.env[k] ? [[k, process.env[k]]] : []))), KNY_DIR: config.DIR });
+    const r = run(["systemd-run", "--user", "--collect", "--quiet", "--unit=" + unit, "--description=Kunumy work session " + s.name, "-p", "TimeoutStopSec=" + STOP_MS / 1000, ...env.map(([k, v]) => "--setenv=" + k + "=" + v), "--", ...command(), "hold", s.dir]);
+    return r.code === 0 ? null : "systemd-run failed: " + output(r);
+  }
+
+  // its output in a log beside its pid
+  function detach(s: Session, unit: string): string | null {
+    const log = fs.openSync(path.join(s.dir, unit + ".log"), "a");
+    try {
+      const proc = Bun.spawn([...command(), "hold", s.dir], { env: { ...process.env, KNY_DIR: config.DIR }, stdio: ["ignore", log, log], detached: true });
+      proc.unref();
+      fs.writeFileSync(pid_file({ dir: s.dir, unit }), String(proc.pid));
+      return null;
+    } catch (err) {
+      return "its holder didn't start: " + err_why(err);
+    } finally {
+      fs.closeSync(log);
+    }
   }
 
   function link(id: string): void {
@@ -507,7 +596,7 @@ export namespace Sessions {
     unlink(id);
     void Browser.close(s.dir);
     if (s.unit !== "") {
-      systemctl(["stop", "--no-block", s.unit]);
+      halt(s);
     }
     if (wake) {
       Session.set(id, { seen: Date.now() });
