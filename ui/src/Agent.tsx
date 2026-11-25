@@ -117,12 +117,12 @@ function Fields({ a, all }: { a: Agent | null; all: All }): ReactNode {
   // its settings changed elsewhere (by the mon itself, or another page): read
   // again, each field not being edited here taken as the server has it now
   const edited = useMontroop((s) => s.team.find((m) => m.id === a?.id)?.edited ?? 0);
-  const read = useRef(edited);
+  const seen = useRef(edited);
   useEffect(() => {
-    if (a === null || edited === read.current) {
+    if (a === null || edited === seen.current) {
       return;
     }
-    read.current = edited;
+    seen.current = edited;
     const typed = form.prompt !== kept.current.prompt;
     void agents_read().then((got) => {
       const now = got?.agents.find((x) => x.id === a.id);

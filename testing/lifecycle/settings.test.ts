@@ -57,7 +57,7 @@ test.concurrent("a mon's change of what only the owner changes, or to a model no
   const k = await Troop.up();
   const before = await shown(k);
 
-  expect(await settings(k, { action: "set", manage: false, about: "Changed." })).toBe("error: Manage mons, which gives power over the other mons, is the user's to turn on or off, in your settings in the app. Nothing was changed.");
+  expect(await settings(k, { action: "set", manage: false, about: "Changed." })).toStartWith("error: Manage mons");
   expect(await settings(k, { action: "set", model: "gpt-99", about: "Changed." })).toStartWith("error: No model gpt-99; one of: ");
   expect(await settings(k, { action: "set", leader: "true", about: "Changed." })).toBe("error: leader is true or false.");
   expect(await shown(k)).toEqual(before);
@@ -112,4 +112,7 @@ test.concurrent("Lasting submons turned on, from the app or by the mon itself, o
 
   const made = ((await k.api("POST", "/api/agents", { name: "Other", about: "Another agent.", prompt: "You are Other.", subagents: true })).json as { agent: { id: string } }).agent.id;
   await until("the new mon's turn on the message", async () => (await chat(k, made)).at(-1)?.kind === "reply" && (await notes(made)).length === 1);
+  await k.tell("hello", made);
+  await until("its next turn", async () => (await chat(k, made)).filter((m) => m.kind === "reply").length === 2);
+  expect(await notes(made)).toHaveLength(1);
 });

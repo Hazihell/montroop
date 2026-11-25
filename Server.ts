@@ -2821,11 +2821,13 @@ function edit_mon(there: Chat, x: unknown, by: Chat | null): Edited | string {
   if (Pick.label(pick) !== Pick.label(there.pick) || pick.profile !== there.pick.profile) {
     Chat.pick_to(there, pick);
   }
-  EDITED.set(a.id, Date.now());
-  Main.chats.forEach((c) => Chat.change(c));
   const after = new Map(Main.settings_of(now, there));
   const changes = before.flatMap(([k, v]) => (after.get(k) === v ? [] : [k + ": " + v + " → " + (after.get(k) ?? "")]));
   const prompt = Team.prompt(now);
+  if (changes.length > 0 || was !== prompt) {
+    EDITED.set(a.id, Date.now());
+  }
+  Main.chats.forEach((c) => Chat.change(c));
   return { agent: now, changes, prompt: was === prompt ? null : [was, prompt], kept: a.prompt !== now.prompt };
 }
 
