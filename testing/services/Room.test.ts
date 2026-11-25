@@ -10,7 +10,7 @@ import { until } from "../rig.ts";
 // a subagent's use as its agent is told it: cores and GB now, then at most
 const TOLD = /^uses now (\d+\.\d) cores and (\d+\.\d) GB; at most (\d+\.\d) cores and (\d+\.\d) GB so far$/;
 
-test("a running subagent uses what its process tree uses now, and at most what it used at a reading in its run, which is told after the run too", async () => {
+test("a running subagent uses what its process tree uses now, and at most what it used at a reading in its run, which is told after the run too, not as a new run's", async () => {
   const id = crypto.randomUUID().slice(0, 8);
   const dir = path.join(DIR, "sessions", id);
   fs.mkdirSync(dir, { recursive: true });
@@ -46,6 +46,11 @@ test("a running subagent uses what its process tree uses now, and at most what i
     halt(unit);
     Session.move(id, "stop", "", null);
     expect(await until("its run told as ended", () => Room.used(id)?.startsWith("used ") && Room.used(id))).toBe("used at most " + after[3] + " cores and 0.3 GB in its last run");
+
+    // a new run, its holder not read yet: none of the last run's use is its
+    expect(Session.again(id, "go on")).not.toBeNull();
+    Session.set(id, { unit: "troop-hold-" + id + "-2" });
+    expect(Room.used(id)).toBeNull();
   } finally {
     halt(unit);
   }
