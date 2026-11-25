@@ -6,7 +6,7 @@ const HERE = import.meta.dir;
 const LEGACY: Record<string, string[]> = {
   "Agent.ts": [
     "Agent.loop", "Agent.step", "Agent.steered", "Agent.entries_queued_till_started", "Agent.paired",
-    "Agent.reset", "Agent.token", "Agent.room", "Agent.seat", "Agent.import_seated_elsewhere",
+    "Agent.token", "Agent.room", "Agent.seat", "Agent.import_seated_elsewhere",
     "Agent.take_seat", "Agent.leave_seat", "Agent.give_way", "Agent.request", "Agent.send", "Agent.reason",
     "Agent.limited", "Agent.passing", "Agent.stream", "Agent.events", "Agent.use", "Agent.server",
     "Agent.notes_of", "Agent.call", "Agent.rpc",

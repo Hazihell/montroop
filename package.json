@@ -4,7 +4,8 @@
   "scripts": {
     "build": "bun Build.ts",
     "ui": "vite build",
-    "check": "tsc && bun --bun eslint && knip && bun Seams.ts"
+    "check": "tsc && bun --bun eslint && knip && bun Seams.ts && bun run test",
+    "test": "testing/test.sh"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.327",
@@ -30,6 +31,7 @@
     "eslint": "10.15.0",
     "eslint-plugin-react-hooks": "7.1.1",
     "knip": "6.45.1",
+    "playwright-core": "1.65.1",
     "tailwindcss": "4.3.5",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "typescript-eslint": "8.73.0",
