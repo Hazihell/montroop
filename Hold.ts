@@ -23,7 +23,7 @@ import { Providers } from "./Providers.ts";
 import { Rules, type Rule } from "./Rules.ts";
 import { reap } from "./Service.ts";
 import { Setup } from "./Setup.ts";
-import { TOOLS, VERSION, Wire, type Ask, type Ev, type Asking, type Calling, type Kit, type Outbox, type Scratch, type Told } from "./Wire.ts";
+import { TOOLS, VERSION, Wire, type Ask, type Asking, type Calling, type Ev, type Kit, type Outbox, type Scratch, type Told } from "./Wire.ts";
 
 // what a session keeps for its life: its worktree, its Claude account's
 // folder, its model ("": the account's default) and what its system
@@ -340,7 +340,7 @@ export namespace Hold {
     const h: Held = { out: Wire.outbox(Hold.told(dir).at(-1)?.seq ?? 0), asks: new Map(), calls: new Map(), waits: new Map(), says: new Set(), box: { queue: [start.prompt], wake: () => {}, shut: false }, rules: start.rules, scratch: start.scratch ?? {}, older: false, conn: null, emit: () => {} };
     h.emit = (ev) => {
       if (TAKEN.has(ev.k)) {
-        Setup.began(dir);
+        Setup.taken(dir);
       }
       const told = Wire.push(h.out, ev, Date.now());
       fs.writeSync(log, JSON.stringify(told) + "\n");

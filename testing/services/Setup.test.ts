@@ -58,6 +58,6 @@ test("a failed setup runs once, and is told again to each holder till its run be
   expect(await Setup.run(dir, (ev) => told.push(ev))).toBe(first);
   expect(fs.readFileSync(path.join(path.dirname(worktree), "runs-" + path.basename(worktree)), "utf8")).toBe("ran\n");
   expect(told).toEqual([{ k: "setup", ok: null, text: "echo ran >> ../runs-" + path.basename(worktree) + "; echo broken >&2; exit 2" }, { k: "setup", ok: false, text: "broken" }]);
-  Setup.began(dir);
+  Setup.taken(dir);
   expect(await Setup.run(dir, () => {})).toBe("");
 });

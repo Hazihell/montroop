@@ -147,7 +147,7 @@ export namespace Setup {
 
   // the run in dir began, or its model answered: its first message, with a
   // failure told, is the provider's now
-  export function began(dir: string): void {
+  export function taken(dir: string): void {
     fs.rmSync(path.join(dir, FAILED), { force: true });
   }
 
