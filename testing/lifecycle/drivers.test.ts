@@ -63,11 +63,15 @@ async function hold(home: string, job: Omit<Job, "dir">, prompt: string, meanwhi
   return Hold.told(dir);
 }
 
+// a link to the holder in dir, once it listens: its socket file is there
+// a moment before that
+function connect(dir: string, socket: Bun.SocketHandler<undefined>): Promise<Bun.Socket> {
+  return until("its socket", () => Bun.connect({ unix: path.join(dir, "hold.sock"), socket }));
+}
+
 // what the server sends a holder: its hello, then msgs
 async function tell(dir: string, ...msgs: object[]): Promise<void> {
-  const sock = path.join(dir, "hold.sock");
-  await until("its socket", () => fs.existsSync(sock));
-  const c = await Bun.connect({ unix: sock, socket: { data: () => {} } });
+  const c = await connect(dir, { data: () => {} });
   c.write([{ $: "hello", ack: 0 }, ...msgs].map((m) => JSON.stringify(m) + "\n").join(""));
 }
 
@@ -187,11 +191,9 @@ test.concurrent("claude-code, native: a brief is told again after a compaction",
 // a server of the test's own for a holder: each call of Kunumy's tools
 // answered with what out makes of its input, each call parked denied
 async function serve(dir: string, rules: Rule[], scratch: Record<string, string>, out: (input: Record<string, unknown>) => string): Promise<void> {
-  const sock = path.join(dir, "hold.sock");
-  await until("its socket", () => fs.existsSync(sock));
   const send = (c: { write: (s: string) => unknown }, msg: object) => c.write(JSON.stringify(msg) + "\n");
   let rest = "";
-  await Bun.connect({ unix: sock, socket: {
+  await connect(dir, {
     open: (c) => void send(c, { $: "hello", v: 4, ack: 0, rules, scratch }),
     data: (c, d) => {
       const lines = (rest + d.toString()).split("\n");
@@ -204,7 +206,7 @@ async function serve(dir: string, rules: Rule[], scratch: Record<string, string>
         }
       }
     },
-  } });
+  });
 }
 
 test.concurrent("anthropic api: a device's tool a start offers keeps its device, whose scratch folder the rules read, and each call is answered by the server", async () => {

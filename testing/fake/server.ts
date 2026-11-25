@@ -465,6 +465,8 @@ if (import.meta.main) {
       return answer ?? json(200, {});
     },
   });
-  Bun.serve({ port: CONTROL, hostname: "127.0.0.1", fetch: control });
+  // never closes a connection left idle: a test's fetch that reused it as
+  // it closed would fail
+  Bun.serve({ port: CONTROL, hostname: "127.0.0.1", idleTimeout: 0, fetch: control });
   console.log("fake up: https :443, control http://127.0.0.1:" + CONTROL);
 }
