@@ -147,11 +147,12 @@ const boss = (): Spec[] => [
   }, required: ["task"] } } }, ["tasks"]),
   spec("tell", "Send a message to a running subagent, by name: it gets it right after its current tool calls, and its report answers it. A subagent that has reported or was stopped is done: spawn a new one.", { name: STR, message: STR }, ["name", "message"]),
   spec("stop", "Stop a running subagent at once, by name, whatever it is doing (mid-call, waiting on a usage limit, running a tool on a device). Others keep running. It is done then, and its jobs end with it: its report says it was stopped.", { name: STR, why: { type: "string", description: "Why, for its report." } }, ["name"]),
-  spec("pin", "Change the pins, listed under Pinned: add one (text, from: the id of the message it came from, until: YYYY-MM-DD for a temporary one), replace one by id (only the fields given change), unpin some by ids, or mark some used by ids.", {
+  spec("pin", "Change the pins, listed under Pinned: add one (text, from: the id of the message it came from, until: YYYY-MM-DD for a temporary one, for: who it holds for), replace one by id (only the fields given change; for moves it), unpin some by ids, or mark some used by ids.", {
     action : { type: "string", enum: ["add", "replace", "unpin", "used"] },
     text   : STR,
     from   : INT,
     until  : { type: "string", description: "YYYY-MM-DD: the last day a temporary pin holds." },
+    for    : { type: "array", items: STR, description: "Who it holds for, with their subagents and sessions: [\"all\"] for the whole team, or agents' names (\"me\": you); by default you alone." },
     id     : INT,
     ids    : { type: "array", items: INT },
   }, ["action"]),
@@ -563,7 +564,7 @@ export namespace Tools {
         return Tools.schedule(seat, Timer.timer_new(args, Date.now()));
       }
       case "pin": {
-        return Pins.tool(args);
+        return Pins.tool(args, who);
       }
       case "agents": {
         return seat.agents?.on() === true ? seat.agents.run(args) : { text: "Your Manage agents setting is off.", fail: true };
