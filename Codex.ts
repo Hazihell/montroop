@@ -140,7 +140,7 @@ export namespace Codex {
         turn = null;
         t.end(ended(get(params, "turn"), t.last, limits));
       }
-    }, (method, params) => answer(method, params, job, io, items, signin, (item, note) => (item === null ? steer(labeled(note)) : notes.set(item, note))));
+    }, (method, params, stop) => answer(method, params, stop, job, io, items, signin, (item, note) => (item === null ? steer(labeled(note)) : notes.set(item, note))));
 
     // a message into the turn at work, after its current tool call; one
     // that comes between turns, or as one ends, goes into the next
@@ -294,10 +294,12 @@ export namespace Codex {
   }
 
   // the app-server on proc's stdio: on, a notification; serve, a request
-  // of its own, whose result (or error) goes back
-  function connect(proc: Proc, on: (method: string, params: unknown) => void, serve: (method: string, params: unknown) => Promise<unknown>): Server {
+  // of its own, whose result (or error) goes back, its wait dropped (stop)
+  // once Codex has resolved it itself, as when its turn ends
+  function connect(proc: Proc, on: (method: string, params: unknown) => void, serve: (method: string, params: unknown, stop: AbortSignal) => Promise<unknown>): Server {
     let n = 0;
     const waits = new Map<number, { ok: (x: unknown) => void; no: (err: Error) => void }>();
+    const serving = new Map<string, AbortController>();
     const write = (msg: Msg) => {
       try {
         void proc.stdin.write(JSON.stringify(msg) + "\n");
@@ -326,7 +328,11 @@ export namespace Codex {
             }
           } else if (msg.method !== undefined && msg.id !== undefined) {
             const id = msg.id;
-            void serve(msg.method, msg.params).then((result) => write({ id, result }), (err: unknown) => write({ id, error: { code: -32603, message: err_why(err) } }));
+            const stop = new AbortController();
+            serving.set(String(id), stop);
+            void serve(msg.method, msg.params, stop.signal).then((result) => write({ id, result }), (err: unknown) => write({ id, error: { code: -32603, message: err_why(err) } })).finally(() => serving.delete(String(id)));
+          } else if (msg.method === "serverRequest/resolved") {
+            serving.get(String(get(msg.params, "requestId")))?.abort();
           } else if (msg.method !== undefined) {
             on(msg.method, msg.params);
           }
@@ -386,14 +392,15 @@ export namespace Codex {
     return { type: "text", text, text_elements: [] };
   }
 
-  // a request of Codex's: an approval through the holder's gate (note: what
-  // the owner said with it, for the model once the item it's for is done,
-  // null: none), one of Montroop's tools run by the holder, a fresh access
-  // token; what no one here can answer, refused
-  async function answer(method: string, params: unknown, job: Job, io: Io, items: Map<string, unknown>, signin: Signin, note: (item: string | null, text: string) => void): Promise<unknown> {
+  // a request of Codex's: an approval through the holder's gate, dropped
+  // (stop) if Codex stops waiting for it (note: what the owner said with
+  // it, for the model once the item it's for is done, null: none), one of
+  // Montroop's tools run by the holder, a fresh access token; what no one
+  // here can answer, refused
+  async function answer(method: string, params: unknown, stop: AbortSignal, job: Job, io: Io, items: Map<string, unknown>, signin: Signin, note: (item: string | null, text: string) => void): Promise<unknown> {
     const item = str(get(params, "itemId")) ?? null;
     const gated = async (call: Call): Promise<boolean> => {
-      const said: Gated = await io.gate(call, new AbortController().signal);
+      const said: Gated = await io.gate(call, stop);
       if (said.note !== "") {
         note(item, said.note);
       }
@@ -446,7 +453,7 @@ export namespace Codex {
         const asked = list(get(params, "questions"));
         const questions = asked.map((q) => ({ question: str(get(q, "question")) ?? "", header: str(get(q, "header")) ?? "", options: list(get(q, "options")).map((o) => ({ label: str(get(o, "label")) ?? "", description: str(get(o, "description")) ?? "" })), multiSelect: false }));
         const input = { questions };
-        const said = await io.ask({ id, tool: QUESTION, args: input, native: QUESTION, input }, new AbortController().signal);
+        const said = await io.ask({ id, tool: QUESTION, args: input, native: QUESTION, input }, stop);
         if (!said.ok) {
           note(null, said.note);
           return { answers: {} };

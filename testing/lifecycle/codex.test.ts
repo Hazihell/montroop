@@ -242,3 +242,14 @@ test.concurrent("codex: its brief is told again after Codex compacts its thread"
   expect(told.at(-1)).toEqual({ k: "end", ok: true, text: "ok" });
   expect((await fake.seen("Your task, as you were first given it:\n\nThe brief " + t + ".")).some((x) => x.model !== "")).toBe(true);
 });
+
+test.concurrent("codex: the owner's own instructions for Codex are in its request", async () => {
+  const t = tag();
+  const home = signed(fs.mkdtempSync(path.join(os.tmpdir(), "home-")));
+  const user = fs.mkdtempSync(path.join(os.tmpdir(), "user-"));
+  fs.mkdirSync(path.join(user, ".codex"));
+  fs.writeFileSync(path.join(user, ".codex", "AGENTS.md"), "Owner's rule " + t + ".\n");
+
+  expect((await hold(home, codex(home), t + ": work", undefined, undefined, { HOME: user })).at(-1)?.ev).toEqual({ k: "end", ok: true, text: "ok" });
+  expect(JSON.stringify(await fake.body(t + ": work"))).toContain("Owner's rule " + t + ".");
+});
