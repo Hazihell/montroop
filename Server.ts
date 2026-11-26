@@ -1983,9 +1983,9 @@ export namespace Main {
   export let tools: Tools;
   export let server: Bun.Server<Sock["data"]>;
 
-  // where what has no agent of its own goes: the oldest active agent's chat
-  // a risky call waiting for the owner's yes, or a question for them, pushed to every browser with
-  // notifications on, its agent's chat in view or not
+  // a risky call waiting for the owner's yes, or a question for them,
+  // pushed to every browser with notifications on, its agent's chat in
+  // view or not
   export function asked(a: Asked): void {
     const agent = Team.get(a.agent);
     const by = a.who === "" ? agent?.name ?? "" : asker(a);
@@ -2026,6 +2026,7 @@ export namespace Main {
     return Response.json(Pins.read());
   }
 
+  // where what has no agent of its own goes: the oldest active agent's chat
   export function first(): Chat {
     return Main.chats.get(Team.first().id) as Chat;
   }

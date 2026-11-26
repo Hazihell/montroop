@@ -274,7 +274,6 @@ async function me(): Promise<boolean> {
   }
 }
 
-// a copy that doesn't parse is none
 function copy_key(): string {
   return COPY + v.agent + (v.page === null ? "" : "/s/" + v.page.name);
 }

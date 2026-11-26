@@ -295,10 +295,9 @@ function Asks({ ask, questions }: { ask: Of<"Ask">["ask"]; questions: Question[]
   const [picks, setPicks] = useState<Pick[]>(() => questions.map(() => ({ picked: [], other: "" })));
   const [sent, setSent] = useState(false);
   const tap = Question.tap(questions);
-  const said = (p: Pick) => Question.answer(p.picked, p.other);
   const send = (ok: boolean, now: Pick[] = picks) => {
     setSent(true);
-    const answers: Answers = ok ? Object.fromEntries(questions.map((q, k) => [q.question, said(now[k])])) : {};
+    const answers: Answers = ok ? Object.fromEntries(questions.map((q, k) => [q.question, Question.answer(now[k].picked, now[k].other)])) : {};
     void answer(ask.id, ok, "", answers).then((done) => done || setSent(false));
   };
   const set = (k: number, p: Pick) => setPicks(picks.map((x, j) => (j === k ? p : x)));
@@ -311,7 +310,7 @@ function Asks({ ask, questions }: { ask: Of<"Ask">["ask"]; questions: Question[]
     }
     set(k, p);
   };
-  const ready = picks.every((p) => said(p) !== "");
+  const ready = picks.every((p) => Question.answer(p.picked, p.other) !== "");
   return (
     <div className="ask card" role="group" aria-label={questions.length === 1 ? questions[0].question : questions.length + " questions"}>
       {ask.who === "" ? null : <p className="cap">asked by <AskedBy ask={ask} /></p>}
