@@ -105,7 +105,8 @@ export namespace Codex {
     // the messages taken in for the next turn, the steers on their way
     const queue: string[] = [];
     const steering = new Set<Promise<void>>();
-    // what the owner said with an answer, for the model once its call is done
+    // what the owner said with an answer, for the model once its call is
+    // done (a call of one of Codex's own subagents told to the main thread)
     const notes = new Map<string, string>();
     const server = connect(proc, (method, params) => {
       const item = get(params, "item");
@@ -116,6 +117,11 @@ export namespace Codex {
         items.set(id, item);
       } else if (method === "item/completed") {
         items.delete(id);
+        const note = notes.get(id);
+        if (note !== undefined) {
+          notes.delete(id);
+          steer(labeled(note));
+        }
       }
       if (get(params, "threadId") !== thread) {
         return;
@@ -127,11 +133,6 @@ export namespace Codex {
           turn.last = str(get(item, "text")) ?? turn.last;
         }
         told_done(item).forEach(io.emit);
-        const note = notes.get(id);
-        if (note !== undefined) {
-          notes.delete(id);
-          steer(labeled(note));
-        }
         if (get(item, "type") === "contextCompaction") {
           io.emit({ k: "compacted" });
           if (c.brief !== "") {

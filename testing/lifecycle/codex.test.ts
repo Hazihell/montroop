@@ -21,9 +21,9 @@ function codex(home: string, more: Partial<Omit<Job, "dir">> = {}): Omit<Job, "d
 }
 
 // a server of the test's own for the holder in dir: each call parked
-// answered as ok says (a question with answers), each call of Montroop's
-// tools answered "done"
-async function owner(dir: string, rules: Rule[], ok: (ask: Ask) => boolean, answers: Record<string, string> = {}): Promise<void> {
+// answered as ok says (a question with answers, any with note), each call
+// of Montroop's tools answered "done"
+async function owner(dir: string, rules: Rule[], ok: (ask: Ask) => boolean, answers: Record<string, string> = {}, note = ""): Promise<void> {
   const send = (c: { write: (s: string) => unknown }, msg: object) => c.write(JSON.stringify(msg) + "\n");
   let rest = "";
   await connect(dir, {
@@ -35,7 +35,7 @@ async function owner(dir: string, rules: Rule[], ok: (ask: Ask) => boolean, answ
         if (msg.$ === "call") {
           send(c, { $: "result", id: msg.id, out: { text: "done", fail: false } });
         } else if (msg.$ === "ev" && msg.ev?.k === "ask") {
-          send(c, { $: "answer", id: msg.ev.id, ok: ok(msg.ev), note: "", answers });
+          send(c, { $: "answer", id: msg.ev.id, ok: ok(msg.ev), note, answers });
         }
       }
     },
@@ -294,10 +294,28 @@ test.concurrent("codex: a call its own subagent waits to have approved leaves th
   await fake.next('{"task_name":"' + name + '"}', { what: "tool", calls: [["wait_agent", { timeout_ms: 3000 }]] });
   await fake.next('"timed_out":true', { what: "tool", calls: [["interrupt_agent", { target: name }]] });
 
+  const since = new Date().toISOString();
+
   const told = (await hold(home, job, t + ": work", undefined, undefined, {}, { rules: EVERY })).map((x) => x.ev);
   const asked = told.flatMap((e) => (e.k === "ask" ? [e.id] : []));
   expect(asked).toHaveLength(1);
   expect(told).toContainEqual({ k: "dropped", id: asked[0] });
   expect(told.filter((e) => e.k === "turn")).toEqual([{ k: "turn", ok: true, text: "ok" }]);
   expect(fs.existsSync(path.join(String(job.cwd), "child.txt"))).toBe(false);
+  expect((await fake.seen("Stopped.")).filter((x) => x.model !== "" && x.at >= since)).toEqual([]);
+});
+
+test.concurrent("codex: the owner's note to a call its own subagent made reaches the model", async () => {
+  const t = tag();
+  const home = signed(fs.mkdtempSync(path.join(os.tmpdir(), "home-")));
+  const job = codex(home);
+  const name = "/root/kid_" + t;
+  await fake.next("Message Type: NEW_TASK\nTask name: " + name, { what: "tool", calls: [["exec_command", { cmd: "touch kid.txt" }]] });
+  await fake.next(t + ": work", { what: "tool", calls: [["spawn_agent", { task_name: "kid_" + t, message: "Make the file." }]] });
+  await fake.next('{"task_name":"' + name + '"}', { what: "tool", calls: [["wait_agent", { timeout_ms: 10000 }]] });
+
+  const told = (await hold(home, job, t + ": work", (dir) => owner(dir, EVERY, () => true, {}, "kindly " + t), undefined, {}, { rules: EVERY })).map((x) => x.ev);
+  expect(told.filter((e) => e.k === "ask")).toHaveLength(1);
+  expect(fs.existsSync(path.join(String(job.cwd), "kid.txt"))).toBe(true);
+  expect((await fake.seen("The user approved this with a note: “kindly " + t + "”")).some((x) => x.model !== "")).toBe(true);
 });
