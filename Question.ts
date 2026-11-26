@@ -8,7 +8,7 @@
 
 import { get, list, rec, str } from "./Json.ts";
 
-// the tool a question is parked under, whichever provider asked it
+// the tool that asks
 export const QUESTION = "AskUserQuestion";
 
 type Choice = { label: string; description: string };
@@ -40,18 +40,30 @@ export namespace Question {
     return qs.map((q) => q.question).join(" · ");
   }
 
-  // answers as a request gives them, each cut to what a message carries;
-  // null: they aren't answers
+  // answers as a request gives them, each cut to what a message carries
+  // (a question's text stays whole: it names the question); null: they
+  // aren't answers
   export function answers(x: unknown): Answers | null {
     if (!rec(x) || Object.values(x).some((a) => typeof a !== "string")) {
       return null;
     }
-    return Object.fromEntries(Object.entries(x as Record<string, string>).map(([q, a]) => [q.slice(0, TEXT), a.trim().slice(0, TEXT)]));
+    return Object.fromEntries(Object.entries(x as Record<string, string>).map(([q, a]) => [q, a.trim().slice(0, TEXT)]));
+  }
+
+  // one question's answer: its picks, then what the owner typed
+  export function answer(picked: string[], typed: string): string {
+    return [...picked, ...(typed.trim() === "" ? [] : [typed.trim()])].join(", ");
+  }
+
+  // whether a tap on a choice answers them all: a lone question that
+  // takes one
+  export function tap(qs: Question[]): boolean {
+    return qs.length === 1 && !qs[0].multi;
   }
 
   // answers as one line for the agent
-  export function told(a: Answers): string {
-    return Object.entries(a).map(([q, said]) => q + " " + said).join("; ");
+  export function said(a: Answers): string {
+    return Object.entries(a).map(([q, text]) => q + " " + text).join("; ");
   }
 
 }

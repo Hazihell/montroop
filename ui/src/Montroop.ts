@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { Asked } from "../../Gate.ts";
-import { get, text_of } from "../../Json.ts";
+import { get, parse as parsed, text_of } from "../../Json.ts";
 import type { Answers } from "../../Question.ts";
 import type { Row as SubRow } from "../../Sub.ts";
 import type { Timer } from "../../Timer.ts";
@@ -275,14 +275,6 @@ async function me(): Promise<boolean> {
 }
 
 // a copy that doesn't parse is none
-function parsed(text: string | null): unknown {
-  try {
-    return JSON.parse(text ?? "null");
-  } catch {
-    return null;
-  }
-}
-
 function copy_key(): string {
   return COPY + v.agent + (v.page === null ? "" : "/s/" + v.page.name);
 }

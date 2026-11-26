@@ -6,6 +6,7 @@ import { Link } from "@tanstack/react-router";
 import { memo, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { create } from "zustand";
 import * as Call from "../../Call.ts";
+import { parse } from "../../Json.ts";
 import * as Md from "../../Md.ts";
 import { QUESTION, Question, type Answers } from "../../Question.ts";
 import * as View from "../../View.ts";
@@ -259,16 +260,8 @@ function AskedBy({ ask }: { ask: Of<"Ask">["ask"] }): ReactNode {
 }
 
 export function Ask({ row }: { row: Of<"Ask"> }): ReactNode {
-  const questions = row.ask.tool === QUESTION ? Question.of(input_of(row.ask.input)) : [];
+  const questions = row.ask.tool === QUESTION ? Question.of(parse(row.ask.input)) : [];
   return questions.length > 0 ? <Asks ask={row.ask} questions={questions} /> : <Approve row={row} />;
-}
-
-function input_of(json: string): unknown {
-  try {
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
 }
 
 function Approve({ row }: { row: Of<"Ask"> }): ReactNode {
@@ -301,8 +294,8 @@ type Pick = { picked: string[]; other: string };
 function Asks({ ask, questions }: { ask: Of<"Ask">["ask"]; questions: Question[] }): ReactNode {
   const [picks, setPicks] = useState<Pick[]>(() => questions.map(() => ({ picked: [], other: "" })));
   const [sent, setSent] = useState(false);
-  const tap = questions.length === 1 && !questions[0].multi;
-  const said = (p: Pick) => [...p.picked, ...(p.other.trim() === "" ? [] : [p.other.trim()])].join(", ");
+  const tap = Question.tap(questions);
+  const said = (p: Pick) => Question.answer(p.picked, p.other);
   const send = (ok: boolean, now: Pick[] = picks) => {
     setSent(true);
     const answers: Answers = ok ? Object.fromEntries(questions.map((q, k) => [q.question, said(now[k])])) : {};

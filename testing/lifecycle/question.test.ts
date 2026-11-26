@@ -20,7 +20,7 @@ async function asked(k: Troop, via: Via, name: string, t: string) {
   return { s, card };
 }
 
-// whether the model was sent text, in the tool result that answers it
+// whether a model request's newest message has text
 async function heard(text: string): Promise<boolean> {
   return (await fake.seen(text)).some((x) => x.model !== "");
 }
@@ -47,8 +47,8 @@ test.concurrent("a question the owner dismisses tells the model it went unanswer
   const { s, card } = await asked(k, "subagent", "qd", t);
 
   expect((await k.api("POST", "/api/approve", { id: card.id, ok: false, note: "" })).status).toBe(200);
-  await until("the model told it was dismissed", () => heard("The user dismissed the question without answering it."));
-  await s.status("done");
+  const done = await s.status("done");
+  expect(done.log.filter((x) => x.ev.k === "result").map((x) => x.ev.text)).toEqual([expect.stringContaining("The user dismissed the question without answering it.")]);
 });
 
 test.concurrent("a question still waits on its card across a server restart, and the answer given after it reaches the model", async () => {

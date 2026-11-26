@@ -27,7 +27,7 @@ import { Gate, type Asked } from "./Gate.ts";
 import { Hold, SPEC, type Spec } from "./Hold.ts";
 import { Holders, type Holder } from "./Holders.ts";
 import { err_why } from "./Err.ts";
-import { get, rec, str, text_of } from "./Json.ts";
+import { get, parse, rec, str, text_of } from "./Json.ts";
 import { Machine } from "./Machine.ts";
 import { Owner } from "./Owner.ts";
 import { QUESTION, Question } from "./Question.ts";
@@ -397,12 +397,8 @@ export namespace Sessions {
   }
 
   function args_of(input: string): Record<string, unknown> {
-    try {
-      const x: unknown = JSON.parse(input);
-      return rec(x) ? x : {};
-    } catch {
-      return {};
-    }
+    const x = parse(input);
+    return rec(x) ? x : {};
   }
 
   // one event taken into the record, once: what's left to do after it

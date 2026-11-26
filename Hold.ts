@@ -6,9 +6,9 @@
 // the server everything it does (Wire), parks each call a rule names, and
 // each question the run asks the owner, until the server sends the owner's
 // answer, has the server run Montroop's tools, and passes on the questions
-// the run asks its agent and the messages sent to it. A new worktree is set up first (Setup). What it tells is also kept
-// in its log, which the server reads what it missed from once the holder is
-// gone.
+// the run asks its agent and the messages sent to it. A new worktree is set
+// up first (Setup). What it tells is also kept in its log, which the server
+// reads what it missed from once the holder is gone.
 
 import * as fs from "node:fs";
 import * as net from "node:net";
@@ -383,7 +383,7 @@ export namespace Hold {
     // is the one the rules read their arguments with
     const scratch = Machine.home(SCRATCH);
     const own = (call: Call) => Rules.match(h.rules, call.tool, call.args, scratch);
-    const io: Io = { emit: h.emit, inbox: inbox(h.box), parks: (call) => own(call) !== null, gate: (call, stop) => gate(h, own(call), call, stop), ask: (call, stop) => gate(h, ASKED, call, stop, QUESTION), call: (c) => call(h, kit, c) };
+    const io: Io = { emit: h.emit, inbox: inbox(h.box), parks: (call) => own(call) !== null, gate: (call, stop) => gate(h, own(call), call, stop), ask: (call, stop) => gate(h, ASKED, call, stop), call: (c) => call(h, kit, c) };
     let end: End;
     try {
       end = job === null || driver === null ? { ok: false, text: "This holder has no driver " + name + ": a newer Montroop started it." } : typeof driver === "string" ? { ok: false, text: driver } : await driver(job, io);

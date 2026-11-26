@@ -17,7 +17,7 @@ import { OpenAI } from "./OpenAI.ts";
 import { Owner } from "./Owner.ts";
 import { Pick } from "./Pick.ts";
 import { ACTIVE_MS, Push } from "./Push.ts";
-import { Question } from "./Question.ts";
+import { QUESTION, Question } from "./Question.ts";
 import { Reap } from "./Reap.ts";
 import { Settings } from "./Settings.ts";
 import { Setup } from "./Setup.ts";
@@ -1984,12 +1984,12 @@ export namespace Main {
   export let server: Bun.Server<Sock["data"]>;
 
   // where what has no agent of its own goes: the oldest active agent's chat
-  // a risky call waiting for the owner's yes, pushed to every browser with
+  // a risky call waiting for the owner's yes, or a question for them, pushed to every browser with
   // notifications on, its agent's chat in view or not
   export function asked(a: Asked): void {
     const agent = Team.get(a.agent);
     const by = a.who === "" ? agent?.name ?? "" : asker(a);
-    Push.notify(Owner.open(), ASKS + ": " + a.what.toLowerCase() + ": " + Gate.line(a), { title: by, url: "/a/" + a.agent, tag: "ask-" + a.id });
+    Push.notify(Owner.open(), (a.tool === QUESTION ? "Asks you" : ASKS + ": " + a.what.toLowerCase()) + ": " + Gate.line(a), { title: by, url: "/a/" + a.agent, tag: "ask-" + a.id });
   }
 
   export async function approve(req: Request): Promise<Response> {

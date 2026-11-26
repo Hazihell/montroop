@@ -87,9 +87,9 @@ export const TOOLS = 3;
 const CLIP = 2000;
 
 // rules: the ask rules or the scratch folders changed; answer: the
-// owner's to a parked call (answers: to a question, by its text); say: a message for
-// the run (answer: the answer to its first question waiting, if one still
-// waits); result: what a call did, kept by the server till the holder took
+// owner's to a parked call (answers: to a question, by its text); say: a
+// message for the run (answer: the answer to its first question waiting,
+// if one still waits); result: what a call did, kept by the server till the holder took
 // it; poke: the owner says the usage limits were reset, so a wait for one
 // asks again
 export type ToHold =

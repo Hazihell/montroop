@@ -19,6 +19,15 @@ export function rec(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null && !Array.isArray(x);
 }
 
+// JSON text's value; null for none, or text that isn't JSON
+export function parse(text: string | null): unknown {
+  try {
+    return JSON.parse(text ?? "null");
+  } catch {
+    return null;
+  }
+}
+
 export function list(x: unknown): unknown[] {
   return Array.isArray(x) ? x : [];
 }

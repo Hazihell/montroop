@@ -444,7 +444,7 @@ export namespace Tools {
       return "This was already answered, or its call was stopped.";
     }
     const { agent, who, from, tool, what } = said.held;
-    const text = tool === QUESTION ? (ok ? "Answered by the user: " + Question.told(answers) : "Dismissed by the user, unanswered: " + Gate.line(said.held)) : (ok ? "Approved" : "Denied") + " by the user: " + what.toLowerCase() + " (" + Gate.line(said.held) + ")." + (note === "" ? "" : " Note: “" + note + "”");
+    const text = tool === QUESTION ? (ok ? "Answered by the user: " + Question.said(answers) : "Dismissed by the user, unanswered: " + Gate.line(said.held)) : (ok ? "Approved" : "Denied") + " by the user: " + what.toLowerCase() + " (" + Gate.line(said.held) + ")." + (note === "" ? "" : " Note: “" + note + "”");
     const boss = tools.seats.get(agent);
     const seat = (who === "" ? undefined : tools.seats.get(who)) ?? boss;
     seat?.note(text);
