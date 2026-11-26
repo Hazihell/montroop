@@ -9,8 +9,9 @@
 // (io.call); the job's prompt and first message; and the owner's gate.
 // Codex asks before every command, file change and MCP call that isn't
 // read-only (the approval policy "untrusted"), and each request passes the
-// holder's gate, which answers at once when no rule names the call, and a
-// question it asks the user waits for the owner's answer (io.ask). The
+// holder's gate, which answers at once when no rule names the call. Codex
+// asks the user questions only in plan mode, which jobs don't use; one that
+// does come waits for the owner's answer (io.ask). The
 // ChatGPT sign-in stays Montroop's own (ChatGPT): Codex is handed its access
 // token and asks for a fresh one when the backend refuses it, so it never
 // holds or refreshes the refresh token. A usage limit is waited out (Limit),

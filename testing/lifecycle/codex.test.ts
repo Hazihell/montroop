@@ -149,17 +149,6 @@ test.concurrent("codex: what is typed into a shell the owner let run outside its
   expect(fs.existsSync(typed)).toBe(false);
 });
 
-test.concurrent("codex: a question it asks the user waits on the owner's card, and their pick goes back to the model", async () => {
-  const t = tag();
-  const home = signed(fs.mkdtempSync(path.join(os.tmpdir(), "home-")));
-  await fake.next(t + ": work", { what: "tool", calls: [["request_user_input", { questions: [{ id: "bird", header: "Bird", question: "Which bird " + t + "?", options: [{ label: "heron", description: "tall" }, { label: "wren", description: "small" }] }] }]] });
-  const answers = { ["Which bird " + t + "?"]: "wren" };
-
-  const told = (await hold(home, codex(home), t + ": work", (dir) => owner(dir, [], () => true, answers))).map((x) => x.ev);
-  expect(told.filter((e) => e.k === "ask").map((e) => e.k === "ask" && [e.tool, e.input])).toEqual([["AskUserQuestion", { questions: [{ question: "Which bird " + t + "?", header: "Bird", options: [{ label: "heron", description: "tall" }, { label: "wren", description: "small" }], multiSelect: false }] }]]);
-  expect((await fake.last("wren")).at(-1)?.text).toContain('"bird":{"answers":["wren"]}');
-});
-
 test.concurrent("codex: a job that may not write has its file changes denied, asking no one, and is told why", async () => {
   const t = tag();
   const home = signed(fs.mkdtempSync(path.join(os.tmpdir(), "home-")));
