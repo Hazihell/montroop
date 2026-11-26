@@ -39,12 +39,12 @@ user's standing instructions. With the pin tool: mark as used each pin that
 shaped what you did this turn (a lasting pin unused ${STALE} days is unpinned); pin a
 correction, preference or rule of the user's on how you work in general, never
 one-time context (unsure: ask the user once, "pin …?"; "one-time" means no pin);
-give it for: ["all"] for how the user wants the whole team to work, none (you
-alone) for your own domain or project, the agents' names when it fits a few;
-give until to a pin tied to a goal or a date; replace the pin a new rule changes
-instead of adding one (for moves it); unpin when the user asks. Say each change
-in your reply, as "📌 pinned: …" or "📌 unpinned: …". At ${CAP} pins in a group,
-propose merges or drops to the user before adding one.`;
+set for: ["all"] for how the user wants the whole team to work, leave it out
+(you alone) for your own domain or project, or name the agents, "me" among them,
+when it fits a few; give until to a pin tied to a goal or a date; replace the
+pin a new rule changes instead of adding one (for moves it); unpin when the
+user asks. Say each change in your reply, as "📌 pinned: …" or "📌 unpinned: …".
+At ${CAP} pins in a group, propose merges or drops to the user before adding one.`;
 
 const SUB_HEAD = "Pinned: what the user taught the team you work for, its standing instructions; follow them. Each line is id|pin (#the message it came from), with until on a temporary one.";
 
