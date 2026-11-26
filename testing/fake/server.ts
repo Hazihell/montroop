@@ -19,7 +19,7 @@ type Used = { input: number; read: number; write: number };
 // a tool call's block: in a namespace of tools (ns, as Codex offers its
 // client's tools), or of a freeform tool, whose input is text (as Codex's
 // apply_patch is)
-type Sent = { blocks: Array<{ text: string } | { id: string; name: string; json: string; ns?: string; free?: boolean } | { think: string }>; stall: number; cut: boolean; pace: number };
+type Sent = { blocks: Array<{ text: string } | { id: string; name: string; json: string; ns?: string; free?: boolean } | { think: string } | { summary: string }>; stall: number; cut: boolean; pace: number };
 
 export const CONTROL = 9999;
 
@@ -219,7 +219,7 @@ function anthropic(vendor: Vendor, model: string, sent: Sent, used: Used): Respo
       events.push(["ping", { type: "ping" }]);
       chunks(b.text).forEach((text) => events.push(["content_block_delta", { type: "content_block_delta", index, delta: { type: "text_delta", text } }]));
       out += tokens(b.text);
-    } else {
+    } else if ("id" in b) {
       events.push(["content_block_start", { type: "content_block_start", index, content_block: { type: "tool_use", id: b.id, name: b.name, input: {}, caller: { type: "direct" } } }]);
       events.push(["ping", { type: "ping" }]);
       (b.json.match(/.{1,12}/gs) ?? [""]).forEach((partial_json) => events.push(["content_block_delta", { type: "content_block_delta", index, delta: { type: "input_json_delta", partial_json } }]));
@@ -264,6 +264,13 @@ function openai(vendor: Vendor, model: string, sent: Sent, used: Used): Response
   const done: object[] = [];
   let out = 0;
   sent.blocks.forEach((b, output_index) => {
+    if ("summary" in b) {
+      const item = { id: hex("cmp_"), type: "compaction", encrypted_content: Buffer.from(b.summary).toString("base64") };
+      ev("response.output_item.added", { output_index, item });
+      ev("response.output_item.done", { output_index, item });
+      done.push(item);
+      return;
+    }
     if ("think" in b) {
       const item = { id: hex("rs_"), type: "reasoning", summary: [] };
       ev("response.output_item.added", { output_index, item });
@@ -437,7 +444,10 @@ async function model(req: Request, vendor: Vendor, url: URL): Promise<Response> 
   const compaction = TASK.test(first.replace(/<chat>[\s\S]*<\/chat>/, ""));
   const limited = limit_key(vendor, req);
   const until = LIMITED.get(limited) ?? 0;
-  const order: Order = until > Date.now() ? { what: "error", kind: "usage-limit", reset: until } : pick(latest, compaction);
+  // Codex compacting its thread: its summary, as the backend keeps it,
+  // taking no order
+  const compacting = get(list(get(body, "input")).at(-1), "type") === "compaction_trigger";
+  const order: Order = until > Date.now() ? { what: "error", kind: "usage-limit", reset: until } : compacting ? { what: "reply", text: "" } : pick(latest, compaction);
   // the tools offered: the request's own, and (Codex on a lighter request)
   // those an input item adds; a namespace's tools each as namespace__name,
   // but those of "functions", the model's own namespace
@@ -474,7 +484,7 @@ async function model(req: Request, vendor: Vendor, url: URL): Promise<Response> 
   // the calls a script makes, in order, as a model in code mode writes it,
   // each one's result (or what it threw) printed
   const script = (calls: Array<[string, unknown]>) => calls.map(([n, input]) => "try { text(await tools." + scripted(n) + "(" + JSON.stringify(input) + ")); } catch (e) { text(String(e)); }").join("\n");
-  const blocks: Sent["blocks"] = order.what === "tool"
+  const blocks: Sent["blocks"] = compacting ? [{ summary: "Summary: " + latest.slice(0, 80) }] : order.what === "tool"
     ? [
       ...(order.calls.some(([n]) => scripted(n) !== undefined) ? [{ id: id("call_"), name: "exec", json: script(order.calls.filter(([n]) => scripted(n) !== undefined)), free: true }] : []),
       ...order.calls.filter(([n]) => scripted(n) === undefined).map(block),

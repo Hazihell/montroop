@@ -9,7 +9,8 @@
 // (io.call); the job's prompt and first message; and the owner's gate.
 // Codex asks before every command, file change and MCP call that isn't
 // read-only (the approval policy "untrusted"), and each request passes the
-// holder's gate, which answers at once when no rule names the call. The
+// holder's gate, which answers at once when no rule names the call, and a
+// question it asks the user waits for the owner's answer (io.ask). The
 // ChatGPT sign-in stays Montroop's own (ChatGPT): Codex is handed its access
 // token and asks for a fresh one when the backend refuses it, so it never
 // holds or refreshes the refresh token. A usage limit is waited out (Limit),
@@ -31,6 +32,7 @@ import { Limit } from "./Limit.ts";
 import { Loop } from "./Loop.ts";
 import type { Spec } from "./Machine.ts";
 import * as Prompts from "./Prompts.ts";
+import { QUESTION } from "./Question.ts";
 import { HELD, MCP, Wire, type Ev } from "./Wire.ts";
 
 const NO_BIN = "Codex isn't here: install it (npm install -g @openai/codex), or set codex in config.json to its path.";
@@ -40,10 +42,14 @@ const NO_BIN = "Codex isn't here: install it (npm install -g @openai/codex), or 
 // run outside it, which is asked too
 const POLICY = { approvalPolicy: "untrusted", sandbox: "workspace-write" };
 
+// its question tool, which Codex offers only while planning unless this
+// feature is on, so it asks the owner (io.ask) in its default mode too
+const FEATURES = ["default_mode_request_user_input"];
+
 // what the model is told of a file change a job that may not write makes
 const NO_WRITE = "This job may not write: its edits are denied.";
 
-// the server requests that only a person could answer, refused
+// the server requests no one here answers, refused
 const UNANSWERED = "No one here answers this: decide yourself, or say what you need when you finish.";
 
 // a JSON-RPC message, either way
@@ -72,7 +78,7 @@ export namespace Codex {
     }
     const home = home_of(job);
     instructions(home);
-    const proc = Bun.spawn([bin(), "app-server"], {
+    const proc = Bun.spawn([bin(), "app-server", ...FEATURES.flatMap((f) => ["--enable", f])], {
       cwd    : job.cwd,
       env    : env(job, home),
       stdin  : "pipe",
@@ -231,11 +237,12 @@ export namespace Codex {
     return found;
   }
 
-  // the codex of the package installed with Montroop's own, for this
-  // platform
+  // the codex installed with Montroop's packages: its package for this
+  // platform, which @openai/codex brings
   function carried(): string | null {
     try {
-      const pkg = path.dirname(Bun.fileURLToPath(import.meta.resolve("@openai/codex-" + ClaudeSub.platform().replace(/-musl$/, "") + "/package.json")));
+      const codex = path.dirname(Bun.fileURLToPath(import.meta.resolve("@openai/codex/package.json")));
+      const pkg = path.dirname(Bun.resolveSync("@openai/codex-" + ClaudeSub.platform().replace(/-musl$/, "") + "/package.json", codex));
       const vendor = path.join(pkg, "vendor");
       const exe = fs.readdirSync(vendor).map((triple) => path.join(vendor, triple, "bin", process.platform === "win32" ? "codex.exe" : "codex")).find((f) => fs.existsSync(f));
       return exe ?? null;
@@ -435,11 +442,27 @@ export namespace Codex {
       }
       case "account/chatgptAuthTokens/refresh":
         return await tokens(signin, true);
-      case "item/tool/requestUserInput":
-        return { answers: {} };
+      case "item/tool/requestUserInput": {
+        const asked = list(get(params, "questions"));
+        const questions = asked.map((q) => ({ question: str(get(q, "question")) ?? "", header: str(get(q, "header")) ?? "", options: list(get(q, "options")).map((o) => ({ label: str(get(o, "label")) ?? "", description: str(get(o, "description")) ?? "" })), multiSelect: false }));
+        const input = { questions };
+        const said = await io.ask({ id, tool: QUESTION, args: input, native: QUESTION, input }, new AbortController().signal);
+        if (!said.ok) {
+          note(null, said.note);
+          return { answers: {} };
+        }
+        return { answers: Object.fromEntries(asked.map((q, k) => [str(get(q, "id")) ?? "", { answers: picks(said.answers?.[questions[k].question] ?? "", questions[k].options.map((o) => o.label)) }])) };
+      }
       default:
         throw new Error(UNANSWERED);
     }
+  }
+
+  // an answer as Codex takes it: the choices picked, or what the owner typed
+  // (an answer joins several picks with ", ", Question.answer)
+  function picks(answer: string, labels: string[]): string[] {
+    const parts = answer.split(", ");
+    return answer === "" ? [] : parts.every((p) => labels.includes(p)) ? parts : [answer];
   }
 
   // how a turn ended, as turn/completed tells it (last: its last reply;
@@ -497,7 +520,7 @@ export namespace Codex {
       case "commandExecution":
         return [{ k: "result", id, text: Wire.clip(str(get(item, "aggregatedOutput")) ?? (status === "declined" ? "Declined." : "")), error: failed || (Number(get(item, "exitCode")) || 0) !== 0 }];
       case "fileChange":
-        return [{ k: "result", id, text: status === "declined" ? "Declined." : String(status ?? ""), error: failed }];
+        return [{ k: "result", id, text: status === "declined" ? "Declined." : status === "failed" ? "Failed." : "Done.", error: failed }];
       case "dynamicToolCall":
         return [{ k: "result", id, text: Wire.clip(list(get(item, "contentItems")).map((x) => str(get(x, "text")) ?? "").join("\n")), error: get(item, "success") === false }];
       case "mcpToolCall":

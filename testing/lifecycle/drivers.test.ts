@@ -12,17 +12,7 @@ import { Rules, type Rule } from "../../Rules.ts";
 import { Setup } from "../../Setup.ts";
 import { Tools } from "../../Tools.ts";
 import type { Ev, Told } from "../../Wire.ts";
-import { chatgpt_signed, claude_signed, fake, repo, ROOT, tag, until } from "../rig.ts";
-
-// a data folder signed in to Claude and ChatGPT and keyed for both APIs,
-// each credential its own, as the fake keeps a usage limit per credential
-function signed(dir: string): string {
-  const own = crypto.randomUUID().slice(0, 8);
-  claude_signed(path.join(dir, "claude-sub"), own);
-  fs.writeFileSync(path.join(dir, "keys.json"), JSON.stringify({ anthropic: "sk-ant-api03-test-" + own, openai: "sk-proj-test-" + own }));
-  chatgpt_signed(path.join(dir, "chatgpt.json"), own);
-  return dir;
-}
+import { connect, fake, hold, repo, signed, tag, tell, until } from "../rig.ts";
 
 signed(DIR);
 config.config_reload();
@@ -40,36 +30,6 @@ const DRIVERS: Record<string, (home: string, text: string) => Omit<Job, "dir">> 
 function base(home: string, provider: string, kind: "plan" | "key", model: string): Omit<Job, "dir"> {
   const account = kind === "plan" ? { provider, id: provider === "claude" ? "personal" : "chatgpt", kind, dir: path.join(home, provider === "claude" ? "claude-sub" : "codex") } : { provider, id: "key", kind, dir: null };
   return { account, model, effort: "low", speed: "slow", system: "You are a test agent.", own: "", context: { kind: "native", resume: "", first: [], brief: "" }, cwd: null, write: true, tools: [], web: 0 };
-}
-
-// a holder run on job by hand, its first message prompt (given: none, the
-// job's blocks are its context), no server linked to it but what
-// meanwhile does: what it told, each with when, once its run is over; dir:
-// the folder of a holder before it, whose run it goes on with; env: its
-// variables beyond the suite's; more: its start's fields beyond these
-async function hold(home: string, job: Omit<Job, "dir">, prompt: string, meanwhile = (_dir: string) => Promise.resolve(), dir = fs.mkdtempSync(path.join(os.tmpdir(), "hold-")), env: Record<string, string> = {}, more: object = {}): Promise<Told[]> {
-  const ends = () => Hold.told(dir).filter((x) => x.ev.k === "end").length;
-  const before = ends();
-  fs.writeFileSync(path.join(dir, "start.json"), JSON.stringify({ driver: "provider", job, prompt: job.context.kind === "given" ? "" : prompt, resume: "", rules: [], sock: path.join(dir, "hold.sock"), ...more }));
-  const p = Bun.spawn(["bun", path.join(ROOT, "Cli.ts"), "hold", dir], { env: { ...process.env, TROOP_DIR: home, ...env }, stdio: ["ignore", "ignore", "ignore"] });
-  await meanwhile(dir);
-  // with no server to take what it told, it would wait a minute to exit
-  await until("its run over", () => ends() > before, 25000);
-  p.kill("SIGKILL");
-  await p.exited;
-  return Hold.told(dir);
-}
-
-// a link to the holder in dir, once it listens: its socket file is there
-// a moment before that
-function connect(dir: string, socket: Bun.SocketHandler<undefined>): Promise<Bun.Socket> {
-  return until("its socket", () => Bun.connect({ unix: path.join(dir, "hold.sock"), socket }));
-}
-
-// what the server sends a holder: its hello, then msgs
-async function tell(dir: string, ...msgs: object[]): Promise<void> {
-  const c = await connect(dir, { data: () => {} });
-  c.write([{ $: "hello", ack: 0 }, ...msgs].map((m) => JSON.stringify(m) + "\n").join(""));
 }
 
 const evs = (told: Told[]): Ev[] => told.map((x) => x.ev);

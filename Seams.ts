@@ -22,14 +22,14 @@ const LEGACY: Record<string, string[]> = {
     "AskAI.rewarm", "AskAI.drop_cold", "AskAI.lead_flight",
   ],
   "ChatGPT.ts": [
-    "Tokens", "Auth", "ChatGPT.claims", "ChatGPT.json", "ChatGPT.load", "ChatGPT.save", "ChatGPT.got",
-    "ChatGPT.auth", "ChatGPT.due", "ChatGPT.token", "ChatGPT.busy", "ChatGPT.refreshed_elsewhere",
+    "Tokens", "Auth", "ChatGPT.json", "ChatGPT.save", "ChatGPT.got",
+    "ChatGPT.auth", "ChatGPT.due", "ChatGPT.busy", "ChatGPT.refreshed_elsewhere",
     "ChatGPT.refreshed_elsewhere_soon", "ChatGPT.save_unless_refreshed_elsewhere", "ChatGPT.refresh",
     "ChatGPT.exchange", "ChatGPT.device", "ChatGPT.logout", "ChatGPT.who", "ChatGPT.cli", "ChatGPT.body",
     "ChatGPT.unmark", "ChatGPT.headers", "ChatGPT.read", "ChatGPT.refusal", "ChatGPT.reset",
   ],
   "ClaudeSub.ts": [
-    "SUMS", "ClaudeSub.carried", "ClaudeSub.platform", "ClaudeSub.extract_under_data_dir",
+    "SUMS", "ClaudeSub.carried", "ClaudeSub.extract_under_data_dir",
     "ClaudeSub.with_tmpdir", "ClaudeSub.claim", "ClaudeSub.prune", "ClaudeSub.used",
     "ClaudeSub.limit_key", "ClaudeSub.env", "ClaudeSub.cli",
     "ClaudeSub.mcp", "ClaudeSub.url", "ClaudeSub.slot", "ClaudeSub.grant",

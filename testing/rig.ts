@@ -6,6 +6,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import type { Job } from "../Driver.ts";
 import { Hold } from "../Hold.ts";
 import { wake_text } from "../Wake.ts";
 import { ACCOUNT, EMAIL, type Order } from "./fake/server.ts";
@@ -84,9 +85,9 @@ export const fake = {
   // the requests whose newest message (a connector's: its tool call) has
   // match, with the first 120 characters of it and the tools offered;
   // model "" for a connector's
-  async seen(match: string): Promise<Array<{ at: string; vendor: string; model: string; latest: string; tools: string[] }>> {
+  async seen(match: string): Promise<Array<{ at: string; vendor: string; path: string; model: string; answer: string; latest: string; tools: string[] }>> {
     const res = await fetch(CONTROL + "/log?match=" + encodeURIComponent(match));
-    return ((await res.json()) as { log: Array<{ at: string; vendor: string; model: string; latest: string; tools: string[] }> }).log;
+    return ((await res.json()) as { log: Array<{ at: string; vendor: string; path: string; model: string; answer: string; latest: string; tools: string[] }> }).log;
   },
   // what the latest model call whose newest message has match was sent,
   // message by message
@@ -411,7 +412,7 @@ export async function down(): Promise<void> {
 // a Claude Code config folder signed in to the fake's account, with the
 // account as `claude auth login` keeps it: without it, Claude Code fetches
 // it while its first requests go out, which then lack it
-export function claude_signed(dir: string, own: string): void {
+function claude_signed(dir: string, own: string): void {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, ".credentials.json"), JSON.stringify({ claudeAiOauth: { accessToken: "sk-ant-oat01-test-" + own, refreshToken: "sk-ant-ort01-test-" + own, expiresAt: 4102444800000, scopes: ["user:inference", "user:profile", "user:sessions:claude_code", "user:mcp_servers"], subscriptionType: "max" } }));
   fs.writeFileSync(path.join(dir, ".claude.json"), JSON.stringify({ oauthAccount: { accountUuid: ACCOUNT, emailAddress: EMAIL, organizationUuid: ACCOUNT } }));
@@ -419,11 +420,51 @@ export function claude_signed(dir: string, own: string): void {
 
 // a ChatGPT sign-in, as `troop serve chatgpt login` keeps it, its account
 // own
-export function chatgpt_signed(file: string, own: string): void {
+function chatgpt_signed(file: string, own: string): void {
   const jwt = (claims: object) => [{ alg: "none" }, { exp: Math.floor(Date.now() / 1e3) + 10 * 86400, ...claims }].map((x) => Buffer.from(JSON.stringify(x)).toString("base64url")).join(".") + ".fake";
   const auth = { "https://api.openai.com/auth": { chatgpt_account_id: own, chatgpt_plan_type: "plus" } };
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify({ auth_mode: "chatgpt", OPENAI_API_KEY: null, tokens: { id_token: jwt({ email: EMAIL, ...auth }), access_token: jwt(auth), refresh_token: "rt_" + own, account_id: own }, last_refresh: new Date().toISOString() }));
+}
+
+// a data folder signed in to Claude and ChatGPT and keyed for both APIs,
+// each credential its own, as the fake keeps a usage limit per credential
+export function signed(dir: string): string {
+  const own = crypto.randomUUID().slice(0, 8);
+  claude_signed(path.join(dir, "claude-sub"), own);
+  fs.writeFileSync(path.join(dir, "keys.json"), JSON.stringify({ anthropic: "sk-ant-api03-test-" + own, openai: "sk-proj-test-" + own }));
+  chatgpt_signed(path.join(dir, "chatgpt.json"), own);
+  return dir;
+}
+
+// a holder run on job by hand, its first message prompt (given: none, the
+// job's blocks are its context), no server linked to it but what
+// meanwhile does: what it told, each with when, once its run is over; dir:
+// the folder of a holder before it, whose run it goes on with; env: its
+// variables beyond the suite's; more: its start's fields beyond these
+export async function hold(home: string, job: Omit<Job, "dir">, prompt: string, meanwhile = (_dir: string) => Promise.resolve(), dir = fs.mkdtempSync(path.join(os.tmpdir(), "hold-")), env: Record<string, string> = {}, more: object = {}): Promise<ReturnType<typeof Hold.told>> {
+  const ends = () => Hold.told(dir).filter((x) => x.ev.k === "end").length;
+  const before = ends();
+  fs.writeFileSync(path.join(dir, "start.json"), JSON.stringify({ driver: "provider", job, prompt: job.context.kind === "given" ? "" : prompt, resume: "", rules: [], sock: path.join(dir, "hold.sock"), ...more }));
+  const p = Bun.spawn(["bun", path.join(ROOT, "Cli.ts"), "hold", dir], { env: { ...process.env, TROOP_DIR: home, ...env }, stdio: ["ignore", "ignore", "ignore"] });
+  await meanwhile(dir);
+  // with no server to take what it told, it would wait a minute to exit
+  await until("its run over", () => ends() > before, 25000);
+  p.kill("SIGKILL");
+  await p.exited;
+  return Hold.told(dir);
+}
+
+// a link to the holder in dir, once it listens: its socket file is there
+// a moment before that
+export function connect(dir: string, socket: Bun.SocketHandler<undefined>): Promise<Bun.Socket> {
+  return until("its socket", () => Bun.connect({ unix: path.join(dir, "hold.sock"), socket }));
+}
+
+// what the server sends a holder: its hello, then msgs
+export async function tell(dir: string, ...msgs: object[]): Promise<void> {
+  const c = await connect(dir, { data: () => {} });
+  c.write([{ $: "hello", ack: 0 }, ...msgs].map((m) => JSON.stringify(m) + "\n").join(""));
 }
 
 // a text of the test's own, so the fake's orders reach only its calls
