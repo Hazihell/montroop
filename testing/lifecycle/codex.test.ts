@@ -283,3 +283,21 @@ test.concurrent("codex: a file change its own subagent makes reaches the gate as
   expect(told.filter((e) => e.k === "ask").map((e) => e.k === "ask" && e.input.file_path)).toEqual([[file]]);
   expect(fs.existsSync(file)).toBe(false);
 });
+
+test.concurrent("codex: a call its own subagent waits to have approved leaves the owner's cards once Codex interrupts that subagent", async () => {
+  const t = tag();
+  const home = signed(fs.mkdtempSync(path.join(os.tmpdir(), "home-")));
+  const job = codex(home);
+  const name = "/root/sleeper_" + t;
+  await fake.next("Message Type: NEW_TASK\nTask name: " + name, { what: "tool", calls: [["exec_command", { cmd: "touch child.txt" }]] });
+  await fake.next(t + ": work", { what: "tool", calls: [["spawn_agent", { task_name: "sleeper_" + t, message: "Make the file." }]] });
+  await fake.next('{"task_name":"' + name + '"}', { what: "tool", calls: [["wait_agent", { timeout_ms: 3000 }]] });
+  await fake.next('"timed_out":true', { what: "tool", calls: [["interrupt_agent", { target: name }]] });
+
+  const told = (await hold(home, job, t + ": work", undefined, undefined, {}, { rules: EVERY })).map((x) => x.ev);
+  const asked = told.flatMap((e) => (e.k === "ask" ? [e.id] : []));
+  expect(asked).toHaveLength(1);
+  expect(told).toContainEqual({ k: "dropped", id: asked[0] });
+  expect(told.filter((e) => e.k === "turn")).toEqual([{ k: "turn", ok: true, text: "ok" }]);
+  expect(fs.existsSync(path.join(String(job.cwd), "child.txt"))).toBe(false);
+});

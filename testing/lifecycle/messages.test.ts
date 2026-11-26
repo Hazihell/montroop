@@ -94,6 +94,12 @@ for (const via of VIAS) {
     expect((await k.api("POST", "/api/approve", { id: (await card(t + "-2")).id, ok: false, note: "not that one " + t })).status).toBe(200);
 
     expect((await s.status("done")).log.filter((x) => x.ev.k === "text").map((x) => x.ev.text)).toEqual([t + " left it"]);
-    expect((await fake.last(t + "-pushed")).some((m) => m.text.includes("The user approved this with a note: “quietly " + t + "”"))).toBe(true);
+    // Claude Code tells it beside the call's result, Codex in a message of the app's after it
+    const asked = await fake.last(t + "-pushed");
+    if (via === "codex") {
+      expect(asked.some((m) => m.text.includes("The user approved this with a note: “quietly " + t + "”"))).toBe(true);
+    } else {
+      expect(asked.filter((m) => m.role === "system").map((m) => m.text.split("\n")[0])).toContain("PostToolUse:Bash hook additional context: The user approved this with a note: “quietly " + t + "”");
+    }
   });
 }
