@@ -14,17 +14,19 @@
 // runs Montroop's tools for holders, and the devices' scratch folders the
 // rules read; 4: a start may run a subagent, whose question tool is ask,
 // and the server pokes holders when the usage limits were reset; 5: a run
-// tells the setup of its new worktree).
+// tells the setup of its new worktree; 6: a run asks the owner the
+// questions of its provider's own tool, and an answer gives theirs).
 
 import type * as net from "node:net";
 import type { Out } from "./Agent.ts";
 import { get, list, rec, text_of } from "./Json.ts";
 import type { Spec } from "./Machine.ts";
+import type { Answers } from "./Question.ts";
 import type { Rule } from "./Rules.ts";
 
-// a call a rule named, parked until the owner answers it (id: the
-// provider's tool use id, which the answer names; tool and input: the
-// provider's own)
+// a call a rule named, or a question for the owner (Question), parked
+// until the owner answers it (id: the provider's tool use id, which the
+// answer names; tool and input: the provider's own)
 export type Ask = { id: string; tool: string; input: Record<string, unknown>; what: string };
 
 // a call of one of Montroop's tools, which the server runs, once however
@@ -77,23 +79,24 @@ export type Ev =
 
 export type Told = { seq: number; at: number; ev: Ev };
 
-export const VERSION = 5;
+export const VERSION = 6;
 
 // the first version whose server runs Montroop's tools for holders
 export const TOOLS = 3;
 
 const CLIP = 2000;
 
-// rules: the ask rules or the scratch folders changed; say: a message for
-// the run (answer: the answer to its first question waiting, if one still
-// waits); result: what a call did, kept by the server till the holder took
-// it; poke: the owner says the usage limits were reset, so a wait for one
-// asks again
+// rules: the ask rules or the scratch folders changed; answer: the
+// owner's to a parked call (answers: to a question, by its text); say: a
+// message for the run (answer: the answer to its first question waiting,
+// if one still waits); result: what a call did, kept by the server till
+// the holder took it; poke: the owner says the usage limits were reset,
+// so a wait for one asks again
 export type ToHold =
   | { $: "hello"; v: number; ack: number; rules: Rule[]; scratch: Scratch }
   | { $: "ack"; seq: number }
   | { $: "rules"; rules: Rule[]; scratch: Scratch }
-  | { $: "answer"; id: string; ok: boolean; note: string }
+  | { $: "answer"; id: string; ok: boolean; note: string; answers?: Answers }
   | { $: "say"; id: string; text: string; answer: boolean }
   | { $: "result"; id: string; out: Out }
   | { $: "poke" };

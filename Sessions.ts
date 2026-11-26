@@ -27,9 +27,10 @@ import { Gate, type Asked } from "./Gate.ts";
 import { Hold, SPEC, type Spec } from "./Hold.ts";
 import { Holders, type Holder } from "./Holders.ts";
 import { err_why } from "./Err.ts";
-import { get, rec, str, text_of } from "./Json.ts";
+import { get, parse, rec, str, text_of } from "./Json.ts";
 import { Machine } from "./Machine.ts";
 import { Owner } from "./Owner.ts";
+import { QUESTION, Question } from "./Question.ts";
 import { Room } from "./Room.ts";
 import { Setup } from "./Setup.ts";
 import { LABELS, Pick } from "./Pick.ts";
@@ -358,7 +359,7 @@ export namespace Sessions {
   // messages it hasn't taken in
   function welcome(id: string, asks: string[], questions: string[]): void {
     after(id, Session.welcome(id, asks, questions));
-    Session.parked(id).filter((p) => p.ok !== null).forEach((p) => Holders.send(id, { $: "answer", id: p.id, ok: p.ok === 1, note: p.note }));
+    Session.parked(id).filter((p) => p.ok !== null).forEach((p) => Holders.send(id, { $: "answer", id: p.id, ok: p.ok === 1, note: p.note, answers: Question.answers(args_of(p.answers)) ?? {} }));
     Session.unheard(id).filter((say) => say.mode !== "queue").forEach((say) => Holders.send(id, { $: "say", id: say.id, text: say.text, answer: say.mode === "answer" }));
   }
 
@@ -396,12 +397,8 @@ export namespace Sessions {
   }
 
   function args_of(input: string): Record<string, unknown> {
-    try {
-      const x: unknown = JSON.parse(input);
-      return rec(x) ? x : {};
-    } catch {
-      return {};
-    }
+    const x = parse(input);
+    return rec(x) ? x : {};
   }
 
   // one event taken into the record, once: what's left to do after it
@@ -500,8 +497,9 @@ export namespace Sessions {
     void Gate.wait(HOOKS.tools.gate, s.agent, Session.label(s), "session", p.tool, args_of(p.input), p.what, stop.signal, HOOKS.asked).then((said) => {
       waits.delete(p.id);
       if (said !== null) {
-        Session.answer(p.id, said.ok, said.note);
-        Holders.send(s.id, { $: "answer", id: p.id, ok: said.ok, note: said.note });
+        const answers = said.answers ?? {};
+        Session.answer(p.id, said.ok, said.note, answers);
+        Holders.send(s.id, { $: "answer", id: p.id, ok: said.ok, note: said.note, answers });
       }
     });
   }
@@ -652,7 +650,8 @@ export namespace Sessions {
   export function row(s: Session): SessionRow {
     const told = lately(s);
     const run = Session.run(s.id);
-    const waits: Waits = Session.parked(s.id).length > 0 ? "approval" : Session.questions(s.id).length > 0 ? "answer" : LIVE.includes(s.status) && told.until !== null ? "limit" : null;
+    const parked = Session.parked(s.id);
+    const waits: Waits = parked.some((p) => p.tool !== QUESTION) ? "approval" : parked.length > 0 ? "question" : Session.questions(s.id).length > 0 ? "answer" : LIVE.includes(s.status) && told.until !== null ? "limit" : null;
     const ended = run?.ended ?? null;
     const models = Pick.models([vendor(s)], LABELS).map(([, m]) => m);
     const model = models.find((m) => m.id === s.model || m.label === s.model);
@@ -795,7 +794,7 @@ export namespace Sessions {
 
   // its status, with what it waits on
   function state(r: SessionRow): string {
-    return r.status + (r.waits === "approval" ? " on the user's approval" : r.waits === "answer" ? " on your answer" : "");
+    return r.status + (r.waits === "approval" ? " on the user's approval" : r.waits === "question" ? " on the user's answer" : r.waits === "answer" ? " on your answer" : "");
   }
 
   function line(text: string, most: number): string {
@@ -808,7 +807,7 @@ export namespace Sessions {
     return ev.k === "text" ? ev.text :
       ev.k === "tool" ? ev.name + " " + ev.input :
       ev.k === "result" ? (ev.error ? "error: " : "") + ev.text :
-      ev.k === "ask" ? "asks the user: " + ev.what + " (" + ev.tool + ")" :
+      ev.k === "ask" ? "asks the user: " + (ev.tool === QUESTION ? Question.line(Question.of(ev.input)) : ev.what + " (" + ev.tool + ")") :
       ev.k === "answered" ? (ev.ok ? "approved" : "denied") :
       ev.k === "question" || ev.k === "report" || ev.k === "turn" || ev.k === "end" ? ev.text :
       ev.k === "limit" ? "waits for a usage limit, till " + clock(ev.until) :
@@ -840,7 +839,7 @@ export namespace Sessions {
     const head = Session.label(s) + ": " + state(p) + (run === null ? "" : ", run " + run.n + (run.attempts > 1 ? " (attempt " + run.attempts + ")" : "")) + used(s.id, ", ") + ". " + where + ", media " + path.join(s.dir, MEDIA) + "." + how;
     const lines = [
       head,
-      ...p.parked.map((c) => "Waits on the user's approval, in the app (you can't give it): " + c.what + " (" + c.tool + " " + line(c.input, 200) + ")"),
+      ...p.parked.map((c) => c.tool === QUESTION ? "Waits on the user's answer, in the app (you can't give it): " + Question.line(Question.of(args_of(c.input))) : "Waits on the user's approval, in the app (you can't give it): " + c.what + " (" + c.tool + " " + line(c.input, 200) + ")"),
       ...p.questions.map((q) => "Asks you (answer with send): " + q.text),
       ...(run !== null && run.report !== "" ? [(Session.kind(s) === "session" ? "Report: " : "Result: ") + run.report] : run !== null && run.why !== "" ? ["Why it " + run.status + ": " + run.why] : []),
       "",

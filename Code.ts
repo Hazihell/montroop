@@ -8,7 +8,8 @@
 // no tools of its own but web search, nothing kept once it ends. Either
 // way Montroop's tools (Job.tools) are an MCP server in it, each call run by
 // the holder (io.call), which gates them; every other call it makes passes
-// the holder's gate first. A usage limit is waited out (Limit), then the
+// the holder's gate first, and a question it asks the user waits for the
+// owner's answer (io.ask). A usage limit is waited out (Limit), then the
 // turn it cut goes on. Both read the owner's own instructions for Claude
 // Code (instructions).
 
@@ -28,6 +29,7 @@ import { Limit } from "./Limit.ts";
 import { Loop } from "./Loop.ts";
 import type { Spec } from "./Machine.ts";
 import * as Prompts from "./Prompts.ts";
+import { QUESTION } from "./Question.ts";
 import { HELD, MCP, Wire, type Ev } from "./Wire.ts";
 
 const ENV = {
@@ -35,11 +37,10 @@ const ENV = {
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC : "1",
 };
 
-// it asks no one in it: the owner's answers come through the gate. Nor
-// does it act past the holder's control or its own run: no workflows,
+// it doesn't act past the holder's control or its own run: no workflows,
 // teammates or messages to other sessions, no schedules, wakeups, remote
 // triggers or monitors that fire after its turn, no switching worktrees
-const DISALLOWED = ["AskUserQuestion", "Workflow", "ListAgents", "SendMessage", "ScheduleWakeup", "CronCreate", "CronDelete", "CronList", "RemoteTrigger", "Monitor", "PushNotification", "EnterWorktree", "ExitWorktree"];
+const DISALLOWED = ["Workflow", "ListAgents", "SendMessage", "ScheduleWakeup", "CronCreate", "CronDelete", "CronList", "RemoteTrigger", "Monitor", "PushNotification", "EnterWorktree", "ExitWorktree"];
 
 // what a job that may not write is denied
 const EDITS = ["Edit", "Write", "NotebookEdit"];
@@ -343,14 +344,16 @@ export namespace Code {
 
   // the holder's gate on the calls Claude Code makes, but Montroop's own
   // (io.call gates those): pre has one a rule names asked (canUseTool),
-  // even one Claude Code would let run by itself, the rest as its own
-  // settings say; post tells the model the owner's note to a call it
-  // approved, with its result; parked: the calls waiting on the gate
+  // even one Claude Code would let run by itself, and every question for
+  // the owner (QUESTION), whose answers can then go in its input; the rest
+  // as its own settings say; post tells the model the owner's note to a
+  // call it approved, with its result; parked: the calls waiting on the
+  // gate
   function gated(io: Io): { pre: HookCallback; post: HookCallback; can: CanUseTool; parked: () => number } {
     const notes = new Map<string, string>();
     let gating = 0;
     const pre: HookCallback = (input) => {
-      const asks = input.hook_event_name === "PreToolUse" && !input.tool_name.startsWith(HELD) && io.parks(call_of(input.tool_name, rec(input.tool_input) ? input.tool_input : {}, input.tool_use_id));
+      const asks = input.hook_event_name === "PreToolUse" && !input.tool_name.startsWith(HELD) && (input.tool_name === QUESTION || io.parks(call_of(input.tool_name, rec(input.tool_input) ? input.tool_input : {}, input.tool_use_id)));
       return Promise.resolve(asks ? { hookSpecificOutput: { hookEventName: "PreToolUse" as const, permissionDecision: "ask" as const } } : {});
     };
     const post: HookCallback = (input) => {
@@ -367,6 +370,10 @@ export namespace Code {
       }
       gating += 1;
       try {
+        if (tool === QUESTION) {
+          const said = await io.ask(call_of(tool, input, toolUseID), signal);
+          return said.ok ? { behavior: "allow", updatedInput: { ...input, answers: said.answers ?? {} } } : { behavior: "deny", message: said.note };
+        }
         const said = await io.gate(call_of(tool, input, toolUseID), signal);
         if (said.ok && said.note !== "") {
           notes.set(toolUseID, said.note);

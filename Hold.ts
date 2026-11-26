@@ -3,12 +3,12 @@
 // `troop hold <dir>`: a holder, a process of its own (a unit the server
 // starts, Holders) so the run in it outlives a server restart. Its driver
 // (Driver) does the run, until it has nothing left to do; the holder tells
-// the server everything it does (Wire), parks each call a rule names until
-// the server sends the owner's answer, has the server run Montroop's tools,
-// and passes on the questions the run asks its agent and the messages sent
-// to it. A new worktree is set up first (Setup). What it tells is also kept
-// in its log, which the server reads what it missed from once the holder is
-// gone.
+// the server everything it does (Wire), parks each call a rule names, and
+// each question the run asks the owner, until the server sends the owner's
+// answer, has the server run Montroop's tools, and passes on the questions
+// the run asks its agent and the messages sent to it. A new worktree is set
+// up first (Setup). What it tells is also kept in its log, which the server
+// reads what it missed from once the holder is gone.
 
 import * as fs from "node:fs";
 import * as net from "node:net";
@@ -20,6 +20,7 @@ import { rec, str, text_of } from "./Json.ts";
 import { Machine, SCRATCH, spec, STR, type Spec as Tool } from "./Machine.ts";
 import { Limit } from "./Limit.ts";
 import { Providers } from "./Providers.ts";
+import { QUESTION, Question, type Answers } from "./Question.ts";
 import { Rules, type Rule } from "./Rules.ts";
 import { reap } from "./Service.ts";
 import { Setup } from "./Setup.ts";
@@ -86,6 +87,9 @@ const ASK: Tool[] = [spec("ask", "Ask the agent that started you a question, whe
 // what a call of Montroop's gets while an older server, which runs none,
 // owns the holder
 const OLD = { text: "The server runs an older Montroop, which runs no tools for work sessions.", fail: true };
+
+// what a question for the owner is parked under (Io.ask)
+const ASKED: Rule = { what: "Answer a question", tools: QUESTION, args: "" };
 
 // a gate's wait no one ends: a call of Montroop's waits for its answer
 // while the run does
@@ -187,7 +191,7 @@ export namespace Hold {
       Wire.send(s, { $: "took", id: msg.id });
       sent?.done(Wire.out(msg.out));
     } else if (msg.$ === "answer") {
-      answer(h, String(msg.id), msg.ok === true, str(msg.note) ?? "");
+      answer(h, String(msg.id), msg.ok === true, str(msg.note) ?? "", Question.answers(msg.answers) ?? {});
     } else if (msg.$ === "say" && typeof msg.id === "string" && typeof msg.text === "string" && !h.says.has(msg.id) && !h.box.shut) {
       h.says.add(msg.id);
       const [first] = h.waits.values();
@@ -251,9 +255,9 @@ export namespace Hold {
     });
   }
 
-  // the owner's answer to a parked call; one it already had, or for a
-  // call no longer parked, does nothing
-  function answer(h: Held, id: string, ok: boolean, note: string): void {
+  // the owner's answer to a parked call (to a question: their answers);
+  // one it already had, or for a call no longer parked, does nothing
+  function answer(h: Held, id: string, ok: boolean, note: string, answers: Answers): void {
     const parked = h.asks.get(id);
     if (parked === undefined) {
       return;
@@ -261,6 +265,10 @@ export namespace Hold {
     h.asks.delete(id);
     h.emit({ k: "answered", id, ok });
     const said = note === "" ? "." : ": “" + note + "”.";
+    if (parked.ask.tool === QUESTION) {
+      parked.done(ok ? { ok, note: "", answers } : { ok, note: "The user dismissed the question without answering it" + said + " Go on as best you can without the answer; if you can't, say so when you finish." });
+      return;
+    }
     parked.done(ok ? { ok, note: note === "" ? "" : "The user approved this with a note: “" + note + "”" } : { ok, note: "The user denied this (" + parked.ask.what.toLowerCase() + ")" + said + " Don't do it another way; if it's still needed, say so when you finish." });
   }
 
@@ -375,7 +383,7 @@ export namespace Hold {
     // is the one the rules read their arguments with
     const scratch = Machine.home(SCRATCH);
     const own = (call: Call) => Rules.match(h.rules, call.tool, call.args, scratch);
-    const io: Io = { emit: h.emit, inbox: inbox(h.box), parks: (call) => own(call) !== null, gate: (call, stop) => gate(h, own(call), call, stop), call: (c) => call(h, kit, c) };
+    const io: Io = { emit: h.emit, inbox: inbox(h.box), parks: (call) => own(call) !== null, gate: (call, stop) => gate(h, own(call), call, stop), ask: (call, stop) => gate(h, ASKED, call, stop), call: (c) => call(h, kit, c) };
     let end: End;
     try {
       end = job === null || driver === null ? { ok: false, text: "This holder has no driver " + name + ": a newer Montroop started it." } : typeof driver === "string" ? { ok: false, text: driver } : await driver(job, io);

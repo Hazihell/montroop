@@ -38,8 +38,9 @@ export type Live = { kind: Kind; text: string; of?: string };
 export type Mate = { id: string; name: string; about: string; picture: string; unread: number; last: string; busy: boolean; asks?: number; archived: number; subs?: SubRow[]; works?: SessionRow[]; edited?: number };
 
 // what a work session waits on: the owner's approval of a call it parked,
-// its agent's answer to its question, or a usage limit's reset
-export type Waits = "approval" | "answer" | "limit" | null;
+// the owner's answer to a question it put to them, its agent's answer to
+// its question, or a usage limit's reset
+export type Waits = "approval" | "question" | "answer" | "limit" | null;
 
 // a work session or subagent as the app lists it: who, the name its cards
 // are asked by; task, its first run's message; model ("": its account's

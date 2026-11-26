@@ -54,6 +54,7 @@ export const STATES: Record<View.SessionRow["status"], string> = { running: "Run
 // question waits on
 export function WorkState({ w, agent, now }: { w: View.SessionRow; agent: string; now: number }): ReactNode {
   const said = w.waits === "approval" ? "Needs your approval"
+    : w.waits === "question" ? "Asks you"
     : w.waits === "answer" ? "Asks " + (agent || "its mon")
     : w.waits === "limit" ? "Usage limit · " + (w.until === null || w.until <= now ? "trying again" : "resets " + View.clock(w.until, now))
     : STATES[w.status];

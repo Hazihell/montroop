@@ -3,6 +3,7 @@ import type { Out } from "./Agent.ts";
 import * as config from "./Config.ts";
 import { Gate, type Asked } from "./Gate.ts";
 import { Rules } from "./Rules.ts";
+import { QUESTION, Question, type Answers } from "./Question.ts";
 import { Limit } from "./Limit.ts";
 import { INT, STR, TOOLS, spec, type Bg, type Job, type Skill, type Spec } from "./Machine.ts";
 import { clip_page } from "./Clip.ts";
@@ -437,13 +438,13 @@ export namespace Tools {
   // the owner's answer to a call that asked, from a browser: a note in the
   // asking agent's or subagent's chat, and, with no call waiting, a
   // message to it (not for a session's call: its holder keeps it)
-  export async function decide(tools: Tools, id: string, ok: boolean, note: string): Promise<string | null> {
-    const said = Gate.decide(tools.gate, id, { ok, note });
+  export async function decide(tools: Tools, id: string, ok: boolean, note: string, answers: Answers): Promise<string | null> {
+    const said = Gate.decide(tools.gate, id, { ok, note, answers });
     if (said === null) {
       return "This was already answered, or its call was stopped.";
     }
     const { agent, who, from, tool, what } = said.held;
-    const text = (ok ? "Approved" : "Denied") + " by the user: " + what.toLowerCase() + " (" + Gate.line(said.held) + ")." + (note === "" ? "" : " Note: “" + note + "”");
+    const text = tool === QUESTION ? (ok ? "Answered by the user: " + Question.said(answers) : "Dismissed by the user, unanswered: " + Gate.line(said.held)) : (ok ? "Approved" : "Denied") + " by the user: " + what.toLowerCase() + " (" + Gate.line(said.held) + ")." + (note === "" ? "" : " Note: “" + note + "”");
     const boss = tools.seats.get(agent);
     const seat = (who === "" ? undefined : tools.seats.get(who)) ?? boss;
     seat?.note(text);

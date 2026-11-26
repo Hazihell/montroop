@@ -97,3 +97,31 @@ test.concurrent("the owner's settings page open on a mon shows what the mon chan
   expect(await page.getByRole("textbox", { name: "Description" }).inputValue()).toBe("Typed by the owner.");
   await k.kill();
 });
+
+test.concurrent("the owner answers a work session's questions on their cards: picks sent together, then a lone question answered with one tap", async () => {
+  const k = await Troop.up();
+  const t = tag();
+  const option = (label: string) => ({ label, description: label + " " + t });
+  await fake.next(t + ": ask", { what: "tool", calls: [["AskUserQuestion", { questions: [
+    { question: "Which bird " + t + "?", header: "Bird", multiSelect: false, options: [option("heron"), option("wren")] },
+    { question: "Which colors " + t + "?", header: "Colors", multiSelect: true, options: [option("red"), option("blue"), option("green")] },
+  ] }]] });
+  await fake.next('"Which bird ' + t + '?"', { what: "tool", calls: [["AskUserQuestion", { questions: [{ question: "Ship it " + t + "?", header: "Ship", multiSelect: false, options: [option("yes"), option("later")] }] }]] });
+  const s = await k.session("asks", t + ": ask", repo());
+  const page = await phone(k, true);
+  await page.goto(k.url + "/a/" + k.agent);
+
+  const card = page.getByRole("group", { name: "2 questions" });
+  await card.getByRole("button", { name: /^heron/ }).click();
+  await card.getByRole("button", { name: /^red/ }).click();
+  await card.getByRole("button", { name: /^green/ }).click();
+  await card.getByRole("textbox", { name: "Another answer to: Which colors " + t + "?" }).fill("teal");
+  await card.getByRole("button", { name: "Send" }).click();
+  await until("the model told the picks", async () => (await fake.seen('"Which colors ' + t + '?"="red, green, teal"')).length > 0);
+  expect((await fake.seen('"Which bird ' + t + '?"="heron"')).length).toBeGreaterThan(0);
+
+  await page.getByRole("group", { name: "Ship it " + t + "?" }).getByRole("button", { name: /^later/ }).click();
+  await until("the model told the tap", async () => (await fake.seen('"Ship it ' + t + '?"="later"')).length > 0);
+  await s.status("done");
+  await k.kill();
+});

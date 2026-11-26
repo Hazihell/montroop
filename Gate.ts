@@ -13,6 +13,7 @@ import * as fs from "node:fs";
 import { call_parse, call_text } from "./Call.ts";
 import { write_whole } from "./Write.ts";
 import { rec } from "./Json.ts";
+import { QUESTION, type Answers } from "./Question.ts";
 import { SESSION } from "./View.ts";
 
 // a waiting call as the chat shows it: agent is the chat it shows in, who
@@ -23,9 +24,10 @@ export type Asked = { id: string; agent: string; who: string; from: From; tool: 
 
 type From = "agent" | "sub" | "session";
 
-type Said = { ok: boolean; note: string };
+// answers: the owner's, to a question (Question)
+type Said = { ok: boolean; note: string; answers?: Answers };
 
-type Held = Asked & { key: string; ok: boolean | null; note: string };
+type Held = Asked & { key: string; ok: boolean | null; note: string; answers?: Answers };
 
 export type Gate = { file: string; held: Held[]; waits: Map<string, (said: Said | null) => void>; change: () => void };
 
@@ -80,7 +82,7 @@ export namespace Gate {
     const yes = gate.held.find((h) => same(h) && h.ok === true);
     if (yes !== undefined) {
       drop(gate, yes);
-      return Promise.resolve({ ok: true, note: yes.note });
+      return Promise.resolve({ ok: true, note: yes.note, answers: yes.answers });
     }
     let h = gate.held.find((x) => same(x) && x.ok === null && !gate.waits.has(x.id));
     if (h === undefined) {
@@ -122,7 +124,7 @@ export namespace Gate {
     if (wait !== undefined || !said.ok) {
       drop(gate, h);
     } else {
-      Object.assign(h, { ok: true, note: said.note, at: Date.now() });
+      Object.assign(h, { ok: true, note: said.note, answers: said.answers, at: Date.now() });
       save(gate);
     }
     wait?.(said);
@@ -139,8 +141,10 @@ export namespace Gate {
     return { id, agent, who, from, tool, input, what, at };
   }
 
+  // a card as one line: its call, or the questions it asks
   export function line(a: Asked): string {
-    return call_text(call_parse(a.tool + " " + a.input)).replace(/\s+/g, " ").trim();
+    const call = call_parse(a.tool + " " + a.input);
+    return (a.tool === QUESTION ? call.head : call_text(call)).replace(/\s+/g, " ").trim();
   }
 
 }

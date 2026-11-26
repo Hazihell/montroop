@@ -20,7 +20,7 @@ type Told = { seq: number; at: number; ev: Json & { k: string } };
 // how a test starts its work: a work session (the app's form, the session
 // tool's start), or a subagent its agent starts with the subagent tool, on
 // Claude Code, or (codex) on Codex
-type Via = "session" | "subagent" | "codex";
+export type Via = "session" | "subagent" | "codex";
 export const VIAS: Via[] = ["session", "subagent", "codex"];
 
 // those that run Claude Code
