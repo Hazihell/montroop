@@ -19,7 +19,7 @@ beforeEach(() => {
   fs.rmSync(DIR + "/pins.json", { force: true });
 });
 
-test("a pin added gets the next id and shows with where it came from and till when", () => {
+test("a pin added gets the next id, holds for the agent that added it unless for says otherwise, and shows with where it came from and till when", () => {
   expect(Pins.tool({ action: "add", text: "Call him Sam.", from: 9, for: ["all"] }, lead, "2026-11-01")).toEqual({ text: "Pinned for the whole team: 1|Call him Sam. (#9)", fail: false });
   expect(Pins.tool({ action: "add", text: "Deals  only\nnew ones.", until: "2026-11-30" }, deals, "2026-11-01")).toEqual({ text: "Pinned for Deals: 2|Deals only new ones. until 2026-11-30", fail: false });
 });
@@ -31,11 +31,6 @@ test("a pin needs its text on one short line, until as a date, and agents of the
   expect(Pins.tool({ action: "add", text: "ok", for: ["Deals", "Nobody"] }, lead)).toEqual({ text: "No agent Nobody in the team.", fail: true });
   expect(Pins.tool({ action: "add", text: "ok", for: ["all", "Mail"] }, lead)).toEqual({ text: "for is \"all\" alone, or agents' names.", fail: true });
   expect(Pins.read()).toEqual([]);
-});
-
-test("a pin added without for holds for the agent that added it alone", () => {
-  Pins.tool({ action: "add", text: "Prices in BRL." }, deals);
-  expect(Pins.read().map((p) => p.mons)).toEqual([[deals]]);
 });
 
 test("a pin for one agent reaches it and its workers, and no other agent or theirs", () => {
@@ -122,10 +117,14 @@ test("a temporary pin leaves after its until, a lasting one when unused for 45 d
   expect(Pins.read().map((p) => p.text)).toEqual(["Used lately."]);
 });
 
-test("news of a pin goes to the agents it held for, and of a shared one to the first agent", () => {
+test("news of a pin goes to the active agents it held for, else to the first agent", () => {
+  const gone = Team.add({ name: "Gone", ...fields }).id;
   Pins.tool({ action: "add", text: "mail and inbox", for: ["Mail", "Inbox"] }, mail);
   Pins.tool({ action: "add", text: "shared", for: ["all"] }, mail);
-  expect(Pins.read().map(Pins.homes)).toEqual([[mail, inbox], [lead]]);
+  Pins.tool({ action: "add", text: "gone and mail", for: ["Gone", "Mail"] }, mail);
+  Pins.tool({ action: "add", text: "gone alone" }, gone);
+  Team.archive(gone, true);
+  expect(Pins.read().map(Pins.homes)).toEqual([[mail, inbox], [lead], [mail], [lead]]);
 });
 
 test("an agent deleted leaves its pins: one held for it alone goes, one it shared stays for the others", () => {

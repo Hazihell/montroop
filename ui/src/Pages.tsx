@@ -105,11 +105,10 @@ export function Running({ agent }: { agent: string }): ReactNode {
   );
 }
 
-// a pin's line under its text: who it holds for, then, kept on one line,
-// how long and when last used
+// a pin's line under its text: who it holds for, how long, when last used
 function pin_note(pin: Pin, names: Map<string, string>): ReactNode {
-  const scope = pin.mons === null ? "Shared" : pin.mons.map((id) => names.get(id) ?? "A deleted mon").join(", ");
-  return <small>{scope} · <span className="whitespace-nowrap">{pin.until === null ? "lasting" : "until " + pin.until} · used {pin.used}</span></small>;
+  const scope = pin.mons === null ? "Shared" : pin.mons.map((id) => names.get(id) ?? id).join(", ");
+  return <small>{scope} · <span className="whitespace-nowrap">{pin.until === null ? "lasting" : "until " + pin.until}</span> · <span className="whitespace-nowrap">used {pin.used}</span></small>;
 }
 
 // the memory's three views; each takes the last one's place in the history,
@@ -128,8 +127,8 @@ export function Tabs({ agent }: { agent: string }): ReactNode {
 // shared or held for some agents, shown all or one scope's (filter: null
 // for all, "" for the shared ones, else an agent's id)
 export function Memory({ agent }: { agent: string }): ReactNode {
-  const name = useMontroop((s) => s.team.find((m) => m.id === agent)?.name ?? "");
   const team = useMontroop((s) => s.team);
+  const name = team.find((m) => m.id === agent)?.name ?? "";
   const [pins, setPins] = useState<Pin[] | null | undefined>(undefined);
   const [filter, setFilter] = useState<string | null>(null);
   const names = new Map(team.map((m) => [m.id, m.name]));

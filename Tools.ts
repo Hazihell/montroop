@@ -564,7 +564,7 @@ export namespace Tools {
         return Tools.schedule(seat, Timer.timer_new(args, Date.now()));
       }
       case "pin": {
-        return seat.subs === null ? { text: "A subagent changes no pins.", fail: true } : Pins.tool(args, who);
+        return Pins.tool(args, who);
       }
       case "agents": {
         return seat.agents?.on() === true ? seat.agents.run(args) : { text: "Your Manage agents setting is off.", fail: true };

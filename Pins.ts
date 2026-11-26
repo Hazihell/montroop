@@ -32,19 +32,19 @@ const LONGEST = 400;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 const HEAD = `Pinned: what the user taught you and the team, kept outside the view's
-compression, for the whole team (every agent, its subagents and sessions) or
-for you (yours see them too). Each line is id|pin (#the message it came from),
-with until on a temporary one and the other agents it holds for. Follow them as
-the user's standing instructions. With the pin tool: mark as used each pin that
+compression: pins for the whole team, then pins for you (your subagents and
+sessions get both). Each line is id|pin (#the message it came from), with until
+on a temporary one and the other agents it is also for. Follow them as the
+user's standing instructions. With the pin tool: mark as used each pin that
 shaped what you did this turn (a lasting pin unused ${STALE} days is unpinned); pin a
 correction, preference or rule of the user's on how you work in general, never
 one-time context (unsure: ask the user once, "pin …?"; "one-time" means no pin);
-choose its for: "all" for how the user wants the whole team to work, yourself
-(the default) for your own domain or project, or the agents it fits when it
-fits a few; give until to a pin tied to a goal or a date; replace the pin a new
-rule changes instead of adding one, and give for to move it; unpin when the
-user asks. Say each change in your reply, as "📌 pinned: …" or "📌 unpinned: …".
-At ${CAP} pins in a group, propose merges or drops to the user before adding one.`;
+give it for: ["all"] for how the user wants the whole team to work, none (you
+alone) for your own domain or project, the agents' names when it fits a few;
+give until to a pin tied to a goal or a date; replace the pin a new rule changes
+instead of adding one (for moves it); unpin when the user asks. Say each change
+in your reply, as "📌 pinned: …" or "📌 unpinned: …". At ${CAP} pins in a group,
+propose merges or drops to the user before adding one.`;
 
 const SUB_HEAD = "Pinned: what the user taught the team you work for, its standing instructions; follow them. Each line is id|pin (#the message it came from), with until on a temporary one.";
 
@@ -168,7 +168,7 @@ function fields(args: Record<string, unknown>): Pick<Pin, "text" | "from" | "unt
 
 // for: "all" (null), or the agents named, "me" the caller; by default
 // the caller alone
-function mons(want: unknown, mon: string): string[] | null | string {
+function for_ids(want: unknown, mon: string): string[] | null | string {
   const names = (want === undefined || want === null ? ["me"] : Array.isArray(want) ? want : [want]).map((n) => text_of(n, "").trim());
   if (names.length === 1 && names[0].toLowerCase() === "all") {
     return null;
@@ -187,7 +187,7 @@ function mons(want: unknown, mon: string): string[] | null | string {
 
 // why a pin can't join the group of mons (null: the whole team's): one
 // of them is full
-function full(pins: Pin[], mons: string[] | null): string | null {
+function full_why(pins: Pin[], mons: string[] | null): string | null {
   if (mons === null) {
     return pins.filter((p) => p.mons === null).length >= CAP ? "There are " + CAP + " pins for the whole team, the most kept: propose merges or drops to the user first." : null;
   }
@@ -204,11 +204,11 @@ export function tool(args: Record<string, unknown>, mon: string, day = today()):
   switch (action) {
     case "add": {
       const f = fields(args);
-      const to = mons(args.for, mon);
+      const to = for_ids(args.for, mon);
       if (typeof f === "string" || typeof to === "string") {
         return { text: typeof f === "string" ? f : String(to), fail: true };
       }
-      const why = full(all, to);
+      const why = full_why(all, to);
       if (why !== null) {
         return { text: why, fail: true };
       }
@@ -223,11 +223,11 @@ export function tool(args: Record<string, unknown>, mon: string, day = today()):
         return { text: "No pin " + String(args.id) + ".", fail: true };
       }
       const f = fields({ text: old.text, from: old.from, until: old.until, ...args });
-      const to = args.for === undefined ? old.mons : mons(args.for, mon);
+      const to = args.for === undefined ? old.mons : for_ids(args.for, mon);
       if (typeof f === "string" || typeof to === "string") {
         return { text: typeof f === "string" ? f : String(to), fail: true };
       }
-      const why = full(all.filter((p) => p !== old), to);
+      const why = full_why(all.filter((p) => p !== old), to);
       if (why !== null) {
         return { text: why, fail: true };
       }
