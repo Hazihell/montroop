@@ -43,12 +43,12 @@ type Task = { task: string; name: string; role: Role; pick: Pick; account: Job["
 const ACCOUNTS: Record<Vendor, (claude: string) => Job["account"]> = {
   "claude-sub" : (claude) => ({ provider: "claude", id: claude, kind: "plan", dir: config.claude_dir(claude) }),
   "claude-api" : () => ({ provider: "claude", id: "key", kind: "key", dir: null }),
-  "openai-sub" : () => ({ provider: "openai", id: "chatgpt", kind: "plan", dir: path.dirname(config.CHATGPT) }),
+  "openai-sub" : () => ({ provider: "openai", id: "chatgpt", kind: "plan", dir: config.CODEX_HOME }),
   "openai-api" : () => ({ provider: "openai", id: "key", kind: "key", dir: null }),
 };
 
 // a repo's work needs a provider with tools of its own in a folder
-const OWN_TOOLS: Vendor[] = ["claude-sub"];
+const OWN_TOOLS: Vendor[] = ["claude-sub", "openai-sub"];
 
 // the server's: its tools; an agent's view now, or why there's none; its
 // pick, null for no such agent
@@ -125,7 +125,7 @@ export namespace Subagents {
         !NAME.test(name) ? "a name is 1 to 40 lowercase letters, digits and dashes" :
         taken.has(name) ? "you have a session or subagent " + name + " already: pick another name, or leave it out" :
         pick === null || vendor === undefined ? "no model " + (role.model ?? base.model) + "; one of " + [...offered].join(", ") :
-        Sub.no_effort(base, role) ?? ("why" in top ? top.why : repo !== "" && !OWN_TOOLS.includes(vendor) ? pick.model + " has no tools of its own to work on a repo with: pick a Claude plan's model" : null);
+        Sub.no_effort(base, role) ?? ("why" in top ? top.why : repo !== "" && !OWN_TOOLS.includes(vendor) ? pick.model + " has no tools of its own to work on a repo with: pick a model on a Claude or ChatGPT plan" : null);
       if (bad !== null || pick === null || "why" in top) {
         return Sub.refused(k, task, bad ?? "");
       }

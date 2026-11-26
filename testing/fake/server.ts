@@ -16,7 +16,10 @@ type Seen = { n: number; at: string; vendor: string; path: string; model: string
 type Used = { input: number; read: number; write: number };
 
 // pace: ms between one block's end and the next's start
-type Sent = { blocks: Array<{ text: string } | { id: string; name: string; json: string } | { think: string }>; stall: number; cut: boolean; pace: number };
+// a tool call's block: in a namespace of tools (ns, as Codex offers its
+// client's tools), or of a freeform tool, whose input is text (as Codex's
+// apply_patch is)
+type Sent = { blocks: Array<{ text: string } | { id: string; name: string; json: string; ns?: string; free?: boolean } | { think: string }>; stall: number; cut: boolean; pace: number };
 
 export const CONTROL = 9999;
 
@@ -24,6 +27,9 @@ export const CONTROL = 9999;
 const TASK = /^Compaction: (?:compress message \d+ |merge lines \d+\+\d+ and \d+\+\d+, )/m;
 
 const REMINDER = /<system-reminder>[\s\S]*?<\/system-reminder>/g;
+
+// what a model's output on the Responses API is made of
+const OUTPUTS = ["assistant", "reasoning", "function_call", "custom_tool_call"];
 
 const QUEUE: Array<Order & { match: string }> = [];
 const LOG: Seen[] = [];
@@ -127,6 +133,12 @@ function pick(latest: string, compaction: boolean): Order {
   const k = QUEUE.findIndex((o) => names(o.match, latest, compaction));
   if (k >= 0) {
     return QUEUE.splice(k, 1)[0];
+  }
+  // a script Codex's exec tool runs that yielded before it was done is
+  // waited for, as a model in code mode does
+  const running = /^Script running with cell ID (\S+)$/m.exec(latest);
+  if (running !== null) {
+    return { what: "tool", calls: [["wait", { cell_id: running[1] }]] };
   }
   return { what: "reply", text: compaction ? "Summary: " + (latest.split("<input>").pop() ?? "").slice(0, 80).replace(/\s+/g, " ").trim() : "ok" };
 }
@@ -276,9 +288,19 @@ function openai(vendor: Vendor, model: string, sent: Sent, used: Used): Response
       ev("response.output_item.done", { output_index, item });
       done.push(item);
       out += tokens(b.text);
+    } else if (b.free === true) {
+      const item_id = hex("ctc_");
+      const item = { id: item_id, type: "custom_tool_call", status: "in_progress", input: "", call_id: b.id, name: b.name };
+      ev("response.output_item.added", { output_index, item });
+      ev("response.custom_tool_call_input.delta", { item_id, output_index, delta: b.json });
+      ev("response.custom_tool_call_input.done", { item_id, output_index, input: b.json });
+      const whole = { ...item, status: "completed", input: b.json };
+      ev("response.output_item.done", { output_index, item: whole });
+      done.push(whole);
+      out += tokens(b.json);
     } else {
       const item_id = hex("fc_");
-      const item = { id: item_id, type: "function_call", status: "in_progress", arguments: "", call_id: b.id, name: b.name };
+      const item = { id: item_id, type: "function_call", status: "in_progress", arguments: "", call_id: b.id, name: b.name, ...(b.ns === undefined ? {} : { namespace: b.ns }) };
       ev("response.output_item.added", { output_index, item });
       (b.json.match(/.{1,12}/gs) ?? [""]).forEach((delta) => ev("response.function_call_arguments.delta", { item_id, output_index, delta, obfuscation: id("", 8) }));
       ev("response.function_call_arguments.done", { item_id, output_index, arguments: b.json });
@@ -347,6 +369,12 @@ async function sign_in(url: URL, req: Request): Promise<Response | null> {
       return new Response("<!doctype html><title>Authentication code</title><p>Paste this into Claude Code:</p><code>" + (url.searchParams.get("code") ?? "") + "#" + (url.searchParams.get("state") ?? "") + "</code>", { headers: { "content-type": "text/html" } });
     case "/api/oauth/profile":
       return json(200, { account: { uuid: ACCOUNT, email: EMAIL, full_name: "Tester", display_name: "Tester", has_claude_max: true, has_claude_pro: false }, organization: { uuid: ACCOUNT, name: EMAIL + "'s Organization", organization_type: "claude_max", rate_limit_tier: "default_claude_max_20x", billing_type: "stripe_subscription" } });
+    // the workspaces the signed-in user is in, each with its backend, as
+    // Codex finds where to send a workspace's requests
+    case "/backend-api/wham/accounts/check": {
+      const account = req.headers.get("chatgpt-account-id") ?? ACCOUNT;
+      return json(200, { accounts: [{ id: account, name: null, plan_type: "plus", structure: "personal", workspace_backend_origin: "https://chatgpt.com", account_routing_override: "NO_CONSTRAINT" }], account_ordering: [account], default_account_id: account });
+    }
     case "/backend-api/wham/usage": {
       const until = LIMITED.get(limit_key("openai-sub", req)) ?? 0;
       const window = (used: number, seconds: number, after: number) => ({ used_percent: used, limit_window_seconds: seconds, reset_after_seconds: after, reset_at: secs() + after });
@@ -388,7 +416,9 @@ async function gmail(req: Request): Promise<{ answer: Response; called: string }
 }
 
 async function model(req: Request, vendor: Vendor, url: URL): Promise<Response> {
-  const raw = await req.text();
+  // (Codex compresses its requests)
+  const bytes = new Uint8Array(await req.arrayBuffer());
+  const raw = new TextDecoder().decode(req.headers.get("content-encoding") === "zstd" ? Bun.zstdDecompressSync(bytes) : bytes);
   let body: unknown = {};
   try {
     body = JSON.parse(raw);
@@ -397,14 +427,27 @@ async function model(req: Request, vendor: Vendor, url: URL): Promise<Response> 
   }
   const name = str(get(body, "model")) ?? "";
   const got = said(vendor, body);
-  const last = (got.said.findLast((m) => m.role !== "system")?.text ?? "").replace(REMINDER, "");
-  const latest = (last.replace(/<chat>[\s\S]*<\/chat>/, "").split(/^A new message from [^:\n]+:$/m).pop() ?? "").trim();
+  // the newest part of the request: its last message, or on the Responses
+  // API what came after the model's latest output (tool results, and the
+  // messages that came in with them)
+  const answered = got.said.findLastIndex((m) => OUTPUTS.includes(m.role));
+  const newest = vendor.startsWith("claude") || answered < 0 ? [got.said.findLast((m) => m.role !== "system")] : got.said.slice(answered + 1).filter((m) => m.role !== "system" && m.role !== "developer");
+  const latest = newest.map((m) => ((m?.text ?? "").replace(REMINDER, "").replace(/<chat>[\s\S]*<\/chat>/, "").split(/^A new message from [^:\n]+:$/m).pop() ?? "").trim()).join("\n");
   const first = got.said.find((m) => m.role === "user")?.text.replace(REMINDER, "") ?? "";
   const compaction = TASK.test(first.replace(/<chat>[\s\S]*<\/chat>/, ""));
   const limited = limit_key(vendor, req);
   const until = LIMITED.get(limited) ?? 0;
   const order: Order = until > Date.now() ? { what: "error", kind: "usage-limit", reset: until } : pick(latest, compaction);
-  const tools = list(get(body, "tools")).map((t) => str(get(t, "name")) ?? str(get(t, "type")) ?? "");
+  // the tools offered: the request's own, and (Codex on a lighter request)
+  // those an input item adds; a namespace's tools each as namespace__name,
+  // but those of "functions", the model's own namespace
+  const listed = [...list(get(body, "tools")), ...list(get(body, "input")).filter((i) => get(i, "type") === "additional_tools").flatMap((i) => list(get(i, "tools")))];
+  const offered = listed.flatMap((t) => get(t, "type") !== "namespace" ? [{ name: str(get(t, "name")) ?? str(get(t, "type")) ?? "", ns: undefined, free: get(t, "type") === "custom" }] : list(get(t, "tools")).map((m) => {
+    const ns = str(get(t, "name"));
+    const own = ns === "functions" ? undefined : ns;
+    return { name: (own === undefined ? "" : own + "__") + (str(get(m, "name")) ?? ""), ns: own, free: get(m, "type") === "custom" };
+  }));
+  const tools = offered.map((t) => t.name);
   LOG.push({ n: LOG.length + 1, at: new Date().toISOString(), vendor, path: url.pathname, model: name, answer: JSON.stringify(order), system: got.system, tools, said: got.said, latest, compaction, headers: Object.fromEntries(req.headers), body });
   LOG.splice(0, LOG.length - 1000);
   const claude = vendor.startsWith("claude");
@@ -417,9 +460,25 @@ async function model(req: Request, vendor: Vendor, url: URL): Promise<Response> 
     }
     return failure(vendor, name, order.kind, order.reset);
   }
-  const named = (n: string) => tools.find((t) => t === n || t.endsWith("__" + n)) ?? n;
+  const named = (n: string) => offered.find((t) => t.name === n || t.name.endsWith("__" + n));
+  // Codex in code mode: the tools a script its exec tool runs can call,
+  // by the names its description declares them by
+  const exec = listed.flatMap((t) => (get(t, "type") === "namespace" ? list(get(t, "tools")) : [t])).find((t) => get(t, "type") === "custom" && get(t, "name") === "exec");
+  const nested = [...(str(get(exec, "description")) ?? "").matchAll(/declare const tools: \{ (\w+)\(/g)].map((m) => m[1]);
+  const scripted = (n: string) => named(n) === undefined ? nested.find((t) => t === n || t.endsWith("__" + n)) : undefined;
+  const block = ([n, input]: [string, unknown]) => {
+    const t = named(n);
+    const free = t?.free === true && typeof input === "string";
+    return { id: claude ? id("toolu_01") : id("call_"), name: t === undefined ? n : t.ns === undefined ? t.name : t.name.slice(t.ns.length + 2), json: free ? input : JSON.stringify(input), ...(t?.ns === undefined ? {} : { ns: t.ns }), ...(free ? { free } : {}) };
+  };
+  // the calls a script makes, in order, as a model in code mode writes it,
+  // each one's result (or what it threw) printed
+  const script = (calls: Array<[string, unknown]>) => calls.map(([n, input]) => "try { text(await tools." + scripted(n) + "(" + JSON.stringify(input) + ")); } catch (e) { text(String(e)); }").join("\n");
   const blocks: Sent["blocks"] = order.what === "tool"
-    ? order.calls.map(([n, input]) => ({ id: claude ? id("toolu_01") : id("call_"), name: named(n), json: JSON.stringify(input) }))
+    ? [
+      ...(order.calls.some(([n]) => scripted(n) !== undefined) ? [{ id: id("call_"), name: "exec", json: script(order.calls.filter(([n]) => scripted(n) !== undefined)), free: true }] : []),
+      ...order.calls.filter(([n]) => scripted(n) === undefined).map(block),
+    ]
     : [...(order.what === "reply" && order.think !== undefined ? [{ think: order.think }] : []), { text: order.what === "reply" ? order.text : "ok" }];
   const sent: Sent = { blocks, stall: order.what === "stall" ? order.ms : 0, cut: order.what === "cut", pace: order.what === "tool" ? order.pace ?? 0 : 0 };
   const used = order.what === "reply" && order.used !== undefined ? order.used : cache(got.segs, got.marks, claude ? 20 : Infinity);
@@ -456,6 +515,10 @@ if (import.meta.main) {
     port: 443, idleTimeout: 0, tls: { cert: Bun.file(dir + "/server.pem"), key: Bun.file(dir + "/server.key") },
     async fetch(req) {
       const url = new URL(req.url);
+      // no WebSocket here: Codex then sends its requests over HTTPS
+      if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
+        return new Response(null, { status: 426 });
+      }
       const vendor = vendor_of(req, url);
       if (vendor !== null && req.method === "POST") {
         return model(req, vendor, url);

@@ -12,10 +12,7 @@ import { Rules, type Rule } from "../../Rules.ts";
 import { Setup } from "../../Setup.ts";
 import { Tools } from "../../Tools.ts";
 import type { Ev, Told } from "../../Wire.ts";
-import { EMAIL } from "../fake/server.ts";
-import { claude_signed, fake, repo, ROOT, tag, until } from "../rig.ts";
-
-const jwt = (claims: object) => [{ alg: "none" }, { exp: Math.floor(Date.now() / 1e3) + 10 * 86400, ...claims }].map((x) => Buffer.from(JSON.stringify(x)).toString("base64url")).join(".") + ".fake";
+import { chatgpt_signed, claude_signed, fake, repo, ROOT, tag, until } from "../rig.ts";
 
 // a data folder signed in to Claude and ChatGPT and keyed for both APIs,
 // each credential its own, as the fake keeps a usage limit per credential
@@ -23,8 +20,7 @@ function signed(dir: string): string {
   const own = crypto.randomUUID().slice(0, 8);
   claude_signed(path.join(dir, "claude-sub"), own);
   fs.writeFileSync(path.join(dir, "keys.json"), JSON.stringify({ anthropic: "sk-ant-api03-test-" + own, openai: "sk-proj-test-" + own }));
-  const auth = { "https://api.openai.com/auth": { chatgpt_account_id: own, chatgpt_plan_type: "plus" } };
-  fs.writeFileSync(path.join(dir, "chatgpt.json"), JSON.stringify({ auth_mode: "chatgpt", OPENAI_API_KEY: null, tokens: { id_token: jwt({ email: EMAIL, ...auth }), access_token: jwt(auth), refresh_token: "rt_" + own, account_id: own }, last_refresh: new Date().toISOString() }));
+  chatgpt_signed(path.join(dir, "chatgpt.json"), own);
   return dir;
 }
 
@@ -38,11 +34,11 @@ const DRIVERS: Record<string, (home: string, text: string) => Omit<Job, "dir">> 
   "claude-code, given" : (home, text) => ({ ...base(home, "claude", "plan", "claude-haiku-5-5"), context: { kind: "given", blocks: [{ text, mark: false }], imgs: [] } }),
   "anthropic api"      : (home) => ({ ...base(home, "claude", "key", "claude-haiku-5-5"), context: { kind: "native", resume: "", first: [], brief: "" } }),
   "openai api"         : (home) => ({ ...base(home, "openai", "key", "gpt-6-luna"), context: { kind: "native", resume: "", first: [], brief: "" } }),
-  "chatgpt plan"       : (home) => ({ ...base(home, "openai", "plan", "gpt-6-luna"), context: { kind: "native", resume: "", first: [], brief: "" } }),
+  "codex"              : (home) => ({ ...base(home, "openai", "plan", "gpt-6-luna"), context: { kind: "native", resume: "", first: [], brief: "" }, cwd: fs.mkdtempSync(path.join(os.tmpdir(), "cwd-")) }),
 };
 
 function base(home: string, provider: string, kind: "plan" | "key", model: string): Omit<Job, "dir"> {
-  const account = kind === "plan" ? { provider, id: "personal", kind, dir: path.join(home, "claude-sub") } : { provider, id: "key", kind, dir: null };
+  const account = kind === "plan" ? { provider, id: provider === "claude" ? "personal" : "chatgpt", kind, dir: path.join(home, provider === "claude" ? "claude-sub" : "codex") } : { provider, id: "key", kind, dir: null };
   return { account, model, effort: "low", speed: "slow", system: "You are a test agent.", own: "", context: { kind: "native", resume: "", first: [], brief: "" }, cwd: null, write: true, tools: [], web: 0 };
 }
 
@@ -297,7 +293,7 @@ test.concurrent.each([
 
 // a plan's usage limit is waited out: the fake refuses each call till
 // its reset, so a run that ends well asked again after it
-for (const name of ["claude-code, native", "claude-code, given", "chatgpt plan"]) {
+for (const name of ["claude-code, native", "claude-code, given", "codex"]) {
   test.concurrent(name + ": a usage limit is waited out till its reset, then the run goes on", async () => {
     const t = tag();
     const home = signed(fs.mkdtempSync(path.join(os.tmpdir(), "home-")));

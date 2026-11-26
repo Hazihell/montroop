@@ -2,7 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { chat, down, fake, gate, git, Troop, repo, ROOT, said, SUB, tag, until, VIAS, waiting } from "../rig.ts";
+import { chat, down, fake, gate, git, model, shell, Troop, repo, ROOT, said, SUB, tag, until, VIAS, waiting } from "../rig.ts";
 
 afterAll(down);
 
@@ -151,19 +151,20 @@ test.concurrent("one lists with its task, model and effort, and how full its con
   expect(await s.status("done")).toMatchObject({ task: t + ": count the herons", model: "haiku-5.5", effort: "low", meter: { tokens: 32000, window: 1e6 } });
 });
 
-test.concurrent("one waiting out a usage limit lists as waiting on it, with its reset, till it is stopped, and not once resumed", async () => {
-  const k = await Troop.up();
+for (const via of ["subagent", "codex"] as const) {
+test.concurrent(via + ": one waiting out a usage limit lists as waiting on it, with its reset, till it is stopped, and not once resumed", async () => {
+  const k = await Troop.on(via);
   const t = tag();
   const reset = Date.now() + 3600e3;
   await fake.next(t + ": work", { what: "error", kind: "usage-limit", reset });
-  const [s] = await k.subagents({ task: t + ": work", name: "lw", memory: false });
+  const [s] = await k.subagents({ task: t + ": work", name: "lw", memory: false, ...model(via) });
 
   const parked = await until("it waits on the limit", async () => {
     const p = await s.page();
     return p.waits === "limit" ? p : null;
   });
   expect(parked).toMatchObject({ status: "running", meter: null });
-  // the reset as Claude Code tells it, in whole seconds
+  // the reset as the provider tells it, in whole seconds
   expect(Math.abs((parked.until ?? 0) - reset)).toBeLessThan(1000);
   expect((await k.api("POST", "/api/sessions/" + s.id + "/stop", {})).status).toBe(200);
   expect(await s.status("stopped")).toMatchObject({ waits: null, until: null });
@@ -175,12 +176,12 @@ test.concurrent("one waiting out a usage limit lists as waiting on it, with its 
   expect(await s.status("running")).toMatchObject({ waits: null, until: null });
 });
 
-test.concurrent("a usage limit is waited out in its holder, and it goes on by itself at the reset", async () => {
-  const k = await Troop.up();
+test.concurrent(via + ": a usage limit is waited out in its holder, and it goes on by itself at the reset", async () => {
+  const k = await Troop.on(via);
   const t = tag();
   const reset = Date.now() + 3000;
   await fake.next(t + ": work", { what: "error", kind: "usage-limit", reset });
-  const [s] = await k.subagents({ task: t + ": work", name: "ul", memory: false });
+  const [s] = await k.subagents({ task: t + ": work", name: "ul", memory: false, ...model(via) });
 
   const done = await s.status("done");
   expect(done.runs).toMatchObject([{ n: 1, status: "done", attempts: 1 }]);
@@ -189,12 +190,12 @@ test.concurrent("a usage limit is waited out in its holder, and it goes on by it
   expect(await said(k, s.woke("failed:"))).toBe(0);
 });
 
-test.concurrent("a long usage limit wakes its agent once, and the user's word that it was reset early (resume) has it ask again", async () => {
-  const k = await Troop.up();
+test.concurrent(via + ": a long usage limit wakes its agent once, and the user's word that it was reset early (resume) has it ask again", async () => {
+  const k = await Troop.on(via);
   const t = tag();
   const reset = Date.now() + 3600e3;
   await fake.next(t + ": work", { what: "error", kind: "usage-limit", reset });
-  const [s] = await k.subagents({ task: t + ": work", name: "lr", memory: false });
+  const [s] = await k.subagents({ task: t + ": work", name: "lr", memory: false, ...model(via) });
   await until("the limit's wake", async () => await said(k, s.woke("waiting: a usage limit, till ")) === 1);
   await fake.lift(reset);
   await fake.next(t + ": it was reset", { what: "tool", calls: [["resume", {}]] });
@@ -205,12 +206,12 @@ test.concurrent("a long usage limit wakes its agent once, and the user's word th
   expect(await said(k, s.woke("waiting:"))).toBe(1);
 });
 
-test.concurrent("one at work through a server restart goes on in the same holder, and wakes its agent once", async () => {
-  const k = await Troop.up();
+test.concurrent(via + ": one at work through a server restart goes on in the same holder, and wakes its agent once", async () => {
+  const k = await Troop.on(via);
   const t = tag();
-  await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
+  await fake.next(t + ": work", { what: "tool", calls: [shell(via, gate(t))] });
   await fake.next(t + "-done", { what: "reply", text: t + " finished" });
-  const [s] = await k.subagents({ task: t + ": work", name: "sr", memory: false });
+  const [s] = await k.subagents({ task: t + ": work", name: "sr", memory: false, ...model(via) });
   await until("the command running", () => waiting(t));
   const holder = s.holder();
   await k.kill();
@@ -222,6 +223,7 @@ test.concurrent("one at work through a server restart goes on in the same holder
   await until("the done wake", async () => await said(k, s.woke("done: ") + t + " finished") === 1);
   expect(await said(k, s.woke("failed:"))).toBe(0);
 });
+}
 
 test.concurrent("one on an API key runs Montroop's loop, and its calls of Montroop's tools, on a device and on its agent's memory, are answered; its latest request's tokens make its meter", async () => {
   const model = "claude-api:haiku-5.5:low:slow";
@@ -242,7 +244,7 @@ test.concurrent("one on an API key runs Montroop's loop, and its calls of Montro
 
 for (const via of VIAS) {
   test.concurrent(via + ": <scratch> in a rule is the scratch folder of the computer its own tools run on: a delete there (its worktree too) asks no one, one outside it asks", async () => {
-    const k = await Troop.up();
+    const k = await Troop.on(via);
     const t = tag();
     const elsewhere = path.join(k.dir, "scratch", "elsewhere-" + t);
     fs.mkdirSync(elsewhere, { recursive: true });
@@ -250,8 +252,8 @@ for (const via of VIAS) {
     const canary = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "outside-")), "canary.txt");
     fs.writeFileSync(canary, "keep\n");
     const own = path.join(k.dir, "scratch", k.agent, "sessions", "sc", "README.md");
-    await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: "rm -f " + path.join(elsewhere, "f") + " " + own + " && echo " + t + "-gone" }]] });
-    await fake.next(t + "-gone", { what: "tool", calls: [["Bash", { command: "rm -f " + canary }]] });
+    await fake.next(t + ": work", { what: "tool", calls: [shell(via, "rm -f " + path.join(elsewhere, "f") + " " + own + " && echo " + t + "-gone")] });
+    await fake.next(t + "-gone", { what: "tool", calls: [shell(via, "rm -f " + canary)] });
     const s = await k.work(via, "sc", t + ": work", repo());
     const card = await until("the canary's card", () => k.cards().find((c) => c.input.includes(canary)));
     expect((await k.api("POST", "/api/approve", { id: card.id, ok: false, note: "" })).status).toBe(200);

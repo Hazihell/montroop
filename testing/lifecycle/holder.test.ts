@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Hold } from "../../Hold.ts";
-import { down, fake, gate, git, Troop, repo, said, tag, until, VIAS, waiting } from "../rig.ts";
+import { CLAUDE, down, fake, gate, git, shell, Troop, repo, said, tag, until, VIAS, waiting } from "../rig.ts";
 
 afterAll(down);
 
@@ -32,9 +32,9 @@ test.concurrent("a start that names no driver, as one from before drivers were n
 
 for (const via of VIAS) {
   test.concurrent(via + ": a second connection's hello takes the holder over, and the server takes it back and sees the run through", async () => {
-    const k = await Troop.up();
+    const k = await Troop.on(via);
     const t = tag();
-    await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
+    await fake.next(t + ": work", { what: "tool", calls: [shell(via, gate(t))] });
     await fake.next(t + "-done", { what: "reply", text: t + " finished" });
     const s = await k.work(via, "sk", t + ": work", repo());
     await until("the command running", () => waiting(t));
@@ -53,6 +53,10 @@ for (const via of VIAS) {
     await until("the done wake", async () => await said(k, s.woke("done: ") + t + " finished") === 1);
   });
 
+}
+
+// what Claude Code alone does
+for (const via of CLAUDE) {
   test.concurrent(via + ": a command left running in the background keeps it at work past its turn, till it ends", async () => {
     const k = await Troop.up();
     const t = tag();

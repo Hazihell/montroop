@@ -15,7 +15,7 @@ function results(log: Log, text: string): Log {
 
 for (const via of VIAS) {
   test.concurrent(via + ": Montroop's shell runs on a device, in its agent's scratch folder there, a delete inside it asking no one", async () => {
-    const k = await Troop.up();
+    const k = await Troop.on(via);
     const t = tag();
     const box = await k.device("box");
     const mine = path.join(box.scratch, k.agent);
@@ -32,7 +32,7 @@ for (const via of VIAS) {
   });
 
   test.concurrent(via + ": Montroop's search finds its agent's chat", async () => {
-    const k = await Troop.up();
+    const k = await Troop.on(via);
     const t = tag();
     await fake.next(t + ": remember", { what: "reply", text: "Noted." });
     await k.tell(t + ": remember the heron-" + t);
@@ -47,7 +47,7 @@ for (const via of VIAS) {
   });
 
   test.concurrent(via + ": a server killed in the middle of its shell call on a device gives it the result once it's back, the command run once", async () => {
-    const k = await Troop.up();
+    const k = await Troop.on(via);
     const t = tag();
     const box = await k.device("box");
     const go = path.join(box.home, "go-" + t);
@@ -70,7 +70,7 @@ for (const via of VIAS) {
   });
 
   test.concurrent(via + ": its shell call on a device that an ask rule names waits in its holder across a server restart, and runs once approved", async () => {
-    const k = await Troop.up({ ask: [{ what: "Count something", tools: "shell", args: "count-" }] });
+    const k = await Troop.on(via, { ask: [{ what: "Count something", tools: "shell", args: "count-" }] });
     const t = tag();
     const box = await k.device("box");
     const count = path.join(box.home, "count-" + t);
