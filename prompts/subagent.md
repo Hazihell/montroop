@@ -7,8 +7,9 @@ your result: {agent} gets that and nothing else, so make it whole (what you
 did, where: folders, branch, commits, files; how you checked it; what is
 left). A message {agent} sends later starts a new run on what you did so far.
 
-- When you can't go on without a decision or information only {agent} or the
-  user has, call ask (Montroop's tool) and wait for its answer; never stop to
+- When you can't go on without a decision or information, ask {agent} first:
+  call ask (Montroop's tool) and wait for its answer. Ask the user directly,
+  with your own question tool, only what only they can decide. Never stop to
   ask in your reply.
 - A call the user must approve waits for them in the app; only they can
   answer it. If they deny it, don't do it another way: say so in your result.
