@@ -93,7 +93,7 @@ export function mood_of(m: View.Mate, s: { agent: string; loaded: boolean; mood:
   return (m.asks ?? 0) > 0 ? "asking" : m.busy ? "working" : m.unread > 0 ? "done" : "idle";
 }
 
-// a work session's or subagent's mood: at work, asleep till a usage
+// a subagent's mood: at work, asleep till a usage
 // limit's reset, waiting on the owner or on its agent, or ended and not
 // yet seen by the owner; null once it ended and was seen
 export function work_mood(w: View.SessionRow): Mood | null {
@@ -106,8 +106,8 @@ export function work_mood(w: View.SessionRow): Mood | null {
     : "sleeping";
 }
 
-// how a screen reader hears how many work sessions and subagents are in
-// each state, or wait on each thing
+// how a screen reader hears how many subagents are in each state, or wait
+// on each thing
 const WORK_SAID: Record<View.SessionRow["status"] | NonNullable<View.Waits>, [string, string]> = {
   running  : ["working", "working"],
   waiting  : ["waits", "wait"],
@@ -120,7 +120,7 @@ const WORK_SAID: Record<View.SessionRow["status"] | NonNullable<View.Waits>, [st
   stopped  : ["stopped", "stopped"],
 };
 
-// the work sessions and subagents that matter now, in one sentence for a
+// the subagents that matter now, in one sentence for a
 // screen reader
 export function works_said(works: View.SessionRow[]): string {
   const states = works.filter((w) => work_mood(w) !== null).map((w) => w.waits ?? w.status);

@@ -6,9 +6,8 @@ import * as View from "../../View.ts";
 import { Face } from "./Avatar.tsx";
 import { note, useMontroop, work_mood } from "./Montroop.ts";
 
-// an agent's work sessions and subagents as the app shows them, one kind:
-// in its list of what runs (each opens its page, one at work stops from
-// there), and what they do
+// an agent's subagents as the app shows them: in its list of what runs
+// (each opens its page, one at work stops from there), and what they do
 
 const NO_WORKS: View.SessionRow[] = [];
 

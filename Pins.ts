@@ -8,8 +8,8 @@ import { write_whole } from "./Write.ts";
 
 // what the agents learned about the user that must not fade with the
 // memory's compression: one line each, in pins.json in Montroop's dir.
-// mons: the agents it holds for, with their subagents and work sessions
-// (null: every agent); ids run in one sequence across them all. A pin
+// mons: the agents it holds for, with their subagents (null: every
+// agent); ids run in one sequence across them all. A pin
 // with until is temporary; a lasting one leaves when unused for STALE days
 export type Pin = {
   id    : number;

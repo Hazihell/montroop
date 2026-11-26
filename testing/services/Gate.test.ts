@@ -14,14 +14,14 @@ function opened(): { file: string; gate: Gate } {
 
 function ask(gate: Gate, args: Record<string, unknown> = PUSH, signal = new AbortController().signal): { said: ReturnType<typeof Gate.wait>; cards: Asked[] } {
   const cards: Asked[] = [];
-  const said = Gate.wait(gate, "agent1", "Session fix", "session", "shell", args, WHAT, signal, (a) => cards.push(a));
+  const said = Gate.wait(gate, "agent1", "Subagent fix", "subagent", "shell", args, WHAT, signal, (a) => cards.push(a));
   return { said, cards };
 }
 
 test("a call a rule names waits for the owner's answer", async () => {
   const { gate } = opened();
   const { said, cards } = ask(gate);
-  expect(cards.map((c) => [c.who, c.tool, c.input, c.what])).toEqual([["Session fix", "shell", "{\"command\":\"git push --force origin main\"}", WHAT]]);
+  expect(cards.map((c) => [c.who, c.tool, c.input, c.what])).toEqual([["Subagent fix", "shell", "{\"command\":\"git push --force origin main\"}", WHAT]]);
   expect(Gate.decide(gate, cards[0].id, { ok: true, note: "once" })).toMatchObject({ waited: true });
   expect(await said).toEqual({ ok: true, note: "once" });
 });

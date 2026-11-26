@@ -31,17 +31,17 @@ type Node = { text: string; to: string };
 export type Live = { kind: Kind; text: string; of?: string };
 
 // an agent as the chat list shows it: last, its last message's gist; asks,
-// how many of its calls wait for the owner's yes; works, its work sessions
+// how many of its calls wait for the owner's yes; works, its subagents
 // edited: when its settings last changed while this server runs, so a
 // settings page open on it reads them again
 export type Mate = { id: string; name: string; about: string; picture: string; unread: number; last: string; busy: boolean; asks?: number; archived: number; works?: SessionRow[]; edited?: number };
 
-// what a work session waits on: the owner's approval of a call it parked,
+// what a subagent waits on: the owner's approval of a call it parked,
 // the owner's answer to a question it put to them, its agent's answer to
 // its question, or a usage limit's reset
 export type Waits = "approval" | "question" | "answer" | "limit" | null;
 
-// a work session or subagent as the app lists it: who, the name its cards
+// a subagent as the app lists it: who, the name its cards
 // are asked by; task, its first run's message; model ("": its account's
 // default) and effort ("": the model's), as names a person reads; until,
 // the reset of the usage limit it waits on; meter, how full its context
@@ -55,7 +55,7 @@ export type SessionRow = {
 
 export type Meter = { tokens: number; window: number };
 
-// a work session's page: its runs, the calls and questions it waits on,
+// a subagent's page: its runs, the calls and questions it waits on,
 // the messages sent to it (heard: 1 taken in, 0 not yet, -1 dropped as it
 // was stopped), its media files and a page of its log
 export type SessionPage = SessionRow & {
@@ -68,15 +68,15 @@ export type SessionPage = SessionRow & {
   log: Told[];
 };
 
-// who a work session's calls are asked by, on the owner's cards
-export const SESSION = "Session ";
+// who a subagent's calls are asked by, on the owner's cards
+export const SUBAGENT = "Subagent ";
 
-// who asked, as the owner reads it: a work session or subagent is a submon
+// who asked, as the owner reads it: a subagent is a submon
 export function asker(a: { who: string; from: string }): string {
   return a.from === "agent" ? a.who : "Submon " + a.who.slice(a.who.indexOf(" ") + 1);
 }
 
-// a work session's media files the app shows inline, by name
+// a subagent's media files the app shows inline, by name
 export const PICTURE = /\.(png|jpe?g|gif|webp|avif)$/i;
 export const VIDEO = /\.(mp4|webm|mov)$/i;
 

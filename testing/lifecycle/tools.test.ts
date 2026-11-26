@@ -2,7 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { TOOLS } from "../../Wire.ts";
-import { chat, down, fake, gate, Troop, older, procs, repo, ROOT, tag, until, VIAS, waiting } from "../rig.ts";
+import { chat, down, fake, gate, Troop, older, procs, repo, tag, until, VIAS, waiting } from "../rig.ts";
 
 afterAll(down);
 
@@ -105,36 +105,7 @@ test.concurrent("a subagent's call of Montroop's tools while a server from befor
   s.open(t);
 
   const done = await s.status("done");
-  expect(results(done.log, "runs no tools for work sessions")).toHaveLength(1);
-});
-
-// a server from before then never answers a subagent's card (it predates
-// subagents), so this is an old work session's, its run on this version's
-// holder: one the version before started, resumed under this version
-test.concurrent("an old work session's call of Montroop's tools approved under a server from before they ran in sessions is told that server runs none", async () => {
-  const k = await Troop.up({ ask: [{ what: "Zoom", tools: "zoom", args: "" }] }, older());
-  const t = tag();
-  const started = await k.api("POST", "/api/sessions", { agent: k.agent, repo: repo(), base: "main", name: "oa", brief: "", prompt: t + ": first" });
-  const s = await k.adopt(String(started.json.id), "oa");
-  await s.status("done");
-  await until("its holder ended", () => s.holder() === null);
-  await k.kill();
-  k.root = ROOT;
-  await k.start();
-  await fake.next(t + ": work", { what: "tool", calls: [["zoom", { id: 1 }]] });
-  expect((await s.say(t + ": work", "w-" + t)).status).toBe(200);
-  await s.status("waiting");
-  await k.kill();
-  k.root = older(TOOLS);
-  await k.start();
-  const card = await until("its card", () => k.cards()[0]);
-  expect((await k.api("POST", "/api/approve", { id: card.id, ok: true, note: "" })).status).toBe(200);
-
-  const done = await until("its second run done", async () => {
-    const p = await s.page();
-    return p.status === "done" && p.runs.length === 2 ? p : null;
-  });
-  expect(results(done.log, "runs no tools for work sessions")).toHaveLength(1);
+  expect(results(done.log, "runs no tools for subagents")).toHaveLength(1);
 });
 
 test.concurrent("a chain of messages between two mons goes on as long as they send them, a hops setting left in the config ignored", async () => {

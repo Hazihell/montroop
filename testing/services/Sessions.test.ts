@@ -21,13 +21,6 @@ test("another agent can't read, send to, stop or archive a subagent", () => {
   expect(Session.says(mine.id)).toEqual([]);
 });
 
-test("the subagent tool reaches its agent's old work sessions too, so one that asks can be answered", () => {
-  Session.add({ id: "4567cdef", name: "old", agent: "owner1", repo: "/repo", base: "main", branch: "troop/old", worktree: "/repo-old", provider: "", account: "", model: "", effort: "", memory: 0, write: 1, device: "", dir: path.join(DIR, "sessions", "4567cdef") }, "the brief");
-  expect(Sessions.act("owner1", { action: "list" }).text.split("\n").slice(0, 2).sort()).toEqual(["mine: running, branch troop/mine", "old: running, branch troop/old"]);
-  expect(Sessions.act("owner1", { action: "read", name: "old" }).text).toStartWith("Session old: running");
-  expect(Sessions.act("owner1", { action: "send", name: "old", text: "the answer", request: "r-old" }).text).toStartWith("Sent: it reaches the session at its next step.");
-});
-
 test("a message sent with the subagent tool needs a request, so a retry sends it once", () => {
   expect(Sessions.act("owner1", { action: "send", name: "mine", text: "hello" })).toEqual({ text: "send needs a request: an id of your own for this message (any new text); on a retry, the same one, so it's sent once.", fail: true });
 });

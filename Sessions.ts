@@ -13,9 +13,6 @@
 // the owner or on its agent's answer, the agent gets one message that
 // starts its turn ("[Subagent name] done: …"), kept in the record till
 // it's in the agent's chat, so a restart neither loses nor repeats it.
-// Work sessions (Claude Code in a worktree, the session tool's) start no
-// more: the old ones still read, resume and run here, till the old
-// engine's cleanup removes them.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -39,7 +36,6 @@ import { LIVE, Session, type Effect, type Mode, type Parked, type Run } from "./
 import type { Wake } from "./Wake.ts";
 import { Team } from "./Team.ts";
 import { Tools } from "./Tools.ts";
-import * as Prompts from "./Prompts.ts";
 import { clock, PICTURE, VIDEO, type SessionPage, type SessionRow, type Waits } from "./View.ts";
 import { Wire, type Ev, type Told } from "./Wire.ts";
 import { Worktree } from "./Worktree.ts";
@@ -96,10 +92,10 @@ const GOES_ON = new Set<Ev["k"]>(["began", "text", "tool", "result", "ask", "que
 const STOPPING = "Its holder is still stopping: try again in a few seconds.";
 
 const SENT: Record<Sent, string> = {
-  steered  : "Sent: it reaches the {kind} at its next step.",
-  queued   : "Queued: it starts the {kind}'s next run once this one ends.",
+  steered  : "Sent: it reaches the subagent at its next step.",
+  queued   : "Queued: it starts the subagent's next run once this one ends.",
   answered : "Sent as the answer to its question: it goes on.",
-  started  : "Sent: the {kind} runs again on it, where it left off.",
+  started  : "Sent: the subagent runs again on it, where it left off.",
   again    : "A message with this request was sent already: not sent twice.",
 };
 
@@ -199,8 +195,7 @@ export namespace Sessions {
     LATELY.set(s.id, { ...lately(s), until: null });
     const first = s.launches > 0 && s.sdk === "" ? Session.runs(s.id)[0]?.prompt ?? prompt : prompt;
     const text = first === prompt ? prompt : first + "\n\n" + prompt;
-    const t = HOOKS.tools;
-    const why = Session.kind(s) === "subagent" ? launch_sub(s, h, text) : Holders.launch(h, "Montroop work session " + s.name, { driver: "claude-code", prompt: text, resume: s.sdk, rules: config.ASK, scratch: t === null ? {} : Tools.scratch(t), tools: t === null ? [] : Tools.kit(t, s.agent) });
+    const why = launch_sub(s, h, text);
     if (why !== null) {
       after(s.id, Session.move(s.id, "failed", why, about === null ? null : { about, text: why }) ?? []);
       return why;
@@ -231,7 +226,7 @@ export namespace Sessions {
     const tools = t === null ? [] : Tools.kit(t, s.agent, { memory: s.memory === 1, mcp: sub.mcp, write: s.write === 1 });
     const c = sub.job.context;
     const job = { ...sub.job, context: c.kind === "native" ? { ...c, resume: s.sdk } : c, tools: [] };
-    return Holders.launch(h, "Montroop subagent " + s.name, { driver: "provider", job, sub: true, prompt, resume: s.sdk, rules: config.ASK, scratch: t === null ? {} : Tools.scratch(t), tools });
+    return Holders.launch(h, "Montroop subagent " + s.name, { job, prompt, rules: config.ASK, scratch: t === null ? {} : Tools.scratch(t), tools });
   }
 
   // a subagent's job, or why it can't be read
@@ -290,7 +285,7 @@ export namespace Sessions {
     const now = Session.get(id);
     const run = Session.run(id);
     if (now !== null && run !== null && LIVE.includes(now.status)) {
-      const again = now.unit === was.unit && now.unit !== "" && Session.kind(now) === "subagent" && now.status === "running" && retry(id) ? Session.retry(id) : null;
+      const again = now.unit === was.unit && now.unit !== "" && now.status === "running" && retry(id) ? Session.retry(id) : null;
       const s = again === null ? null : Session.get(id);
       if (now.unit === "") {
         next_run(id);
@@ -329,8 +324,8 @@ export namespace Sessions {
       return;
     }
     // a tool a subagent's options leave out is refused here too
-    const sub = Session.kind(s) === "session" ? null : job_of(s);
-    const offered = sub === null || (typeof sub !== "string" && Tools.kit(HOOKS.tools, s.agent, { memory: s.memory === 1, mcp: sub.mcp, write: s.write === 1 }).some((t) => t.name === tool));
+    const sub = job_of(s);
+    const offered = typeof sub !== "string" && Tools.kit(HOOKS.tools, s.agent, { memory: s.memory === 1, mcp: sub.mcp, write: s.write === 1 }).some((t) => t.name === tool);
     if (!offered) {
       Holders.send(id, { $: "result", id: c, out: { text: "No tool " + tool + ".", fail: true } });
       return;
@@ -445,7 +440,7 @@ export namespace Sessions {
     }
     const stop = new AbortController();
     waits.set(p.id, stop);
-    void Gate.wait(HOOKS.tools.gate, s.agent, Session.label(s), "session", p.tool, args_of(p.input), p.what, stop.signal, HOOKS.asked).then((said) => {
+    void Gate.wait(HOOKS.tools.gate, s.agent, Session.label(s), "subagent", p.tool, args_of(p.input), p.what, stop.signal, HOOKS.asked).then((said) => {
       waits.delete(p.id);
       if (said !== null) {
         const answers = said.answers ?? {};
@@ -597,7 +592,7 @@ export namespace Sessions {
     return before === null ? all.filter((t) => t.seq > after).slice(0, n) : all.filter((t) => t.seq < before).slice(-n || all.length);
   }
 
-  // the session as the app and the session tool show it
+  // the subagent as the app shows it
   export function row(s: Session): SessionRow {
     const told = lately(s);
     const run = Session.run(s.id);
@@ -615,7 +610,7 @@ export namespace Sessions {
     };
   }
 
-  // the vendor it runs at: a work session's is a Claude plan
+  // the vendor it runs at
   function vendor(s: Session): Vendor {
     return s.provider === "openai" ? (s.account === "key" ? "openai-api" : "openai-sub") : s.account === "key" ? "claude-api" : "claude-sub";
   }
@@ -659,7 +654,7 @@ export namespace Sessions {
   }
 
   // what the subagent tool does but start: on the agent's own subagents,
-  // and its old work sessions, by name
+  // by name
   export function act(agent: string, args: Record<string, unknown>): Out {
     const arg = (k: string) => (args[k] === undefined || args[k] === null ? "" : text_of(args[k]).trim());
     const ok = (text: string): Out => ({ text, fail: false });
@@ -692,8 +687,7 @@ export namespace Sessions {
           return no(floor);
         }
         const sent = say(s.id, arg("text"), arg("request"), mode);
-        const record = Session.get(s.id);
-        return typeof sent !== "string" ? no(sent.why) : ok(Prompts.fill(SENT[sent], { kind: record === null ? "subagent" : Session.kind(record) }) + " You get a message when it's done or needs you: don't wait for it.");
+        return typeof sent !== "string" ? no(sent.why) : ok(SENT[sent] + " You get a message when it's done or needs you: don't wait for it.");
       }
       case "read": {
         const record = Session.get(s.id);
@@ -741,7 +735,7 @@ export namespace Sessions {
       ev.k === "result" ? (ev.error ? "error: " : "") + ev.text :
       ev.k === "ask" ? "asks the user: " + (ev.tool === QUESTION ? Question.line(Question.of(ev.input)) : ev.what + " (" + ev.tool + ")") :
       ev.k === "answered" ? (ev.ok ? "approved" : "denied") :
-      ev.k === "question" || ev.k === "report" || ev.k === "turn" || ev.k === "end" ? ev.text :
+      ev.k === "question" || ev.k === "turn" || ev.k === "end" ? ev.text :
       ev.k === "limit" ? "waits for a usage limit, till " + clock(ev.until) :
       ev.k === "setup" ? (ev.ok === null ? "sets up its worktree" + (ev.text === "" ? "" : ": " + ev.text) : ev.ok ? "its worktree is set up" : "its worktree's setup failed: " + ev.text) :
       "";
@@ -767,13 +761,13 @@ export namespace Sessions {
     const shown = after === null ? all.slice(-TAIL) : all.filter((t) => t.seq > after).slice(0, Math.min(Math.max(1, n), LINES_MOST));
     const more = after !== null && shown.length > 0 && all.at(-1) !== shown.at(-1);
     const where = { folder: "Folder " + p.worktree, detached: "Worktree " + p.worktree + " at " + p.base + ", on no branch", branch: "Branch " + p.branch + " from " + p.base + ", worktree " + p.worktree }[place(s)];
-    const how = Session.kind(s) === "subagent" ? " Model " + s.model + (s.effort === "" ? "" : ", effort " + s.effort) + "." : "";
+    const how = " Model " + s.model + (s.effort === "" ? "" : ", effort " + s.effort) + ".";
     const head = Session.label(s) + ": " + state(p) + (run === null ? "" : ", run " + run.n + (run.attempts > 1 ? " (attempt " + run.attempts + ")" : "")) + used(s.id, ", ") + ". " + where + ", media " + path.join(s.dir, MEDIA) + "." + how;
     const lines = [
       head,
       ...p.parked.map((c) => c.tool === QUESTION ? "Waits on the user's answer, in the app (you can't give it): " + Question.line(Question.of(args_of(c.input))) : "Waits on the user's approval, in the app (you can't give it): " + c.what + " (" + c.tool + " " + line(c.input, 200) + ")"),
       ...p.questions.map((q) => "Asks you (answer with send): " + q.text),
-      ...(run !== null && run.report !== "" ? [(Session.kind(s) === "session" ? "Report: " : "Result: ") + run.report] : run !== null && run.why !== "" ? ["Why it " + run.status + ": " + run.why] : []),
+      ...(run !== null && run.report !== "" ? ["Result: " + run.report] : run !== null && run.why !== "" ? ["Why it " + run.status + ": " + run.why] : []),
       "",
       (after === null ? "Its latest lines" : "Its lines after " + after) + ":",
       ...(shown.length === 0 ? ["(none)"] : shown.map(said)),
@@ -829,8 +823,7 @@ export namespace Sessions {
     switch (act) {
       case "say": {
         const sent = say(id, text("text"), text("request") || crypto.randomUUID(), text("mode") === "queue" ? "queue" : "steer");
-        const s = Session.get(id);
-        return typeof sent === "string" ? out(null, { sent: Prompts.fill(SENT[sent], { kind: s === null ? "session" : Session.kind(s) }) }) : out(sent.why);
+        return typeof sent === "string" ? out(null, { sent: SENT[sent] }) : out(sent.why);
       }
       case "seen": {
         const s = Session.get(id);

@@ -28,9 +28,9 @@ test("where the user's systemd answers, a unit runs as a transient systemd user 
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unit-"));
   const unit = { name: "troop-hold-ab12cd34-1", dir };
 
-  expect(transient(unit, "Montroop work session fix", ["/usr/bin/troop", "hold", dir], { TROOP_DIR: "/data", LANG: "C.UTF-8" })).toBeNull();
+  expect(transient(unit, "Montroop subagent fix", ["/usr/bin/troop", "hold", dir], { TROOP_DIR: "/data", LANG: "C.UTF-8" })).toBeNull();
   expect(calls()).toContain(
-    "systemd-run --user --collect --quiet --unit=troop-hold-ab12cd34-1 --description=Montroop work session fix -p TimeoutStopSec=10 --setenv=TROOP_DIR=/data --setenv=LANG=C.UTF-8 -- /usr/bin/troop hold " + dir,
+    "systemd-run --user --collect --quiet --unit=troop-hold-ab12cd34-1 --description=Montroop subagent fix -p TimeoutStopSec=10 --setenv=TROOP_DIR=/data --setenv=LANG=C.UTF-8 -- /usr/bin/troop hold " + dir,
   );
   expect(active(unit)).toBe(true);
   halt(unit);

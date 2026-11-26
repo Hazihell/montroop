@@ -4,7 +4,7 @@
 // its own (Service), so a server restart or deploy leaves it running. The
 // server links to it over its socket, takes in what it tells (Wire) and
 // acks it, tries again while it runs, and once it's gone takes in what its
-// log holds past the last ack. What a holder runs for (a work session), and
+// log holds past the last ack. What a holder runs for (a subagent), and
 // the calls of Montroop's tools it sends, are its owner's business, told
 // through the hooks given at boot.
 

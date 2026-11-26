@@ -14,10 +14,9 @@ import { Ask, CallBody, ToolIcon } from "./Rows.tsx";
 import { viewer_open } from "./Viewer.tsx";
 import { useNow, useWorks, work_act, work_live, work_span, work_stop, STATES, WorkFace, WorkHow, WorkState } from "./Works.tsx";
 
-// one work session's or subagent's page: what it is and does now, how it
-// runs, its log as it comes (newest at the bottom, followed while at the
-// bottom), the calls and questions it waits on, its report and media, and
-// a box to message it
+// one subagent's page: what it is and does now, how it runs, its log as
+// it comes (newest at the bottom, followed while at the bottom), the calls
+// and questions it waits on, its result and media, and a box to message it
 
 // log entries a page brings
 const PAGE = 100;
@@ -135,10 +134,10 @@ function Setup({ ok, text }: { ok: boolean | null; text: string }): ReactNode {
   );
 }
 
-function Report({ text }: { text: string }): ReactNode {
+function Result({ text }: { text: string }): ReactNode {
   return (
     <div className="msg card gl report">
-      <p className="who"><b>Report</b></p>
+      <p className="who"><b>Result</b></p>
       <div className="prose"><Blocks x={Md.md_parse(text)} /></div>
     </div>
   );
@@ -154,7 +153,6 @@ function Entry({ t, result, media, id, agent, question }: { t: Told; result: { t
     : ev.k === "ask" ? <p className="cap flex items-center gap-1.5"><HandPalmIcon size={16} weight="fill" className="shrink-0 text-act-ink" />{ev.tool === QUESTION ? "Asked you: " + Question.line(Question.of(ev.input)) : "Asked for your approval: " + ev.what.toLowerCase()}</p>
     : ev.k === "answered" ? <p className="cap">{question ? (ev.ok ? "You answered it." : "You dismissed it.") : ev.ok ? "You approved it." : "You denied it."}</p>
     : ev.k === "question" ? <div className="msg card gl"><p className="who"><ChatCircleDotsIcon size={16} /><b>Asked {agent}</b></p><div className="prose"><Blocks x={Md.md_parse(ev.text)} /></div></div>
-    : ev.k === "report" ? <Report text={ev.text} />
     : ev.k === "compacted" ? <p className="cap">Its context was compacted.</p>
     : ev.k === "turn" ? (ev.ok ? null : <p className="cap text-bad">Its turn failed: {ev.text}</p>)
     : ev.k === "limit" ? <p className="cap">Hit a usage limit: it goes on by itself at {View.clock(ev.until)}.</p>
@@ -224,7 +222,7 @@ function SayBox({ id, name, live, sent }: { id: string; name: string; live: bool
 // what waits on someone now
 function Log({ d, log, id, agent, live, earlier }: { d: View.SessionPage; log: Told[]; id: string; agent: string; live: boolean; earlier: () => void }): ReactNode {
   const working = live && d.waits !== "limit";
-  const asks = useMontroop((s) => s.asks).filter((a) => a.from === "session" && a.who === d.who);
+  const asks = useMontroop((s) => s.asks).filter((a) => a.from === "subagent" && a.who === d.who);
   const results = new Map(log.flatMap((t) => (t.ev.k === "result" ? [[t.ev.id, { text: t.ev.text, error: t.ev.error }] as const] : [])));
   const questions = new Set(log.flatMap((t) => (t.ev.k === "ask" && t.ev.tool === QUESTION ? [t.ev.id] : [])));
   const placed = new Map<number, string[]>();
@@ -245,7 +243,6 @@ function Log({ d, log, id, agent, live, earlier }: { d: View.SessionPage; log: T
   ].filter((m) => all || m.at >= from).sort((a, b) => a.at - b.at);
   const waiting = d.says.filter((s) => s.heard === 0);
   const report = d.runs.at(-1)?.report ?? "";
-  const reported = log.some((t) => t.ev.k === "report" && t.ev.text === report);
   const flow: Array<{ key: string; node: ReactNode }> = [];
   let k = 0;
   // a turn a usage limit cut shows as the limit only
@@ -261,7 +258,7 @@ function Log({ d, log, id, agent, live, earlier }: { d: View.SessionPage; log: T
     <>
       {all ? null : <div className="row"><button type="button" className="pillbtn min-h-11 px-4 text-[0.875rem]" onClick={earlier}>Earlier</button></div>}
       {flow.map((f) => <div key={f.key} className="row">{f.node}</div>)}
-      {!reported && report !== "" && !live ? <div className="row"><Report text={report} /></div> : null}
+      {report !== "" && !live ? <div className="row"><Result text={report} /></div> : null}
       {rest.length === 0 ? null : <div className="row"><p className="cap">Its media</p><div className="mt-2 flex flex-wrap gap-2">{rest.map((m) => <Media key={m} id={id} name={m} />)}</div></div>}
       {waiting.map((m) => <div key={m.id} className="row"><Sent text={m.text} why={m.mode === "queue" ? "Queued for its next run" : "Goes in at its next step"} /></div>)}
       {d.questions.map((q) => <div key={q.id} className="row"><p className="cap">Waits for {agent || "its mon"} to answer “{Md.md_flat(q.text)}”. A message here answers it too.</p></div>)}

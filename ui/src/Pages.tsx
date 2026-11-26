@@ -32,7 +32,7 @@ export function usePop(n: number, of = ""): string {
   return last.changed ? " pop" : "";
 }
 
-// an agent's work sessions that matter now, as small faces of their own
+// an agent's subagents that matter now, as small faces of their own
 function minis_of(works: View.SessionRow[]): Mini[] {
   return works.flatMap((w) => {
     const mood = work_mood(w);
@@ -42,7 +42,7 @@ function minis_of(works: View.SessionRow[]): Mini[] {
 
 // an agent as a row: its avatar acts out its mood, which only a screen
 // reader hears said, and the line under its name holds its last words;
-// beside its name, its work sessions'
+// beside its name, its subagents'
 function Mate({ m, size }: { m: View.Mate; size: number }): ReactNode {
   const mood = useMontroop((s) => mood_of(m, s));
   const said = m.last === "" ? m.about : m.last;
@@ -88,8 +88,8 @@ function useHold(agent: string): void {
   }, [agent]);
 }
 
-// what goes on for one agent without the owner: its work sessions,
-// subagents, background jobs and timers
+// what goes on for one agent without the owner: its subagents, background
+// jobs and timers
 export function Running({ agent }: { agent: string }): ReactNode {
   const name = useMontroop((s) => s.team.find((m) => m.id === agent)?.name ?? "");
   useHold(agent);

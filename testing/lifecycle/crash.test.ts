@@ -1,6 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
-import { wake_text } from "../../Wake.ts";
-import { chat, down, fake, gate, kill, model, older, shell, Troop, procs, repo, ROOT, said, tag, until, VIAS, waiting } from "../rig.ts";
+import { chat, down, fake, gate, kill, model, shell, Troop, procs, repo, said, tag, until, VIAS, waiting } from "../rig.ts";
 
 const GONE = "its holder ended before the run did";
 
@@ -33,27 +32,6 @@ test.concurrent("a holder killed more often than it's tried again fails the run 
   await until("the done wake", async () => await said(k, s.woke("done:")) === 1);
   expect(await said(k, s.woke("failed: ") + GONE)).toBe(1);
 }, 2 * 30e3);
-
-test.concurrent("an old work session's holder killed mid-run fails the run once, not tried again, leaves nothing of it running, and a resume finishes it", async () => {
-  const k = await Troop.up({}, older());
-  const t = tag();
-  await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
-  const started = await k.api("POST", "/api/sessions", { agent: k.agent, repo: repo(), base: "main", name: "ws", brief: "", prompt: t + ": work" });
-  const s = await k.adopt(String(started.json.id), "ws");
-  await until("the command running", () => waiting(t));
-  await k.kill();
-  k.root = ROOT;
-  await k.start();
-  kill(s.holder());
-
-  expect((await s.status("failed")).runs[0]).toMatchObject({ why: GONE, attempts: 1 });
-  await until("its holder gone", () => s.holder() === null);
-  expect(waiting(t)).toBe(false);
-  expect((await k.api("POST", "/api/sessions/" + s.id + "/resume", {})).status).toBe(200);
-  expect((await s.status("done")).runs).toMatchObject([{ n: 1, status: "done", attempts: 2 }]);
-  await until("the done wake", async () => await said(k, wake_text("session", "ws", "done:")) === 1);
-  expect(await said(k, wake_text("session", "ws", "failed: ") + GONE)).toBe(1);
-});
 
 // each provider's process, under its holder, and how its run fails once killed
 const PROCESS = { "claude-code": { cmd: /\/claude(\s|$)/, why: "Claude Code process terminated by signal SIGKILL" }, codex: { cmd: /\/codex app-server/, why: "Codex process terminated by signal SIGKILL" } };

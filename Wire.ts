@@ -47,15 +47,14 @@ export const HELD = "mcp__" + MCP + "__";
 // each open device's scratch folder, by its name
 export type Scratch = Record<string, string>;
 
-// a question the run asked its agent (ask_owner), its call waiting
+// a question the run asked its agent (ask), its call waiting
 // for the answer
 export type Asking = { id: string; text: string };
 
 // what a run did. began: the provider's session id, which resumes it;
 // heard: a message the server sent went in; replied: a question got its
-// answer; report: the run's result; turn: the model finished a turn;
-// limit: a usage limit stopped it, till until (ms since 1970), when it
-// goes on by itself; used: the tokens of its latest request; setup: its
+// answer; turn: the model finished a turn; limit: a usage limit stopped
+// it, till until (ms since 1970), when it goes on by itself; used: the tokens of its latest request; setup: its
 // new worktree's setup began (ok null, text: its command) or ended (text:
 // its output's last lines); end: the holder's run is over and it exits
 export type Ev =
@@ -69,7 +68,6 @@ export type Ev =
   | { k: "heard"; id: string }
   | ({ k: "question" } & Asking)
   | { k: "replied"; id: string }
-  | { k: "report"; text: string }
   | { k: "compacted" }
   | { k: "turn"; ok: boolean; text: string }
   | { k: "limit"; until: number }

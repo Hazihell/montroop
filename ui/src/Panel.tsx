@@ -20,8 +20,8 @@ function useHeld(agent: string): boolean {
   return useMontroop((s) => s.agent === agent && s.loaded);
 }
 
-// how many things work for the agent now: its work sessions and subagents
-// at work and its background jobs; timers wait, so they don't count
+// how many things work for the agent now: its subagents at work and its
+// background jobs; timers wait, so they don't count
 export function useGoing(agent: string): number {
   return useMontroop((s) => {
     const mate = s.team.find((m) => m.id === agent);
@@ -33,7 +33,7 @@ function useContext(agent: string): number | null {
   return useMontroop((s) => (s.agent === agent && s.talk !== null ? View.talk_percent(s.talk) : null));
 }
 
-// the agent's work sessions, subagents, background jobs and timers
+// the agent's subagents, background jobs and timers
 export function RunList({ agent }: { agent: string }): ReactNode {
   const held = useHeld(agent);
   const works = useWorks(agent);

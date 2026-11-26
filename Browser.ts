@@ -1,6 +1,6 @@
 // Browser
 // =======
-// A work session's own headless browser: `browser` in its folder's bin,
+// A subagent's own headless browser: `browser` in its folder's bin,
 // agent-browser under a session of its own, on a blank profile in the
 // session's folder, saving what a relative path names (screenshots,
 // recordings) in its media folder. The commands and flags that would

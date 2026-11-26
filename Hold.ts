@@ -26,24 +26,12 @@ import { reap } from "./Service.ts";
 import { Setup } from "./Setup.ts";
 import { TOOLS, VERSION, Wire, type Ask, type Asking, type Calling, type Ev, type Kit, type Outbox, type Scratch, type Told } from "./Wire.ts";
 
-// what a session keeps for its life: its worktree, its Claude account's
-// folder, its model ("": the account's default) and what its system
-// prompt adds, fixed at its start
-type Spec = { cwd: string; claude: string; model: string; append: string };
-
-// what one holder starts with: the driver that runs it (claude-code: a
-// work session's, on its spec and the provider's session it resumes, ""
-// for a new one; provider: the one the job's provider picks), whether it
-// runs a subagent (its question is ask, its result its last reply), its
+// what one holder starts with: the job its provider's driver runs, its
 // first message, the rules that ask the owner first and the devices'
 // scratch folders they read, the kit of Montroop's tools it's offered (none
-// given: a provider job's own tools, run on the device they name), the
-// socket it listens on
-export type Start = { driver: "claude-code" | "provider"; job?: Omit<Job, "dir">; sub?: boolean; prompt: string; resume: string; rules: Rule[]; scratch: Scratch; tools?: Kit[]; sock: string };
-
-// a start written before drivers were named runs Claude Code; one before
-// the server ran tools for holders offers none
-type Written = Omit<Start, "driver" | "scratch"> & { driver?: string; scratch?: Scratch };
+// given: the job's own tools, run on the device they name), the socket it
+// listens on
+export type Start = { job: Omit<Job, "dir">; prompt: string; rules: Rule[]; scratch: Scratch; tools?: Kit[]; sock: string };
 
 type Parked = { ask: Ask; done: (g: Gated) => void };
 
@@ -75,18 +63,13 @@ type Held = {
   emit    : Io["emit"];
 };
 
-// Montroop's tools the holder answers itself, before those the server runs
-export const HOLDS: Tool[] = [
-  spec("ask_owner", "Ask the agent that started this session a question, when you can't go on without its answer (a decision, missing information). The call waits for the answer, which can take a while; it comes back as this call's result.", { question: STR }, ["question"]),
-  spec("report", "Give your result to the agent that started this session, once, when you're done: what you did, where (branch, commits, files), how you checked it, what is left. Then end your turn.", { result: STR }, ["result"]),
-];
-
-// a subagent's: its last reply is its result
-const ASK: Tool[] = [spec("ask", "Ask the agent that started you a question, when you can't go on without its answer (a decision, missing information). The call waits for the answer, which can take a while; it comes back as this call's result.", { question: STR }, ["question"])];
+// Montroop's tools the holder answers itself, before those the server
+// runs: its result is its last reply
+export const HOLDS: Tool[] = [spec("ask", "Ask the agent that started you a question, when you can't go on without its answer (a decision, missing information). The call waits for the answer, which can take a while; it comes back as this call's result.", { question: STR }, ["question"])];
 
 // what a call of Montroop's gets while an older server, which runs none,
 // owns the holder
-const OLD = { text: "The server runs an older Montroop, which runs no tools for work sessions.", fail: true };
+const OLD = { text: "The server runs an older Montroop, which runs no tools for subagents.", fail: true };
 
 // what a question for the owner is parked under (Io.ask)
 const ASKED: Rule = { what: "Answer a question", tools: QUESTION, args: "" };
@@ -99,7 +82,6 @@ const NEVER = new AbortController().signal;
 // session began, or the model answered
 const TAKEN = new Set<Ev["k"]>(["began", "text", "tool", "turn"]);
 
-const SPEC = "spec.json";
 export const START = "start.json";
 const LOG = "log.jsonl";
 
@@ -277,12 +259,8 @@ export namespace Hold {
   // the scratch folder of the device it runs on), then sent to the server,
   // and again after each hello till its result comes
   async function call(h: Held, kit: Kit[], c: Call): Promise<Out> {
-    if (c.tool === "ask_owner" || c.tool === "ask") {
+    if (c.tool === "ask") {
       return { text: "The answer: " + await ask(h, text_of(c.args.question)), fail: false };
-    }
-    if (c.tool === "report") {
-      h.emit({ k: "report", text: text_of(c.args.result) });
-      return { text: "Reported. End your turn now.", fail: false };
     }
     const tool = kit.find((t) => t.name === c.tool);
     if (tool === undefined) {
@@ -317,27 +295,8 @@ export namespace Hold {
     });
   }
 
-  // a work session's job: Claude Code on its plan, in its worktree, the
-  // way its spec says
-  function sessions(dir: string, start: Written): Omit<Job, "dir"> {
-    const spec = JSON.parse(fs.readFileSync(path.join(dir, SPEC), "utf8")) as Spec;
-    return {
-      account : { provider: "claude", id: "", kind: "plan", dir: spec.claude },
-      model   : spec.model,
-      effort  : "",
-      speed   : "",
-      system  : "",
-      own     : spec.append,
-      context : { kind: "native", resume: start.resume, first: [], brief: "" },
-      cwd     : spec.cwd,
-      write   : true,
-      tools   : [],
-      web     : 0,
-    };
-  }
-
   export async function main(dir: string): Promise<void> {
-    const start = JSON.parse(fs.readFileSync(path.join(dir, START), "utf8")) as Written;
+    const start = JSON.parse(fs.readFileSync(path.join(dir, START), "utf8")) as Start;
     const file = path.join(dir, LOG);
     const log = fs.openSync(file, "a");
     // a holder killed mid-line left it unended: the next line starts anew
@@ -345,7 +304,7 @@ export namespace Hold {
     if (size > 0 && fs.readFileSync(file).at(size - 1) !== 0x0a) {
       fs.writeSync(log, "\n");
     }
-    const h: Held = { out: Wire.outbox(Hold.told(dir).at(-1)?.seq ?? 0), asks: new Map(), calls: new Map(), waits: new Map(), says: new Set(), box: { queue: [start.prompt], wake: () => {}, shut: false }, rules: start.rules, scratch: start.scratch ?? {}, older: false, conn: null, emit: () => {} };
+    const h: Held = { out: Wire.outbox(Hold.told(dir).at(-1)?.seq ?? 0), asks: new Map(), calls: new Map(), waits: new Map(), says: new Set(), box: { queue: [start.prompt], wake: () => {}, shut: false }, rules: start.rules, scratch: start.scratch, older: false, conn: null, emit: () => {} };
     h.emit = (ev) => {
       if (TAKEN.has(ev.k)) {
         Setup.taken(dir);
@@ -374,11 +333,9 @@ export namespace Hold {
       h.box.queue[0] = failed + "\n\n" + (h.box.queue[0] ?? "");
     }
 
-    const name = start.driver ?? "claude-code";
-    const given = name === "claude-code" ? sessions(dir, start) : name === "provider" ? start.job ?? null : null;
-    const kit: Kit[] = start.tools ?? (name === "provider" ? (given?.tools ?? []).map((t) => ({ device: null, ...t })) : []);
-    const job: Job | null = given === null ? null : { ...given, dir, tools: [...(start.sub === true ? ASK : HOLDS), ...kit] };
-    const driver = job === null ? null : Providers.driver(job);
+    const kit: Kit[] = start.tools ?? start.job.tools.map((t) => ({ device: null, ...t }));
+    const job: Job = { ...start.job, dir, tools: [...HOLDS, ...kit] };
+    const driver = Providers.driver(job);
     // the provider's own tools work on this computer: its scratch folder
     // is the one the rules read their arguments with
     const scratch = Machine.home(SCRATCH);
@@ -386,7 +343,7 @@ export namespace Hold {
     const io: Io = { emit: h.emit, inbox: inbox(h.box), parks: (call) => own(call) !== null, gate: (call, stop) => gate(h, own(call), call, stop), ask: (call, stop) => gate(h, ASKED, call, stop), call: (c) => call(h, kit, c) };
     let end: End;
     try {
-      end = job === null || driver === null ? { ok: false, text: "This holder has no driver " + name + ": a newer Montroop started it." } : typeof driver === "string" ? { ok: false, text: driver } : await driver(job, io);
+      end = typeof driver === "string" ? { ok: false, text: driver } : await driver(job, io);
     } catch (err) {
       end = { ok: false, text: err_why(err) };
     }

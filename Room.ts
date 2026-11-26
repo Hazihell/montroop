@@ -1,8 +1,7 @@
 // Room
 // ====
-// What this computer has free for more subagents and work sessions, and
-// what those running use, measured, for an agent to judge how many more it
-// starts: its cores and how busy they are, its memory available and in
+// What this computer has free for more subagents, and what those running
+// use, measured, for an agent to judge how many more it starts: its cores and how busy they are, its memory available and in
 // all, how many run (across all agents, and the agent's own) and the CPU
 // and memory each one's processes use (its holder, the model's CLI and
 // all they started, as Service measures a unit). How busy the cores are
@@ -29,7 +28,7 @@ type Total = Use & { missing: number };
 
 // the computer now: its cores, how many of them are busy (the last
 // WINDOW's average), its memory available and in all, in bytes; the
-// subagents and work sessions running, and the agent's own of them; what
+// subagents running, and the agent's own of them; what
 // they use, and the agent's own
 type State = { cores: number; busy: number; available: number; total: number; running: number; mine: number; used: Total; own: Total };
 
@@ -59,7 +58,7 @@ const FRESH = 1e3;
 const TICKS: Array<{ at: number; line: string }> = [];
 let SAMPLED = false;
 
-// each subagent's and work session's use, by its id, kept after its run
+// each subagent's use, by its id, kept after its run
 // till it's archived; and when they were last read
 const USED = new Map<string, Sampled>();
 let MEASURED = -Infinity;
@@ -81,9 +80,9 @@ export namespace Room {
     // what's available rounded down, never told as more than it is
     const head = s.cores + " cores, " + Math.round((100 * s.busy) / s.cores) + "% busy; memory " + gb(Math.floor((s.available / GB) * 10) * (GB / 10)) + " available of " + gb(s.total) + "; ";
     if (s.running === 0) {
-      return head + "no subagents or work sessions running";
+      return head + "no subagents running";
     }
-    const all = s.running + (s.running === 1 ? " subagent or work session" : " subagents and work sessions") + " running across all agents";
+    const all = s.running + (s.running === 1 ? " subagent" : " subagents") + " running across all agents";
     const own = s.mine === 0 ? ", none of them yours" : s.mine === s.running ? (s.running === 1 ? ", yours" : ", all of them yours") : ", " + s.mine + " of them yours";
     if (s.used.memory === null) {
       return head + all + own + (s.running === 1 ? ": its use isn't measured yet" : ": their use isn't measured yet");
@@ -93,10 +92,10 @@ export namespace Room {
 
   // why nothing may start now; null: it may
   export function refused(s: State): string | null {
-    return s.available >= FLOOR ? null : "Only " + Math.floor(s.available / MB) + " MB of memory is available on this computer, under the " + FLOOR / GB + " GB kept free so it doesn't run out. Nothing started: wait for some subagents or work sessions to end, or do the work yourself. This computer: " + Room.said(s) + ".";
+    return s.available >= FLOOR ? null : "Only " + Math.floor(s.available / MB) + " MB of memory is available on this computer, under the " + FLOOR / GB + " GB kept free so it doesn't run out. Nothing started: wait for some subagents to end, or do the work yourself. This computer: " + Room.said(s) + ".";
   }
 
-  // what a subagent or work session uses, or used in its last run, as its
+  // what a subagent uses, or used in its last run, as its
   // agent is told it; null: not measured
   export function used(id: string): string | null {
     fresh();

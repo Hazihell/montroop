@@ -148,7 +148,7 @@ const TREE: Cmd = { use: "troop", about: "Montroop: open your server's address i
     plan("claude", "your Claude plan (claude-sub)"),
     plan("chatgpt", "your ChatGPT plan (openai-sub)"),
   ] },
-  { use: "hold <dir>", about: "a work session's holder (the server starts it)", arg: /^[/~]/, need: true, run: async (dir) => (await import("./Hold.ts")).Hold.main(dir ?? "") },
+  { use: "hold <dir>", about: "a subagent's holder (the server starts it)", arg: /^[/~]/, need: true, run: async (dir) => (await import("./Hold.ts")).Hold.main(dir ?? "") },
   { use: "update", about: "check for updates, update safely (`troop update help`)" },
   { use: "version", about: "this Montroop's version", run: () => console.log("troop " + Update.VERSION) },
   { use: "help", about: "this" },

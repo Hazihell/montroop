@@ -106,7 +106,7 @@ export const CODEX_HOME = config_path(config_get("codex_home", DIR + "/codex"));
 // the codex Codex runs ("": the one Montroop carries, else the one on PATH)
 export const CODEX      = config_path(config_get("codex", ""));
 
-// the agent-browser a work session's browser runs ("": the one on PATH)
+// the agent-browser a subagent's browser runs ("": the one on PATH)
 export const AGENT_BROWSER = config_path(config_get("agent_browser", ""));
 
 const ENV_KEYS: Record<string, string> = Object.fromEntries(Object.entries(VARS).map(([name, v]) => [name, config_key(v)]));

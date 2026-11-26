@@ -37,7 +37,7 @@ type Device = {
 
 type Running = { term: string; job: Job; out: Promise<Out>; end: (out: Out) => void };
 
-// a device's job a server before this one started for a work session's
+// a device's job a server before this one started for a subagent's
 // call, kept till the call asks for it again: its device's job again once
 // the device is back (tracked), its result out; settled: its outcome told
 // unknown, its device not back in time
@@ -380,7 +380,7 @@ export namespace Tools {
     const text = tool === QUESTION ? (ok ? "Answered by the user: " + Question.said(answers) : "Dismissed by the user, unanswered: " + Gate.line(said.held)) : (ok ? "Approved" : "Denied") + " by the user: " + what.toLowerCase() + " (" + Gate.line(said.held) + ")." + (note === "" ? "" : " Note: “" + note + "”");
     const seat = tools.seats.get(agent);
     seat?.note(text);
-    if (!said.waited && from !== "session") {
+    if (!said.waited && from !== "subagent") {
       seat?.report(wake_text("approval", id, text + (ok ? " No call was waiting for it (the server restarted): call " + tool + " again with the same arguments to do it." : " Don't do it another way.")));
     }
     return null;
@@ -508,7 +508,7 @@ export namespace Tools {
       case "resume": {
         const n = Limit.resume();
         const held = Holders.poke();
-        const woke = "Woke " + n + " call" + (n === 1 ? "" : "s") + " waiting for a usage limit" + (held === 0 ? "" : ", and told " + held + " running work session" + (held === 1 ? "" : "s") + " or subagent" + (held === 1 ? "" : "s") + " to ask again if one waits") + "; any still limited waits again.";
+        const woke = "Woke " + n + " call" + (n === 1 ? "" : "s") + " waiting for a usage limit" + (held === 0 ? "" : ", and told " + held + " running subagent" + (held === 1 ? "" : "s") + " to ask again if one waits") + "; any still limited waits again.";
         return { text: n + held === 0 ? "No call was waiting for a usage limit." : woke, fail: false };
       }
       default: {
@@ -527,10 +527,10 @@ export namespace Tools {
     return { device: String(device), job: { name, input, cwd: who } };
   }
 
-  // Montroop's tools a work session or subagent of who's is offered: the
-  // memory tools on who's memory, the devices' tools and skills, and the
-  // devices' MCP tools as last listed, each with the device it runs on;
-  // a subagent's as its options say (write false: none that edits a file)
+  // Montroop's tools a subagent of who's is offered, as its options say:
+  // the memory tools on who's memory, the devices' tools and skills, and
+  // the devices' MCP tools as last listed, each with the device it runs
+  // on (write false: none that edits a file)
   export function kit(tools: Tools, who: string, as = { memory: true, mcp: true, write: true }): Kit[] {
     const servers = !as.mcp ? [] : [...Tools.held(tools, who).values()].sort((a, b) => Mcp.by_name(a.conf.name, b.conf.name));
     const mcp = servers.flatMap((s) => (Mcp.kept(s) ?? []).map((t) => ({ ...t, device: s.conf.device })));
@@ -546,7 +546,7 @@ export namespace Tools {
     }));
   }
 
-  // a work session's call (who: its agent), gated in its holder already:
+  // a subagent's call (who: its agent), gated in its holder already:
   // one of the tools kit offers. again: a server before this one started
   // it: a device's job is found again by its id (id: the call's), the
   // memory's tools run again, and an MCP tool's outcome is unknown. Its
@@ -573,7 +573,7 @@ export namespace Tools {
     return await Mcp.call(tools.mcp, mcp, name, args, signal);
   }
 
-  // a work session's call of a device's tool, which a server before this
+  // a subagent's call of a device's tool, which a server before this
   // one started (id: the call's), kept till its device is back: then it's
   // the device's job again, so the device neither stops it nor runs it
   // twice; a device not back in time leaves its outcome unknown

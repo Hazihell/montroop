@@ -1,6 +1,6 @@
 // Worktree
 // ========
-// A work session's own branch and worktree of a repo: made from a base ref
+// A subagent's own branch and worktree of a repo: made from a base ref
 // when it starts, kept when it ends, removed when it's archived, but not
 // while it holds work found nowhere else (unless forced); or a worktree on
 // no branch, for work that keeps nothing.

@@ -38,12 +38,14 @@ for (const [name, of] of Object.entries(DRIVERS)) {
   test.concurrent(name + ": a tool call of Montroop's runs in the holder, its result goes back to the model in the same turn", async () => {
     const t = tag();
     const home = signed(fs.mkdtempSync(path.join(os.tmpdir(), "home-")));
-    await fake.next(t + ": work", { what: "tool", calls: [["report", { result: t + " result" }]] });
+    await fake.next(t + ": work", { what: "tool", calls: [["ask", { question: t + " which one?" }]] });
 
-    const told = evs(await hold(home, of(home, t + ": work"), t + ": work"));
-    expect(told.some((e) => e.k === "tool" && e.name.endsWith("report"))).toBe(true);
-    expect(told as unknown[]).toContainEqual({ k: "report", text: t + " result" });
-    expect(told as unknown[]).toContainEqual(expect.objectContaining({ k: "result", text: "Reported. End your turn now.", error: false }));
+    const told = evs(await hold(home, of(home, t + ": work"), t + ": work", async (dir) => {
+      await until("its question", () => Hold.told(dir).some((x) => x.ev.k === "question"));
+      await tell(dir, { $: "say", id: t + "-1", text: t + " this one", answer: true });
+    }));
+    expect(told.some((e) => e.k === "tool" && e.name.endsWith("ask"))).toBe(true);
+    expect(told as unknown[]).toContainEqual(expect.objectContaining({ k: "result", text: "The answer: " + t + " this one", error: false }));
     expect(told.filter((e) => e.k === "turn")).toEqual([{ k: "turn", ok: true, text: "ok" }]);
     expect(told.at(-1)).toEqual({ k: "end", ok: true, text: "ok" });
   });
@@ -73,7 +75,7 @@ for (const [name, of] of Object.entries(DRIVERS)) {
   test.concurrent(name + ": a message that comes in while it works reaches the model in the same run", async () => {
     const t = tag();
     const home = signed(fs.mkdtempSync(path.join(os.tmpdir(), "home-")));
-    await fake.next(t + ": work", { what: "tool", calls: [["ask_owner", { question: t + " which one?" }]] });
+    await fake.next(t + ": work", { what: "tool", calls: [["ask", { question: t + " which one?" }]] });
 
     const told = evs(await hold(home, of(home, t + ": work"), t + ": work", async (dir) => {
       await until("its question", () => Hold.told(dir).some((x) => x.ev.k === "question"));

@@ -15,15 +15,15 @@ import { call_parse, call_text } from "./Call.ts";
 import { write_whole } from "./Write.ts";
 import { rec } from "./Json.ts";
 import { QUESTION, type Answers } from "./Question.ts";
-import { SESSION } from "./View.ts";
+import { SUBAGENT } from "./View.ts";
 
 // a waiting call as the chat shows it: agent is the chat it shows in, who
-// the subagent or work session that called ("" for the agent itself),
-// from which of those it is, input its arguments as JSON, whole, so a card
+// the subagent that called ("" for the agent itself), from which of those
+// it is, input its arguments as JSON, whole, so a card
 // shows all that its yes runs
 export type Asked = { id: string; agent: string; who: string; from: From; tool: string; input: string; what: string; at: number };
 
-type From = "agent" | "session";
+type From = "agent" | "subagent";
 
 // answers: the owner's, to a question (Question)
 type Said = { ok: boolean; note: string; answers?: Answers };
@@ -48,14 +48,10 @@ export namespace Gate {
     let held: Held[] = [];
     try {
       const kept: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
-      // a card kept before its origin was: told by who asked; one of a
-      // subagent that ran in its agent's chat, which none does any more,
-      // dropped
-      const all = (Array.isArray(kept) ? kept : []).filter((h): h is Omit<Held, "from"> & { from?: string } => rec(h) && typeof h.id === "string" && typeof h.key === "string" && typeof h.agent === "string" && typeof h.who === "string");
-      held = all.flatMap((h) => {
-        const from = h.from ?? (h.who === "" ? "agent" : h.who.startsWith(SESSION) ? "session" : "sub");
-        return from === "agent" || from === "session" ? [{ ...h, from }] : [];
-      });
+      // told by who asked: a card of a call that can't come again (a
+      // subagent's that ran in its agent's chat, a work session's) dropped
+      const all = (Array.isArray(kept) ? kept : []).filter((h): h is Omit<Held, "from"> => rec(h) && typeof h.id === "string" && typeof h.key === "string" && typeof h.agent === "string" && typeof h.who === "string");
+      held = all.flatMap((h): Held[] => (h.who === "" ? [{ ...h, from: "agent" }] : h.who.startsWith(SUBAGENT) ? [{ ...h, from: "subagent" }] : []));
     } catch {}
     const gate = { file, held, waits: new Map(), change };
     prune(gate, Date.now());

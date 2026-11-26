@@ -1,18 +1,17 @@
 // Session
 // =======
-// A work session's record in montroop.db: an agent's Claude Code session on a
-// repo, in its own branch and worktree, or a subagent of its, kept across
-// server restarts. A session has runs (a message it works on until it's
-// done with it), each tried again (an attempt) when its holder died; the
-// calls it has parked for the owner's answer; the calls of Montroop's tools
-// its holder had the server run; the questions it asked its agent; the
-// messages sent to it not yet taken in; the messages that wake its agent.
+// A subagent's record in montroop.db, kept across server restarts. A
+// session has runs (a message it works on until it's done with it), each
+// tried again (an attempt) when its holder died; the calls it has parked
+// for the owner's answer; the calls of Montroop's tools its holder had the
+// server run; the questions it asked its agent; the messages sent to it
+// not yet taken in; the messages that wake its agent.
 
 import type { Database } from "bun:sqlite";
 import type { Out } from "./Agent.ts";
 import { Owner } from "./Owner.ts";
 import { QUESTION, Question, type Answers } from "./Question.ts";
-import { clock } from "./View.ts";
+import { clock, SUBAGENT } from "./View.ts";
 import { Wire, type Told } from "./Wire.ts";
 import { wake_text, type Wake } from "./Wake.ts";
 
@@ -21,9 +20,8 @@ export type Status = "running" | "waiting" | "done" | "failed" | "stopped";
 // answered: the last call parked answered; run: a new run or attempt
 type Step = "ask" | "answered" | "ended" | "failed" | "stop" | "run";
 
-// A subagent of the engine (one its agent started with the subagent tool)
-// is a session whose provider is named: it runs on its provider's driver,
-// as its job file says (Sessions). repo: "" for none, its worktree then its
+// A subagent (one its agent started with the subagent tool) is a session:
+// it runs on its provider's driver, as its job file says (Sessions). repo: "" for none, its worktree then its
 // own folder; branch: "" for none (no repo, or a detached worktree);
 // account: its account at its provider (a Claude plan's name, "" for
 // personal; key, an API key; chatgpt, the ChatGPT plan); model, effort:
@@ -40,11 +38,6 @@ export type Session = {
   dir: string; status: Status; sdk: string; ack: number; launches: number;
   unit: string; sock: string; last: string; made: number; at: number; archived: number; seen: number;
 };
-
-// what started it: the subagent tool, or (session) the session tool, which
-// is gone: its records are kept only so old work sessions still read and
-// resume, till the old engine's cleanup removes them
-type Kind = "session" | "subagent";
 
 // report: what the session gave as the run's result
 export type Run = { session: string; n: number; prompt: string; status: Status; attempts: number; why: string; report: string; started: number; ended: number | null };
@@ -136,6 +129,9 @@ export namespace Session {
       db.transaction(() => {
         Object.entries(TABLES).forEach(([name, columns]) => fit(db, name, columns));
       })();
+      // a work session of the retired session tool reads as a finished
+      // Claude subagent
+      db.run("update work_sessions set provider = 'claude', status = case when status in ('running', 'waiting') then 'stopped' else status end where provider = ''");
       MADE = true;
     }
     return db;
@@ -146,13 +142,9 @@ export namespace Session {
     return NEXT[status][step] ?? null;
   }
 
-  export function kind(s: Pick<Session, "provider">): Kind {
-    return s.provider === "" ? "session" : "subagent";
-  }
-
   // who it is on the owner's cards and in its agent's wakes
-  export function label(s: Pick<Session, "provider" | "name">): string {
-    return (Session.kind(s) === "session" ? "Session " : "Subagent ") + s.name;
+  export function label(s: Pick<Session, "name">): string {
+    return SUBAGENT + s.name;
   }
 
   // a new record, its first run started on prompt
@@ -237,13 +229,11 @@ export namespace Session {
     } else if (ev.k === "replied") {
       db.query("delete from work_questions where id = ?").run(ev.id);
       settle(db, s.id);
-    } else if (ev.k === "report") {
-      db.query("update work_runs set report = ? where session = ? and n = (select max(n) from work_runs where session = ?)").run(ev.text, s.id, s.id);
     } else if (ev.k === "heard") {
       db.query("update work_says set heard = 1 where id = ?").run(ev.id);
     } else if (ev.k === "end") {
       // a subagent's result is its last reply
-      if (ev.ok && Session.kind(s) === "subagent" && LIVE.includes(s.status)) {
+      if (ev.ok && LIVE.includes(s.status)) {
         db.query("update work_runs set report = ? where session = ? and n = (select max(n) from work_runs where session = ?)").run(ev.text, s.id, s.id);
       }
       const to = step(db, s.id, ev.ok ? "ended" : "failed", ev.ok ? "" : ev.text);
@@ -294,7 +284,7 @@ export namespace Session {
 
   // a wake message kept to send, in the transaction of the step it tells
   function noted(db: Database, s: Session, about: string, what: string, text: string): Effect[] {
-    const wake = { id: "session " + s.id + " " + about, agent: s.agent, text: wake_text(Session.kind(s), s.name, what + ": " + Wire.clip(text.trim())) };
+    const wake = { id: "session " + s.id + " " + about, agent: s.agent, text: wake_text("subagent", s.name, what + ": " + Wire.clip(text.trim())) };
     const kept = db.query("insert or ignore into work_wakes (id, agent, text, at) values (?, ?, ?, ?)").run(wake.id, wake.agent, wake.text, Date.now()).changes > 0;
     return kept ? [{ do: "wake", wake }] : [];
   }
