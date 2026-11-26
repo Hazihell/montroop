@@ -485,7 +485,7 @@ export namespace Sessions {
   function say(id: string, text: string, request: string, mode: Exclude<Mode, "answer">): Sent | { why: string } {
     const s = Session.get(id);
     if (s === null || s.archived !== 0) {
-      return { why: "No session " + id + "." };
+      return { why: "No subagent " + id + "." };
     }
     if (text.trim() === "") {
       return { why: "Say something." };
@@ -520,7 +520,7 @@ export namespace Sessions {
     const s = Session.get(id);
     const last = Session.run(id);
     if (s === null || last === null || s.archived !== 0) {
-      return "No session " + id + ".";
+      return "No subagent " + id + ".";
     }
     if (s.status === "done" || LIVE.includes(s.status)) {
       return Session.label(s) + " is " + s.status + ": nothing to resume.";
@@ -540,7 +540,7 @@ export namespace Sessions {
     const s = Session.get(id);
     const run = Session.run(id);
     if (s === null || run === null) {
-      return "No session " + id + ".";
+      return "No subagent " + id + ".";
     }
     const fx = Session.move(id, "stop", why, wake ? { about: "stop " + attempt(run), text: "by the user. " + kept(s) + ": send it a message to go on." } : null);
     if (fx === null) {
@@ -561,7 +561,7 @@ export namespace Sessions {
   function archive(id: string, force: boolean): string | null {
     const s = Session.get(id);
     if (s === null || s.archived !== 0) {
-      return "No session " + id + ".";
+      return "No subagent " + id + ".";
     }
     if (LIVE.includes(s.status)) {
       return Session.label(s) + " is " + s.status + ": stop it first.";
@@ -791,7 +791,7 @@ export namespace Sessions {
     }
     const m = /^\/api\/sessions(?:\/([0-9a-f]{8})(?:\/(say|resume|stop|archive|seen))?)?$/.exec(p);
     if (m === null) {
-      return Response.json({ error: "No such session call." }, { status: 404 });
+      return Response.json({ error: "No such subagent call." }, { status: 404 });
     }
     const [, id, act] = m;
     const out = (why: string | null, more: object = {}) => {
@@ -807,10 +807,10 @@ export namespace Sessions {
       const before = url.searchParams.has("before") ? Number(url.searchParams.get("before")) || Infinity : null;
       const asked = Number(url.searchParams.get("n") ?? PAGE);
       const n = Math.min(Math.max(0, Number.isNaN(asked) ? PAGE : asked), PAGE_MOST);
-      return s === null ? Response.json({ error: "No session " + id + "." }, { status: 404 }) : Response.json(page(s, after, n, before));
+      return s === null ? Response.json({ error: "No subagent " + id + "." }, { status: 404 }) : Response.json(page(s, after, n, before));
     }
     if (req.method !== "POST") {
-      return new Response("a session act is a POST", { status: 405 });
+      return new Response("a subagent act is a POST", { status: 405 });
     }
     if (!Owner.browser(req)) {
       return Response.json({ error: "Change a subagent in the web app: a device can't." }, { status: 403 });
@@ -831,7 +831,7 @@ export namespace Sessions {
           Session.set(id, { seen: Date.now() });
           HOOKS.change();
         }
-        return out(s === null ? "No session " + id + "." : null);
+        return out(s === null ? "No subagent " + id + "." : null);
       }
       case "resume":
         return out(resume(id));

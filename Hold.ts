@@ -46,8 +46,8 @@ type Box = { queue: string[]; wake: () => void; shut: boolean };
 // questions waiting for an answer, the messages the server sent (by id),
 // the driver's inbox, the rules that park a call and the devices' scratch
 // folders they read, whether the linked server is from before it ran
-// Montroop's tools for holders, the connection that owns it now, how it tells an
-// event
+// Montroop's tools for holders, the connection that owns it now, how it
+// tells an event
 type Held = {
   out     : Outbox;
   asks    : Map<string, Parked>;
