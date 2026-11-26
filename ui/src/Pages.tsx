@@ -105,10 +105,11 @@ export function Running({ agent }: { agent: string }): ReactNode {
   );
 }
 
-// a pin's line under its text: who it holds for, how long, when last used
-function pin_note(pin: Pin, names: Map<string, string>): string {
+// a pin's line under its text: who it holds for, then, kept on one line,
+// how long and when last used
+function pin_note(pin: Pin, names: Map<string, string>): ReactNode {
   const scope = pin.mons === null ? "Shared" : pin.mons.map((id) => names.get(id) ?? "A deleted mon").join(", ");
-  return [scope, pin.until === null ? "lasting" : "until " + pin.until, "used " + pin.used].join(" · ");
+  return <small>{scope} · <span className="whitespace-nowrap">{pin.until === null ? "lasting" : "until " + pin.until} · used {pin.used}</span></small>;
 }
 
 // the memory's three views; each takes the last one's place in the history,
@@ -168,7 +169,7 @@ export function Memory({ agent }: { agent: string }): ReactNode {
           : shown.map((pin) => (
             <div key={pin.id} className="item">
               <PushPinIcon size={18} />
-              <p>{pin.text}<small>{pin_note(pin, names)}</small></p>
+              <p>{pin.text}{pin_note(pin, names)}</p>
               <button type="button" className="pillbtn min-h-11 px-4 text-[0.875rem]" onClick={() => confirm("Unpin this? Mons stop following it.") && load(pin.id)}>Unpin</button>
             </div>
           ))}
