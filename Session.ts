@@ -11,6 +11,7 @@
 import type { Database } from "bun:sqlite";
 import type { Out } from "./Agent.ts";
 import { Owner } from "./Owner.ts";
+import { QUESTION, Question, type Answers } from "./Question.ts";
 import { clock } from "./View.ts";
 import { Wire, type Told } from "./Wire.ts";
 import { wake_text, type Wake } from "./Wake.ts";
@@ -46,9 +47,9 @@ export type Kind = "session" | "subagent";
 // report: what the session gave as the run's result
 export type Run = { session: string; n: number; prompt: string; status: Status; attempts: number; why: string; report: string; started: number; ended: number | null };
 
-// ok: the owner's answer, null till then; it stays till the holder says it
-// took it
-export type Parked = { id: string; session: string; tool: string; input: string; what: string; ok: number | null; note: string; at: number };
+// ok: the owner's answer, null till then, with their answers to a
+// question as JSON; it stays till the holder says it took it
+export type Parked = { id: string; session: string; tool: string; input: string; what: string; ok: number | null; note: string; answers: string; at: number };
 
 // input: its arguments as JSON; out: what it did as JSON, null while it
 // runs; kept till its holder took the result, or the session's work ended
@@ -60,7 +61,8 @@ export type Mode = "queue" | "steer" | "answer";
 
 type Say = { id: string; session: string; text: string; mode: Mode; at: number };
 
-type Question = { id: string; session: string; text: string; at: number };
+// a question it asked its agent
+type Query = { id: string; session: string; text: string; at: number };
 
 // what the server does once a change to the record is in: deliver a wake;
 // show a parked call's card; take a card down (null: every one of the
@@ -90,7 +92,7 @@ const NEXT: Record<Status, Partial<Record<Step, Status>>> = {
 const TABLES: Record<string, string[]> = {
   work_sessions   : ["id text primary key", "name text not null", "agent text not null", "repo text not null", "base text not null", "branch text not null", "worktree text not null", "account text not null", "model text not null", "provider text not null default ''", "effort text not null default ''", "memory integer not null default 0", "write integer not null default 1", "device text not null default ''", "dir text not null", "status text not null", "sdk text not null default ''", "ack integer not null default 0", "launches integer not null default 0", "unit text not null default ''", "sock text not null default ''", "last text not null default ''", "made integer not null", "at integer not null", "archived integer not null default 0", "seen integer not null default 0"],
   work_runs       : ["session text not null", "n integer not null", "prompt text not null", "status text not null", "attempts integer not null default 1", "why text not null default ''", "report text not null default ''", "started integer not null", "ended integer", "primary key (session, n)"],
-  work_asks       : ["id text primary key", "session text not null", "tool text not null", "input text not null", "what text not null", "ok integer", "note text not null default ''", "at integer not null"],
+  work_asks       : ["id text primary key", "session text not null", "tool text not null", "input text not null", "what text not null", "ok integer", "note text not null default ''", "answers text not null default '{}'", "at integer not null"],
   work_says       : ["id text primary key", "session text not null", "text text not null", "mode text not null default 'steer'", "heard integer not null default 0", "at integer not null"],
   work_calls      : ["id text primary key", "session text not null", "tool text not null", "input text not null", "out text", "at integer not null"],
   work_questions  : ["id text primary key", "session text not null", "text text not null", "at integer not null"],
@@ -215,10 +217,11 @@ export namespace Session {
     } else if (ev.k === "text") {
       db.query("update work_sessions set last = ? where id = ?").run(ev.text.trim().slice(-LAST), s.id);
     } else if (ev.k === "ask" && live) {
-      const parked: Parked = { id: ev.id, session: s.id, tool: ev.tool, input: JSON.stringify(ev.input), what: ev.what, ok: null, note: "", at };
+      const parked: Parked = { id: ev.id, session: s.id, tool: ev.tool, input: JSON.stringify(ev.input), what: ev.what, ok: null, note: "", answers: "{}", at };
       db.query("insert or ignore into work_asks (id, session, tool, input, what, at) values (?, ?, ?, ?, ?, ?)").run(parked.id, s.id, parked.tool, parked.input, parked.what, at);
       step(db, s.id, "ask");
-      const woke = s.status === "running" ? noted(db, s, String(seq), "waiting", "the user's approval in the app, for: " + ev.what.toLowerCase() + " (" + ev.tool + ")") : [];
+      const on = ev.tool === QUESTION ? "the user's answer in the app, to: " + Question.line(Question.of(ev.input)) : "the user's approval in the app, for: " + ev.what.toLowerCase() + " (" + ev.tool + ")";
+      const woke = s.status === "running" ? noted(db, s, String(seq), "waiting", on) : [];
       return [{ do: "card", parked }, ...woke];
     } else if (ev.k === "answered" || ev.k === "dropped") {
       db.query("delete from work_asks where id = ?").run(ev.id);
@@ -373,8 +376,8 @@ export namespace Session {
     return opened().query("select * from work_asks where session = ? order by at").all(session) as Parked[];
   }
 
-  export function answer(id: string, ok: boolean, note: string): void {
-    opened().query("update work_asks set ok = ?, note = ? where id = ? and ok is null").run(ok ? 1 : 0, note, id);
+  export function answer(id: string, ok: boolean, note: string, answers: Answers): void {
+    opened().query("update work_asks set ok = ?, note = ?, answers = ? where id = ? and ok is null").run(ok ? 1 : 0, note, JSON.stringify(answers), id);
   }
 
   export function call(id: string): Called | null {
@@ -419,8 +422,8 @@ export namespace Session {
     return opened().query("select id, session, text, mode, at from work_says where session = ? and heard = 0 order by at").all(session) as Say[];
   }
 
-  export function questions(session: string): Question[] {
-    return opened().query("select * from work_questions where session = ? order by at").all(session) as Question[];
+  export function questions(session: string): Query[] {
+    return opened().query("select * from work_questions where session = ? order by at").all(session) as Query[];
   }
 
   export function unsent(): Wake[] {

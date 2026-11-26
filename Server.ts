@@ -17,6 +17,7 @@ import { OpenAI } from "./OpenAI.ts";
 import { Owner } from "./Owner.ts";
 import { Pick } from "./Pick.ts";
 import { ACTIVE_MS, Push } from "./Push.ts";
+import { Question } from "./Question.ts";
 import { Reap } from "./Reap.ts";
 import { Settings } from "./Settings.ts";
 import { Setup } from "./Setup.ts";
@@ -2000,10 +2001,11 @@ export namespace Main {
     }
     const body: unknown = await req.json().catch(() => null);
     const [id, ok, note] = [get(body, "id"), get(body, "ok"), get(body, "note") ?? ""];
-    if (typeof id !== "string" || typeof ok !== "boolean" || typeof note !== "string") {
-      return Response.json({ error: "An answer is { id, ok, note }." }, { status: 400 });
+    const answers = Question.answers(get(body, "answers") ?? {});
+    if (typeof id !== "string" || typeof ok !== "boolean" || typeof note !== "string" || answers === null) {
+      return Response.json({ error: "An answer is { id, ok, note }, and to a question { answers } too: each question's answer by its text." }, { status: 400 });
     }
-    const why = await Tools.decide(Main.tools, id, ok, note.trim().slice(0, NOTE));
+    const why = await Tools.decide(Main.tools, id, ok, note.trim().slice(0, NOTE), answers);
     return Response.json(why === null ? {} : { error: why }, { status: why === null ? 200 : 409 });
   }
 

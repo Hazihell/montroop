@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type 
 import * as Call from "../../Call.ts";
 import { get, text_of } from "../../Json.ts";
 import * as Md from "../../Md.ts";
+import { QUESTION, Question } from "../../Question.ts";
 import * as View from "../../View.ts";
 import type { Told } from "../../Wire.ts";
 import { Back } from "./Back.tsx";
@@ -143,14 +144,15 @@ function Report({ text }: { text: string }): ReactNode {
   );
 }
 
-// what one log entry shows; media: the files it made
-function Entry({ t, result, media, id, agent }: { t: Told; result: { text: string; error: boolean } | undefined; media: string[]; id: string; agent: string }): ReactNode {
+// what one log entry shows; media: the files it made; question: it
+// answers a question put to the owner
+function Entry({ t, result, media, id, agent, question }: { t: Told; result: { text: string; error: boolean } | undefined; media: string[]; id: string; agent: string; question: boolean }): ReactNode {
   const ev = t.ev;
   const shown =
     ev.k === "text" ? <div className="msg reply"><div className="prose"><Blocks x={Md.md_parse(ev.text)} /></div></div>
     : ev.k === "tool" ? <Step name={ev.name} input={ev.input} result={result} />
-    : ev.k === "ask" ? <p className="cap flex items-center gap-1.5"><HandPalmIcon size={16} weight="fill" className="shrink-0 text-act-ink" />Asked for your approval: {ev.what.toLowerCase()}</p>
-    : ev.k === "answered" ? <p className="cap">{ev.ok ? "You approved it." : "You denied it."}</p>
+    : ev.k === "ask" ? <p className="cap flex items-center gap-1.5"><HandPalmIcon size={16} weight="fill" className="shrink-0 text-act-ink" />{ev.tool === QUESTION ? "Asked you: " + Question.line(Question.of(ev.input)) : "Asked for your approval: " + ev.what.toLowerCase()}</p>
+    : ev.k === "answered" ? <p className="cap">{question ? (ev.ok ? "You answered it." : "You dismissed it.") : ev.ok ? "You approved it." : "You denied it."}</p>
     : ev.k === "question" ? <div className="msg card gl"><p className="who"><ChatCircleDotsIcon size={16} /><b>Asked {agent}</b></p><div className="prose"><Blocks x={Md.md_parse(ev.text)} /></div></div>
     : ev.k === "report" ? <Report text={ev.text} />
     : ev.k === "compacted" ? <p className="cap">Its context was compacted.</p>
@@ -224,6 +226,7 @@ function Log({ d, log, id, agent, live, earlier }: { d: View.SessionPage; log: T
   const working = live && d.waits !== "limit";
   const asks = useMontroop((s) => s.asks).filter((a) => a.from === "session" && a.who === d.who);
   const results = new Map(log.flatMap((t) => (t.ev.k === "result" ? [[t.ev.id, { text: t.ev.text, error: t.ev.error }] as const] : [])));
+  const questions = new Set(log.flatMap((t) => (t.ev.k === "ask" && t.ev.tool === QUESTION ? [t.ev.id] : [])));
   const placed = new Map<number, string[]>();
   const rest = d.media.filter((m) => {
     const at = log.find((t) => (t.ev.k === "tool" || t.ev.k === "result") && (t.ev.k === "tool" ? t.ev.input : t.ev.text).includes(m));
@@ -251,7 +254,7 @@ function Log({ d, log, id, agent, live, earlier }: { d: View.SessionPage; log: T
     for (; k < sent.length && sent[k].at <= t.at; k++) {
       flow.push({ key: sent[k].key, node: <Sent text={sent[k].text} why={sent[k].why} /> });
     }
-    flow.push({ key: "e" + t.seq, node: <Entry t={t} result={t.ev.k === "tool" ? results.get(t.ev.id) : undefined} media={placed.get(t.seq) ?? []} id={id} agent={agent} /> });
+    flow.push({ key: "e" + t.seq, node: <Entry t={t} result={t.ev.k === "tool" ? results.get(t.ev.id) : undefined} media={placed.get(t.seq) ?? []} id={id} agent={agent} question={t.ev.k === "answered" && questions.has(t.ev.id)} /> });
   }
   flow.push(...sent.slice(k).map((m) => ({ key: m.key, node: <Sent text={m.text} why={m.why} /> })));
   return (

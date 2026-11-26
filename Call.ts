@@ -1,5 +1,6 @@
 import { get, list, rec, text_of } from "./Json.ts";
 import type * as Md from "./Md.ts";
+import { QUESTION, Question } from "./Question.ts";
 
 export type Call = { name: string; head: string; device: string; blocks: Md.Code[] };
 
@@ -27,6 +28,7 @@ const READS = new Map<string, (x: Input) => Shown>([
   ["spawn",    (x) => ({ head: tasks_show(x.tasks), blocks: list(x.tasks).flatMap(task_block) })],
   ["tell",     (x) => said_show(x.name, x.message)],
   ["stop",     (x) => ({ head: text_of(x.name), blocks: text_block(x.why) })],
+  [QUESTION,  (x) => ({ head: Question.line(Question.of(x)), blocks: [] })],
   ["schedule", (x) => ({ head: (x.cron === undefined ? text_of(x.at) : "cron " + text_of(x.cron, "null")) + " " + text_of(x.zone), blocks: text_block(x.message) })],
 ]);
 

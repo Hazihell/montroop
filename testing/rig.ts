@@ -19,7 +19,7 @@ type Told = { seq: number; at: number; ev: Json & { k: string } };
 
 // how a test starts its work: a work session (the app's form, the session
 // tool's start), or a subagent its agent starts with the subagent tool
-type Via = "session" | "subagent";
+export type Via = "session" | "subagent";
 export const VIAS: Via[] = ["session", "subagent"];
 
 // the servers and devices a test file started, killed after it

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { Asked } from "../../Gate.ts";
 import { get, text_of } from "../../Json.ts";
+import type { Answers } from "../../Question.ts";
 import type { Row as SubRow } from "../../Sub.ts";
 import type { Timer } from "../../Timer.ts";
 import * as View from "../../View.ts";
@@ -116,6 +117,7 @@ const WORK_SAID: Record<View.SessionRow["status"] | NonNullable<View.Waits>, [st
   running  : ["working", "working"],
   waiting  : ["waits", "wait"],
   approval : ["needs you", "need you"],
+  question : ["asks you", "ask you"],
   answer   : ["waits on its mon", "wait on their mon"],
   limit    : ["waits on a usage limit", "wait on a usage limit"],
   done     : ["done", "done"],
@@ -583,8 +585,9 @@ export function note(text: string): void {
   useMontroop.setState({ note: text });
 }
 
-export async function answer(id: string, ok: boolean, note: string): Promise<boolean> {
-  const out = await View.post("/api/approve", { id, ok, note });
+// to a question (Question), the owner's answers
+export async function answer(id: string, ok: boolean, note: string, answers: Answers = {}): Promise<boolean> {
+  const out = await View.post("/api/approve", { id, ok, note, answers });
   if (out.ok !== true) {
     useMontroop.setState({ note: text_of(out.error, "Could not send the answer.") });
   }

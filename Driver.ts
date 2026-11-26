@@ -9,6 +9,7 @@
 import type { Out } from "./Agent.ts";
 import type { Block, Img } from "./AskAI.ts";
 import type { Spec } from "./Machine.ts";
+import type { Answers } from "./Question.ts";
 import type { Ev } from "./Wire.ts";
 
 // the credential a run uses: a plan's sign-in folder, or the server's API
@@ -46,8 +47,9 @@ export type Job = {
 // and as the provider made it, which the owner's card shows
 export type Call = { id: string; tool: string; args: Record<string, unknown>; native: string; input: Record<string, unknown> };
 
-// ok: it may run; note: what the model is told with it ("": nothing)
-export type Gated = { ok: boolean; note: string };
+// ok: it may run; note: what the model is told with it ("": nothing);
+// answers: the owner's, to a question (Io.ask)
+export type Gated = { ok: boolean; note: string; answers?: Answers };
 
 // the messages for the model, each once: pending, whether one waits to be
 // taken; next, the next one, waiting for it (null: closed, no more come);
@@ -56,13 +58,16 @@ export type Inbox = { pending: () => boolean; next: () => Promise<string | null>
 
 // emit: an event told to the server and logged; parks: whether a rule has
 // the owner answer the call first; gate: before a tool of the provider's
-// own runs, parked if a rule says so (stop: dropped); call: one of
-// Montroop's tools (Job.tools), run once, gated where a rule says so
+// own runs, parked if a rule says so (stop: dropped); ask: a question a
+// tool of the provider's own puts to the owner (Question), parked till
+// they answer it; call: one of Montroop's tools (Job.tools), run once,
+// gated where a rule says so
 export type Io = {
   emit  : (ev: Ev) => void;
   inbox : Inbox;
   parks : (call: Call) => boolean;
   gate  : (call: Call, stop: AbortSignal) => Promise<Gated>;
+  ask   : (call: Call, stop: AbortSignal) => Promise<Gated>;
   call  : (call: Call) => Promise<Out>;
 };
 

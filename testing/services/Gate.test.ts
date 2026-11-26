@@ -71,3 +71,12 @@ test("a call stopped while it waits takes its card down", async () => {
   expect(await said).toBeNull();
   expect(Gate.shown(gate, "agent1")).toEqual([]);
 });
+
+test("the answers to a question given while no call waits come with the yes its next same call gets", async () => {
+  const { file, gate } = opened();
+  const questions = { questions: [{ question: "Which bird?", header: "Bird", options: [{ label: "heron", description: "" }, { label: "wren", description: "" }], multiSelect: false }] };
+  const card = ask(gate, questions).cards[0];
+  const again = Gate.open(file, () => {});
+  Gate.decide(again, card.id, { ok: true, note: "", answers: { "Which bird?": "heron" } });
+  expect(await ask(again, questions).said).toEqual({ ok: true, note: "", answers: { "Which bird?": "heron" } });
+});

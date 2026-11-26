@@ -7,6 +7,7 @@ import { memo, useEffect, useState, type CSSProperties, type ReactNode } from "r
 import { create } from "zustand";
 import * as Call from "../../Call.ts";
 import * as Md from "../../Md.ts";
+import { QUESTION, Question, type Answers } from "../../Question.ts";
 import * as View from "../../View.ts";
 import { wake_read } from "../../Wake.ts";
 import { Face } from "./Avatar.tsx";
@@ -258,6 +259,19 @@ function AskedBy({ ask }: { ask: Of<"Ask">["ask"] }): ReactNode {
 }
 
 export function Ask({ row }: { row: Of<"Ask"> }): ReactNode {
+  const questions = row.ask.tool === QUESTION ? Question.of(input_of(row.ask.input)) : [];
+  return questions.length > 0 ? <Asks ask={row.ask} questions={questions} /> : <Approve row={row} />;
+}
+
+function input_of(json: string): unknown {
+  try {
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+function Approve({ row }: { row: Of<"Ask"> }): ReactNode {
   const [note, setNote] = useState("");
   const [sent, setSent] = useState(false);
   const say = (ok: boolean) => {
@@ -273,6 +287,71 @@ export function Ask({ row }: { row: Of<"Ask"> }): ReactNode {
       <div className="mt-3 flex gap-2">
         <button type="button" className="pillbtn go" disabled={sent} onClick={() => say(true)}>Approve</button>
         <button type="button" className="pillbtn" disabled={sent} onClick={() => say(false)}>Deny</button>
+      </div>
+    </div>
+  );
+}
+
+// what the owner picked for one question, and typed as another answer
+type Pick = { picked: string[]; other: string };
+
+// a question the run asks the owner, as choices: a tap on one answers a
+// lone question that takes one; otherwise each is picked, or typed in, and
+// sent together. Dismissed, the run goes on without the answer
+function Asks({ ask, questions }: { ask: Of<"Ask">["ask"]; questions: Question[] }): ReactNode {
+  const [picks, setPicks] = useState<Pick[]>(() => questions.map(() => ({ picked: [], other: "" })));
+  const [sent, setSent] = useState(false);
+  const tap = questions.length === 1 && !questions[0].multi;
+  const said = (p: Pick) => [...p.picked, ...(p.other.trim() === "" ? [] : [p.other.trim()])].join(", ");
+  const send = (ok: boolean, now: Pick[] = picks) => {
+    setSent(true);
+    const answers: Answers = ok ? Object.fromEntries(questions.map((q, k) => [q.question, said(now[k])])) : {};
+    void answer(ask.id, ok, "", answers).then((done) => done || setSent(false));
+  };
+  const set = (k: number, p: Pick) => setPicks(picks.map((x, j) => (j === k ? p : x)));
+  const choose = (k: number, label: string) => {
+    const q = questions[k];
+    const had = picks[k];
+    const p = q.multi ? { ...had, picked: had.picked.includes(label) ? had.picked.filter((l) => l !== label) : [...had.picked, label] } : { picked: [label], other: "" };
+    if (tap) {
+      send(true, [p]);
+    }
+    set(k, p);
+  };
+  const ready = picks.every((p) => said(p) !== "");
+  return (
+    <div className="ask card" role="group" aria-label={questions.length === 1 ? questions[0].question : questions.length + " questions"}>
+      {ask.who === "" ? null : <p className="cap">asked by <AskedBy ask={ask} /></p>}
+      {questions.map((q, k) => (
+        <fieldset key={k} className="mt-3 first:mt-1" disabled={sent}>
+          <legend className="contents">
+            {q.header === "" ? null : <span className="chip">{q.header}</span>}
+            <h3 className="mt-1.5 text-[1.125rem]">{q.question}</h3>
+          </legend>
+          {q.multi ? <p className="cap mt-0.5">Pick any</p> : null}
+          <div className="mt-2.5 grid gap-1.5">
+            {q.options.map((o) => {
+              const on = picks[k].picked.includes(o.label);
+              return (
+                <button key={o.label} type="button" className={"choice" + (on ? " on" : "")} aria-pressed={tap ? undefined : on} onClick={() => choose(k, o.label)}>
+                  <b>{o.label}</b>
+                  {o.description === "" ? null : <span>{o.description}</span>}
+                </button>
+              );
+            })}
+          </div>
+          <input className="field mt-2" maxLength={2000} placeholder={q.multi ? "Add another answer" : "Another answer"} aria-label={"Another answer to: " + q.question} autoComplete="off" enterKeyHint="send" value={picks[k].other}
+            onChange={(ev) => set(k, { picked: q.multi ? picks[k].picked : [], other: ev.target.value })}
+            onKeyDown={(ev) => {
+              if (ev.key === "Enter" && ready) {
+                send(true);
+              }
+            }} />
+        </fieldset>
+      ))}
+      <div className="mt-3 flex gap-2">
+        {tap && picks[0].other.trim() === "" ? null : <button type="button" className="pillbtn go" disabled={sent || !ready} onClick={() => send(true)}>Send</button>}
+        <button type="button" className="pillbtn" disabled={sent} onClick={() => send(false)}>Dismiss</button>
       </div>
     </div>
   );
