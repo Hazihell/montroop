@@ -2,7 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { chat, down, fake, gate, git, model, shell, Troop, repo, ROOT, said, SUB, tag, until, VIAS, waiting } from "../rig.ts";
+import { chat, down, fake, gate, git, model, shell, Troop, repo, ROOT, said, SUB, tag, until, VIAS, waiting, write } from "../rig.ts";
 
 afterAll(down);
 
@@ -54,6 +54,25 @@ test.concurrent("one with no repo starts with its agent's view, in a folder of i
   await until("the done wake", async () => await said(k, s.woke("done:")) === 1);
 });
 
+test.concurrent("codex: one with no repo starts with its agent's view, in a folder of its own, and zooms its agent's memory", async () => {
+  const k = await Troop.on("codex");
+  const t = tag();
+  await fake.next(t + ": remember", { what: "reply", text: "Noted." });
+  await k.tell(t + ": remember the heron-" + t);
+  await until("the agent's answer", async () => (await chat(k)).some((m) => m.text === "Noted."));
+  const id = (await chat(k)).findIndex((m) => m.text.startsWith(t + ": remember"));
+  await fake.next(t + ": work", { what: "tool", calls: [["zoom", { id, n: 1 }]] });
+  const [s] = await k.subagents({ task: t + ": work", name: "mz", ...model("codex") });
+
+  const done = await s.status("done");
+  expect(done.worktree).toBe(path.join(k.dir, "scratch", k.agent, "sessions", "mz"));
+  expect(results(done.log, "remember the heron-" + t).map((x) => x.ev.error)).toEqual([false]);
+  const first = JSON.stringify(((await fake.body(t + ": work")) as { input: Array<{ role?: string }> }).input.findLast((i) => i.role === "user"));
+  expect(first).toContain("<chat>");
+  expect(first).toContain("heron-" + t);
+  await until("the done wake", async () => await said(k, s.woke("done:")) === 1);
+});
+
 test.concurrent("three started at once: the first at once, the others once it has begun to answer, each waking its agent once", async () => {
   const k = await Troop.up();
   const t = tag();
@@ -69,21 +88,23 @@ test.concurrent("three started at once: the first at once, the others once it ha
   }
 });
 
-test.concurrent("a review with write false works on a worktree on no branch, its edit tools denied, removed when its run ends", async () => {
-  const k = await Troop.up();
-  const t = tag();
-  const r = repo();
-  const file = path.join(k.dir, "scratch", k.agent, "sessions", "rv", "written-" + t);
-  await fake.next(t + ": review", { what: "tool", calls: [["Write", { file_path: file, content: "x" }]] });
-  const [s] = await k.subagents({ task: t + ": review", name: "rv", repo: r, base: "main", write: false });
+for (const via of ["subagent", "codex"] as const) {
+  test.concurrent(via + ": a review with write false works on a worktree on no branch, its edit tools denied, removed when its run ends", async () => {
+    const k = await Troop.on(via);
+    const t = tag();
+    const r = repo();
+    const file = path.join(k.dir, "scratch", k.agent, "sessions", "rv", "written-" + t);
+    await fake.next(t + ": review", { what: "tool", calls: [write(via, file, "x")] });
+    const [s] = await k.subagents({ task: t + ": review", name: "rv", repo: r, base: "main", write: false, ...model(via) });
 
-  const done = await s.status("done");
-  expect(done.log.find((x) => x.ev.k === "result")?.ev).toMatchObject({ error: true });
-  await until("its worktree removed", () => !fs.existsSync(done.worktree));
-  expect(fs.existsSync(file)).toBe(false);
-  expect(git(r, "branch", "--list", "troop/rv")).toBe("");
-  await until("the done wake", async () => await said(k, s.woke("done:")) === 1);
-});
+    const done = await s.status("done");
+    expect(done.log.find((x) => x.ev.k === "result")?.ev).toMatchObject({ error: true });
+    await until("its worktree removed", () => !fs.existsSync(done.worktree));
+    expect(fs.existsSync(file)).toBe(false);
+    expect(git(r, "branch", "--list", "troop/rv")).toBe("");
+    await until("the done wake", async () => await said(k, s.woke("done:")) === 1);
+  });
+}
 
 test.concurrent("one given a branch works on that new branch, its start says so, and archive removes it", async () => {
   const k = await Troop.up();
@@ -151,78 +172,87 @@ test.concurrent("one lists with its task, model and effort, and how full its con
   expect(await s.status("done")).toMatchObject({ task: t + ": count the herons", model: "haiku-5.5", effort: "low", meter: { tokens: 32000, window: 1e6 } });
 });
 
+test.concurrent("codex: one lists with its task and model, and how full its context was at its latest request", async () => {
+  const k = await Troop.on("codex");
+  const t = tag();
+  await fake.next(t + ": count the herons", { what: "reply", text: "Twelve.", used: { input: 1200, read: 30000, write: 800 } });
+  const [s] = await k.subagents({ task: t + ": count the herons", name: "ls", memory: false, ...model("codex") });
+
+  expect(await s.status("done")).toMatchObject({ task: t + ": count the herons", model: "gpt-6-luna", meter: { tokens: 32000, window: 272e3 } });
+});
+
 for (const via of ["subagent", "codex"] as const) {
-test.concurrent(via + ": one waiting out a usage limit lists as waiting on it, with its reset, till it is stopped, and not once resumed", async () => {
-  const k = await Troop.on(via);
-  const t = tag();
-  const reset = Date.now() + 3600e3;
-  await fake.next(t + ": work", { what: "error", kind: "usage-limit", reset });
-  const [s] = await k.subagents({ task: t + ": work", name: "lw", memory: false, ...model(via) });
+  test.concurrent(via + ": one waiting out a usage limit lists as waiting on it, with its reset, till it is stopped, and not once resumed", async () => {
+    const k = await Troop.on(via);
+    const t = tag();
+    const reset = Date.now() + 3600e3;
+    await fake.next(t + ": work", { what: "error", kind: "usage-limit", reset });
+    const [s] = await k.subagents({ task: t + ": work", name: "lw", memory: false, ...model(via) });
 
-  const parked = await until("it waits on the limit", async () => {
-    const p = await s.page();
-    return p.waits === "limit" ? p : null;
+    const parked = await until("it waits on the limit", async () => {
+      const p = await s.page();
+      return p.waits === "limit" ? p : null;
+    });
+    expect(parked).toMatchObject({ status: "running", meter: null });
+    // the reset as the provider tells it, in whole seconds
+    expect(Math.abs((parked.until ?? 0) - reset)).toBeLessThan(1000);
+    expect((await k.api("POST", "/api/sessions/" + s.id + "/stop", {})).status).toBe(200);
+    expect(await s.status("stopped")).toMatchObject({ waits: null, until: null });
+    await fake.lift(reset);
+    await fake.next(t + ": work", { what: "stall", ms: 3000 });
+    await until("its holder gone", () => s.holder() === null);
+    expect((await k.api("POST", "/api/sessions/" + s.id + "/resume", {})).status).toBe(200);
+
+    expect(await s.status("running")).toMatchObject({ waits: null, until: null });
   });
-  expect(parked).toMatchObject({ status: "running", meter: null });
-  // the reset as the provider tells it, in whole seconds
-  expect(Math.abs((parked.until ?? 0) - reset)).toBeLessThan(1000);
-  expect((await k.api("POST", "/api/sessions/" + s.id + "/stop", {})).status).toBe(200);
-  expect(await s.status("stopped")).toMatchObject({ waits: null, until: null });
-  await fake.lift(reset);
-  await fake.next(t + ": work", { what: "stall", ms: 3000 });
-  await until("its holder gone", () => s.holder() === null);
-  expect((await k.api("POST", "/api/sessions/" + s.id + "/resume", {})).status).toBe(200);
 
-  expect(await s.status("running")).toMatchObject({ waits: null, until: null });
-});
+  test.concurrent(via + ": a usage limit is waited out in its holder, and it goes on by itself at the reset", async () => {
+    const k = await Troop.on(via);
+    const t = tag();
+    const reset = Date.now() + 3000;
+    await fake.next(t + ": work", { what: "error", kind: "usage-limit", reset });
+    const [s] = await k.subagents({ task: t + ": work", name: "ul", memory: false, ...model(via) });
 
-test.concurrent(via + ": a usage limit is waited out in its holder, and it goes on by itself at the reset", async () => {
-  const k = await Troop.on(via);
-  const t = tag();
-  const reset = Date.now() + 3000;
-  await fake.next(t + ": work", { what: "error", kind: "usage-limit", reset });
-  const [s] = await k.subagents({ task: t + ": work", name: "ul", memory: false, ...model(via) });
+    const done = await s.status("done");
+    expect(done.runs).toMatchObject([{ n: 1, status: "done", attempts: 1 }]);
+    expect(done.log.find((x) => x.ev.k === "end")?.at ?? 0).toBeGreaterThanOrEqual(reset);
+    await until("the done wake", async () => await said(k, s.woke("done:")) === 1);
+    expect(await said(k, s.woke("failed:"))).toBe(0);
+  });
 
-  const done = await s.status("done");
-  expect(done.runs).toMatchObject([{ n: 1, status: "done", attempts: 1 }]);
-  expect(done.log.find((x) => x.ev.k === "end")?.at ?? 0).toBeGreaterThanOrEqual(reset);
-  await until("the done wake", async () => await said(k, s.woke("done:")) === 1);
-  expect(await said(k, s.woke("failed:"))).toBe(0);
-});
+  test.concurrent(via + ": a long usage limit wakes its agent once, and the user's word that it was reset early (resume) has it ask again", async () => {
+    const k = await Troop.on(via);
+    const t = tag();
+    const reset = Date.now() + 3600e3;
+    await fake.next(t + ": work", { what: "error", kind: "usage-limit", reset });
+    const [s] = await k.subagents({ task: t + ": work", name: "lr", memory: false, ...model(via) });
+    await until("the limit's wake", async () => await said(k, s.woke("waiting: a usage limit, till ")) === 1);
+    await fake.lift(reset);
+    await fake.next(t + ": it was reset", { what: "tool", calls: [["resume", {}]] });
+    await k.tell(t + ": it was reset");
 
-test.concurrent(via + ": a long usage limit wakes its agent once, and the user's word that it was reset early (resume) has it ask again", async () => {
-  const k = await Troop.on(via);
-  const t = tag();
-  const reset = Date.now() + 3600e3;
-  await fake.next(t + ": work", { what: "error", kind: "usage-limit", reset });
-  const [s] = await k.subagents({ task: t + ": work", name: "lr", memory: false, ...model(via) });
-  await until("the limit's wake", async () => await said(k, s.woke("waiting: a usage limit, till ")) === 1);
-  await fake.lift(reset);
-  await fake.next(t + ": it was reset", { what: "tool", calls: [["resume", {}]] });
-  await k.tell(t + ": it was reset");
+    expect((await s.status("done")).runs).toMatchObject([{ n: 1, status: "done", attempts: 1 }]);
+    await until("the done wake", async () => await said(k, s.woke("done:")) === 1);
+    expect(await said(k, s.woke("waiting:"))).toBe(1);
+  });
 
-  expect((await s.status("done")).runs).toMatchObject([{ n: 1, status: "done", attempts: 1 }]);
-  await until("the done wake", async () => await said(k, s.woke("done:")) === 1);
-  expect(await said(k, s.woke("waiting:"))).toBe(1);
-});
+  test.concurrent(via + ": one at work through a server restart goes on in the same holder, and wakes its agent once", async () => {
+    const k = await Troop.on(via);
+    const t = tag();
+    await fake.next(t + ": work", { what: "tool", calls: [shell(via, gate(t))] });
+    await fake.next(t + "-done", { what: "reply", text: t + " finished" });
+    const [s] = await k.subagents({ task: t + ": work", name: "sr", memory: false, ...model(via) });
+    await until("the command running", () => waiting(t));
+    const holder = s.holder();
+    await k.kill();
+    await k.start();
 
-test.concurrent(via + ": one at work through a server restart goes on in the same holder, and wakes its agent once", async () => {
-  const k = await Troop.on(via);
-  const t = tag();
-  await fake.next(t + ": work", { what: "tool", calls: [shell(via, gate(t))] });
-  await fake.next(t + "-done", { what: "reply", text: t + " finished" });
-  const [s] = await k.subagents({ task: t + ": work", name: "sr", memory: false, ...model(via) });
-  await until("the command running", () => waiting(t));
-  const holder = s.holder();
-  await k.kill();
-  await k.start();
-
-  expect(s.holder()).toBe(holder);
-  s.open(t);
-  expect((await s.status("done")).runs).toMatchObject([{ n: 1, status: "done", attempts: 1, report: t + " finished" }]);
-  await until("the done wake", async () => await said(k, s.woke("done: ") + t + " finished") === 1);
-  expect(await said(k, s.woke("failed:"))).toBe(0);
-});
+    expect(s.holder()).toBe(holder);
+    s.open(t);
+    expect((await s.status("done")).runs).toMatchObject([{ n: 1, status: "done", attempts: 1, report: t + " finished" }]);
+    await until("the done wake", async () => await said(k, s.woke("done: ") + t + " finished") === 1);
+    expect(await said(k, s.woke("failed:"))).toBe(0);
+  });
 }
 
 test.concurrent("one on an API key runs Montroop's loop, and its calls of Montroop's tools, on a device and on its agent's memory, are answered; its latest request's tokens make its meter", async () => {

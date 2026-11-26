@@ -5,10 +5,14 @@ import * as path from "node:path";
 import type { Job } from "../../Driver.ts";
 import type { Rule } from "../../Rules.ts";
 import { VERSION, type Ask, type Ev } from "../../Wire.ts";
-import { connect, fake, hold, signed, tag } from "../rig.ts";
+import { Hold } from "../../Hold.ts";
+import { connect, fake, hold, signed, tag, tell, until } from "../rig.ts";
 
 // a rule that has the owner answer every call first
 const EVERY: Rule[] = [{ what: "Do anything", tools: "*", args: "" }];
+
+// one of Montroop's tools a start offers
+const KIT = [{ name: "wipe", info: "Wipe the data.", schema: { type: "object", properties: {} }, device: null }];
 
 // a Codex job on a data folder's ChatGPT plan, in a folder of its own
 function codex(home: string, more: Partial<Omit<Job, "dir">> = {}): Omit<Job, "dir"> {
@@ -84,7 +88,7 @@ test.concurrent("codex: every command, file change and tool call with an effect 
   const cwd = String(job.cwd);
   const outside = fs.mkdtempSync(path.join(os.tmpdir(), "outside-"));
   fs.writeFileSync(path.join(cwd, "keep.txt"), "keep\n");
-  const commands = ["ls", "touch a.txt", "echo hi > b.txt", "ls && touch c.txt", "python3 -c \"open('d.txt', 'w').write('x')\"", "git init -q", "find . -name keep.txt -delete", "sed -i s/keep/gone/ keep.txt", "touch " + path.join(outside, "out.txt")];
+  const commands = ["ls", "touch a.txt", "echo hi > b.txt", "ls && touch c.txt", "python3 -c \"open('d.txt', 'w').write('x')\"", "git init -q", "find . -name keep.txt -delete", "sed -i s/keep/gone/ keep.txt", "curl -s -m 2 https://chatgpt.com/", "touch " + path.join(outside, "out.txt")];
   await fake.next(t + ": work", { what: "tool", calls: [script([
     ...commands.map((cmd) => "tools.exec_command(" + JSON.stringify({ cmd }) + ")"),
     "tools.exec_command(" + JSON.stringify({ cmd: "touch " + path.join(outside, "escalated.txt"), sandbox_permissions: "require_escalated", justification: "It must." }) + ")",
@@ -95,9 +99,8 @@ test.concurrent("codex: every command, file change and tool call with an effect 
     "tools.montroop__wipe({})",
     "tools.mcp__probe__wipe({})",
   ])] });
-  const kit = [{ name: "wipe", info: "Wipe the data.", schema: { type: "object", properties: {} }, device: null }];
 
-  const told = (await hold(home, job, t + ": work", (dir) => owner(dir, EVERY, () => false), undefined, {}, { rules: EVERY, tools: kit })).map((x) => x.ev);
+  const told = (await hold(home, job, t + ": work", (dir) => owner(dir, EVERY, () => false), undefined, {}, { rules: EVERY, tools: KIT })).map((x) => x.ev);
   const asked = told.flatMap((e) => (e.k === "ask" ? [e] : []));
   expect(asked.filter((a) => a.tool === "exec_command").map((a) => a.input.command)).toEqual([...commands, "touch " + path.join(outside, "escalated.txt")]);
   expect(asked.filter((a) => a.tool === "apply_patch").map((a) => a.input.file_path)).toEqual([[path.join(cwd, "e.txt")], [path.join(cwd, "keep.txt")], [path.join(cwd, "keep.txt")], [path.join(outside, "patched.txt")]]);
@@ -121,9 +124,8 @@ test.concurrent("codex: with no rule naming them, its calls run at once, none pa
     "tools.montroop__wipe({})",
     "tools.mcp__probe__wipe({})",
   ])] });
-  const kit = [{ name: "wipe", info: "Wipe the data.", schema: { type: "object", properties: {} }, device: null }];
 
-  const told = (await hold(home, job, t + ": work", (dir) => owner(dir, [], () => false), undefined, {}, { tools: kit })).map((x) => x.ev);
+  const told = (await hold(home, job, t + ": work", (dir) => owner(dir, [], () => false), undefined, {}, { tools: KIT })).map((x) => x.ev);
   expect(told.filter((e) => e.k === "ask")).toEqual([]);
   expect(fs.readdirSync(cwd).sort()).toEqual(["a.txt", "e.txt"]);
   expect(fs.readFileSync(log, "utf8")).toBe("wipe\n");
@@ -143,7 +145,7 @@ test.concurrent("codex: what is typed into a shell the owner let run outside its
   await fake.next(t + ": work", { what: "tool", calls: [script(["(async () => { const sh = await " + shell + "; return await tools.write_stdin({ session_id: sh.session_id, chars: " + JSON.stringify("touch " + typed + "\n") + ", yield_time_ms: 1000 }); })()"])] });
 
   const told = (await hold(home, codex(home), t + ": work", (dir) => owner(dir, EVERY, (a) => a.input.command === "bash"), undefined, {}, { rules: EVERY })).map((x) => x.ev);
-  expect(told.flatMap((e) => (e.k === "ask" ? [e.input.command] : []))).toEqual(["bash", "write_stdin --session-id " + /--session-id (\d+)/.exec(JSON.stringify(told))?.[1] + " 'touch " + typed + "\n'"]);
+  expect(told.flatMap((e) => (e.k === "ask" ? [e.input.command] : []))).toEqual(["bash", expect.stringMatching(new RegExp("^write_stdin --session-id \\d+ 'touch " + typed + "\n'$"))]);
   expect(fs.existsSync(typed)).toBe(false);
 });
 
@@ -186,13 +188,12 @@ test.concurrent("codex: a later holder resumes the thread, its history and Montr
   const home = signed(fs.mkdtempSync(path.join(os.tmpdir(), "home-")));
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hold-"));
   const job = codex(home);
-  const kit = [{ name: "wipe", info: "Wipe the data.", schema: { type: "object", properties: {} }, device: null }];
   await fake.next(t + ": one", { what: "reply", text: t + " first answer" });
-  const first = (await hold(home, job, t + ": one", (d) => owner(d, [], () => true), dir, {}, { tools: kit })).map((x) => x.ev);
+  const first = (await hold(home, job, t + ": one", (d) => owner(d, [], () => true), dir, {}, { tools: KIT })).map((x) => x.ev);
   const began = first.find((e) => e.k === "began");
   await fake.next(t + ": two", { what: "tool", calls: [["wipe", {}]] });
 
-  const told = (await hold(home, { ...job, context: { kind: "native", resume: String(began?.k === "began" && began.sdk), first: [], brief: "" } }, t + ": two", (d) => owner(d, [], () => true), dir, {}, { tools: kit })).map((x) => x.ev).slice(first.length);
+  const told = (await hold(home, { ...job, context: { kind: "native", resume: String(began?.k === "began" && began.sdk), first: [], brief: "" } }, t + ": two", (d) => owner(d, [], () => true), dir, {}, { tools: KIT })).map((x) => x.ev).slice(first.length);
   expect(told.filter((e) => e.k === "began")).toEqual([]);
   expect(told as unknown[]).toContainEqual(expect.objectContaining({ k: "result", text: "done", error: false }));
   expect(JSON.stringify(await fake.body(t + ": two"))).toContain(t + " first answer");
@@ -209,7 +210,6 @@ test.concurrent("codex: the ChatGPT sign-in stays Montroop's: a token due is ref
   expect((await hold(home, codex(home), t + ": work")).at(-1)?.ev).toEqual({ k: "end", ok: true, text: "ok" });
   const after = JSON.parse(fs.readFileSync(file, "utf8")) as { tokens: { access_token: string; refresh_token: string } };
   expect(after.tokens.refresh_token).not.toBe(before.tokens.refresh_token);
-  expect((await fake.seen(t + ": work"))[0]).toBeDefined();
   expect(JSON.stringify(await fake.body(t + ": work"))).not.toContain(stale);
   const kept = fs.readdirSync(path.join(home, "codex"), { recursive: true, encoding: "utf8" }).filter((f) => fs.statSync(path.join(home, "codex", f)).isFile() && fs.readFileSync(path.join(home, "codex", f)).includes(after.tokens.refresh_token));
   expect(kept).toEqual([]);
@@ -223,7 +223,7 @@ test("codex: an access token the backend refuses has Codex ask Montroop's sign-i
   const since = new Date().toISOString();
   await fake.next(t + ": work", { what: "error", kind: "auth-expired", reset: 0 });
 
-  expect((await hold(home, codex(home), t + ": work")).at(-1)?.ev).toMatchObject({ k: "end" });
+  expect((await hold(home, codex(home), t + ": work")).at(-1)?.ev).toEqual({ k: "end", ok: true, text: "ok" });
   const renewals = (await fake.seen("")).filter((x) => x.vendor === "auth.openai.com" && x.at >= since);
   expect(renewals.map((x) => x.path + " " + x.answer)).toEqual(["/oauth/token 401"]);
 });
@@ -252,4 +252,34 @@ test.concurrent("codex: the owner's own instructions for Codex are in its reques
 
   expect((await hold(home, codex(home), t + ": work", undefined, undefined, { HOME: user })).at(-1)?.ev).toEqual({ k: "end", ok: true, text: "ok" });
   expect(JSON.stringify(await fake.body(t + ": work"))).toContain("Owner's rule " + t + ".");
+});
+
+test.concurrent("codex: a message that comes in while its turn waits on the owner goes into that turn", async () => {
+  const t = tag();
+  const home = signed(fs.mkdtempSync(path.join(os.tmpdir(), "home-")));
+  await fake.next(t + ": work", { what: "tool", calls: [["exec_command", { cmd: "echo " + t + "-ran" }]] });
+
+  const told = (await hold(home, codex(home), t + ": work", async (dir) => {
+    const ask = await until("its ask", () => Hold.told(dir).find((x) => x.ev.k === "ask")?.ev);
+    await tell(dir, { $: "say", id: t + "-1", text: t + " also this", answer: false });
+    await until("the message heard", () => Hold.told(dir).some((x) => x.ev.k === "heard"));
+    await tell(dir, { $: "answer", id: ask.k === "ask" ? ask.id : "", ok: true, note: "" });
+  }, undefined, {}, { rules: EVERY })).map((x) => x.ev);
+  expect(told.filter((e) => e.k === "turn")).toEqual([{ k: "turn", ok: true, text: "ok" }]);
+  expect((await fake.seen(t + " also this")).some((x) => x.model !== "")).toBe(true);
+});
+
+test.concurrent("codex: a file change its own subagent makes reaches the gate as one its main thread makes", async () => {
+  const t = tag();
+  const home = signed(fs.mkdtempSync(path.join(os.tmpdir(), "home-")));
+  const job = codex(home);
+  const file = path.join(String(job.cwd), "child-" + t + ".txt");
+  const rules: Rule[] = [{ what: "Write a child's file", tools: "write", args: "child-" }];
+  await fake.next("Message Type: NEW_TASK\nTask name: /root/writer_" + t, { what: "tool", calls: [["apply_patch", "*** Begin Patch\n*** Add File: " + file + "\n+x\n*** End Patch\n"]] });
+  await fake.next(t + ": work", { what: "tool", calls: [["spawn_agent", { task_name: "writer_" + t, message: "Write the file." }]] });
+  await fake.next('{"task_name":"/root/writer_' + t + '"}', { what: "tool", calls: [["wait_agent", { timeout_ms: 10000 }]] });
+
+  const told = (await hold(home, job, t + ": work", (dir) => owner(dir, rules, () => false), undefined, {}, { rules })).map((x) => x.ev);
+  expect(told.filter((e) => e.k === "ask").map((e) => e.k === "ask" && e.input.file_path)).toEqual([[file]]);
+  expect(fs.existsSync(file)).toBe(false);
 });

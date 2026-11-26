@@ -28,18 +28,18 @@ const PROCESS = { "claude-code": { cmd: /\/claude(\s|$)/, why: "Claude Code proc
 
 for (const via of ["subagent", "codex"] as const) {
   test.concurrent(via + ": a holder killed mid-run is tried again with no message, told its last calls' outcome is unknown, and finishes", async () => {
-  const k = await Troop.on(via);
-  const t = tag();
-  await fake.next(t + ": work", { what: "tool", calls: [shell(via, gate(t))] });
-  const [s] = await k.subagents({ task: t + ": work", name: "rk", repo: repo(), base: "main", ...model(via) });
-  await until("the command running", () => waiting(t));
-  const first = s.holder();
-  kill(first);
+    const k = await Troop.on(via);
+    const t = tag();
+    await fake.next(t + ": work", { what: "tool", calls: [shell(via, gate(t))] });
+    const [s] = await k.subagents({ task: t + ": work", name: "rk", repo: repo(), base: "main", ...model(via) });
+    await until("the command running", () => waiting(t));
+    const first = s.holder();
+    kill(first);
 
-  expect((await s.status("done")).runs).toMatchObject([{ n: 1, status: "done", attempts: 2 }]);
-  expect((await fake.seen(t + ": work")).map((x) => x.latest).filter((x) => x.includes("Your process was stopped before you were done"))).toHaveLength(1);
-  await until("the done wake", async () => await said(k, s.woke("done:")) === 1);
-  expect(await said(k, s.woke("failed:"))).toBe(0);
+    expect((await s.status("done")).runs).toMatchObject([{ n: 1, status: "done", attempts: 2 }]);
+    expect((await fake.seen(t + ": work")).map((x) => x.latest).filter((x) => x.includes("Your process was stopped before you were done"))).toHaveLength(1);
+    await until("the done wake", async () => await said(k, s.woke("done:")) === 1);
+    expect(await said(k, s.woke("failed:"))).toBe(0);
   });
 }
 

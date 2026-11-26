@@ -34,8 +34,13 @@ export function shell(via: Via, command: string, outside = false): [string, unkn
   return via !== "codex" ? ["Bash", { command }] : ["exec_command", { cmd: command, ...(outside ? { sandbox_permissions: "require_escalated", justification: "It commits." } : {}) }];
 }
 
+// a new file as the model of via writes it
+export function write(via: Via, file: string, content: string): [string, unknown] {
+  return via !== "codex" ? ["Write", { file_path: file, content }] : ["apply_patch", "*** Begin Patch\n*** Add File: " + file + "\n+" + content + "\n*** End Patch\n"];
+}
+
 // the tool an agent drives via with, and the tool via asks its agent with
-export function driven(via: Via): string {
+export function driven(via: Via): "session" | "subagent" {
   return via === "session" ? "session" : "subagent";
 }
 export function asks(via: Via): string {
@@ -315,7 +320,7 @@ class Session {
 
   // what it is to its agent
   get kind(): "session" | "subagent" {
-    return this.via === "session" ? "session" : "subagent";
+    return driven(this.via);
   }
 
   // the start of a wake it sends its agent

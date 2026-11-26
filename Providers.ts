@@ -4,9 +4,9 @@
 // runs on and the kind of context it has. A plan runs on its provider's
 // harness (Claude Code, in either context; Codex, which keeps its own) or,
 // given its context, on its plan's API (ChatGPT's), an API key on the API,
-// with Montroop's own loop (Loop) over the vendor's wire. A model or effort the provider doesn't offer is refused before
-// any call; Claude Code takes names of its own for its models too (opus),
-// as its default.
+// with Montroop's own loop (Loop) over the vendor's wire. A model or
+// effort the provider doesn't offer is refused before any call; Claude
+// Code takes names of its own for its models too (opus), as its default.
 
 import type { Vendor } from "./AskAI.ts";
 import { Anthropic } from "./Anthropic.ts";

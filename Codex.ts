@@ -65,6 +65,15 @@ type Proc = { stdin: Bun.FileSink; stdout: ReadableStream<Uint8Array<ArrayBuffer
 // the ChatGPT sign-in's access token last handed to Codex
 type Signin = { given: string };
 
+// what a request of Codex's is answered with: the job and the holder's Io,
+// the items of its turns as they started, which an approval names, its
+// sign-in, and note, what the owner said with an answer, for the model once
+// the item it's for is done (null: none)
+type Answering = { job: Job; io: Io; items: Map<string, unknown>; signin: Signin; note: (item: string | null, text: string) => void };
+
+// a gate's wait no one ends: Codex waits for its answer while the run does
+const NEVER = new AbortController().signal;
+
 // how a turn ended: done (its last reply), cut by a usage limit (when it
 // resets, if told), or failed (why)
 type Turn = { done: string } | { limit: number | null } | { failed: string };
@@ -86,35 +95,37 @@ export namespace Codex {
       stderr : fs.openSync(path.join(job.dir, "codex.log"), "a"),
     });
     const signin: Signin = { given: "" };
-    // the items of its turns as they started, which an approval names
+    // the items of its turns as they started, its native subagents' too,
+    // which an approval names
     const items = new Map<string, unknown>();
     const limit = Limit.make(Loop.asked(job, "openai-sub"), Loop.limits(io), new AbortController().signal);
     // the latest word on its usage limits
     let limits: unknown = null;
     let thread = c.resume;
-    // the turn at work: its id ("": not told yet), its latest reply
-    let turn = null as { id: string; last: string; end: (t: Turn) => void } | null;
-    // the messages taken in for the next turn (wake: one came), the
-    // steers on their way
+    // the turn at work: its id ("": not told yet), its latest reply, the
+    // messages for it that came before its id
+    let turn = null as { id: string; last: string; end: (t: Turn) => void; early: string[] } | null;
+    // the messages taken in for the next turn, the steers on their way
     const queue: string[] = [];
-    let wake = () => {};
     const steering = new Set<Promise<void>>();
     // what the owner said with an answer, for the model once its call is done
     const notes = new Map<string, string>();
     const server = connect(proc, (method, params) => {
+      const item = get(params, "item");
+      const id = str(get(item, "id")) ?? "";
       if (method === "account/rateLimits/updated") {
         limits = get(params, "rateLimits");
+      } else if (method === "item/started") {
+        items.set(id, item);
+      } else if (method === "item/completed") {
+        items.delete(id);
       }
       if (get(params, "threadId") !== thread) {
         return;
       }
-      const item = get(params, "item");
-      const id = str(get(item, "id")) ?? "";
       if (method === "item/started") {
-        items.set(id, item);
         told_started(item).forEach(io.emit);
       } else if (method === "item/completed") {
-        items.delete(id);
         if (turn !== null && get(item, "type") === "agentMessage") {
           turn.last = str(get(item, "text")) ?? turn.last;
         }
@@ -140,22 +151,21 @@ export namespace Codex {
         turn = null;
         t.end(ended(get(params, "turn"), t.last, limits));
       }
-    }, (method, params, stop) => answer(method, params, stop, job, io, items, signin, (item, note) => (item === null ? steer(labeled(note)) : notes.set(item, note))));
+    }, (method, params) => answer(method, params, { job, io, items, signin, note: (item, note) => (item === null ? steer(labeled(note)) : notes.set(item, note)) }));
 
-    // a message into the turn at work, after its current tool call; one
-    // that comes between turns, or as one ends, goes into the next
+    // a message into the turn at work, after its current tool call (one
+    // that comes before the turn's id, once it's told); one that comes
+    // between turns, or as one ends, goes into the next
     function steer(text: string): void {
       const t = turn;
-      const later = () => {
+      if (t === null) {
         queue.push(text);
-        wake();
-      };
-      if (t === null || t.id === "") {
-        later();
-        return;
+      } else if (t.id === "") {
+        t.early.push(text);
+      } else {
+        const sent: Promise<void> = server.ask("turn/steer", { threadId: thread, expectedTurnId: t.id, input: [input(text)] }).then(() => {}, () => void queue.push(text)).finally(() => steering.delete(sent));
+        steering.add(sent);
       }
-      const sent: Promise<void> = server.ask("turn/steer", { threadId: thread, expectedTurnId: t.id, input: [input(text)] }).then(() => {}, later).finally(() => steering.delete(sent));
-      steering.add(sent);
     }
 
     try {
@@ -171,27 +181,31 @@ export namespace Codex {
       if (text === null) {
         return { ok: true, text: "" };
       }
-      let said = [...(c.resume === "" ? c.first.map((b) => b.text) : []), text].filter((t) => t !== "");
-      void (async () => {
+      // the messages for the next turn
+      let texts = [...(c.resume === "" ? c.first.map((b) => b.text) : []), text].filter((t) => t !== "");
+      // the messages that come in go to the turn at work, till the inbox
+      // closes, those it holds then taken first
+      const reading = (async () => {
         for (let t = await io.inbox.next(); t !== null; t = await io.inbox.next()) {
           steer(t);
         }
       })();
       for (;;) {
-        const done = new Promise<Turn>((end) => {
-          turn = { id: "", last: "", end };
-        });
+        let end: (t: Turn) => void = () => {};
+        const done = new Promise<Turn>((ok) => (end = ok));
+        const at = { id: "", last: "", end, early: [] as string[] };
+        turn = at;
         const opened = await Promise.race([
-          server.ask("turn/start", { threadId: thread, input: said.map(input), ...(job.effort === "" ? {} : { effort: job.effort }) }).then((r) => str(get(get(r, "turn"), "id")) ?? "", (err: unknown) => new Error(err_why(err))),
+          server.ask("turn/start", { threadId: thread, input: texts.map(input), ...(job.effort === "" ? {} : { effort: job.effort }) }).then((r) => str(get(get(r, "turn"), "id")) ?? "", (err: unknown) => new Error(err_why(err))),
           server.gone.then((why) => new Error(why)),
         ]);
         if (opened instanceof Error) {
           turn = null;
+          io.emit({ k: "turn", ok: false, text: opened.message });
           return { ok: false, text: opened.message };
         }
-        if (turn !== null) {
-          turn.id = opened;
-        }
+        at.id = opened;
+        at.early.splice(0).forEach(steer);
         const got = await Promise.race([done, server.gone.then((why): Turn => ({ failed: why }))]);
         await Promise.all([...steering]);
         if ("failed" in got) {
@@ -203,19 +217,19 @@ export namespace Codex {
           // Codex reads the plan's usage from the backend, its reset with it
           const read = await server.ask("account/rateLimits/read", {}).catch(() => null);
           await Limit.hit(limit, got.limit ?? reset(get(read, "rateLimits")), true, "usage limit");
-          said = [labeled(Prompts.prompt("go-on")), ...queue.splice(0)];
+          texts = [labeled(Prompts.prompt("go-on")), ...queue.splice(0)];
           continue;
         }
         limit.n = 0;
         io.emit({ k: "turn", ok: true, text: got.done });
-        if (queue.length === 0 && !io.inbox.pending()) {
+        if (queue.length === 0) {
           io.inbox.close();
+          await reading;
+        }
+        if (queue.length === 0) {
           return { ok: true, text: got.done };
         }
-        while (queue.length === 0) {
-          await new Promise<void>((ok) => (wake = ok));
-        }
-        said = queue.splice(0);
+        texts = queue.splice(0);
       }
     } finally {
       proc.kill();
@@ -294,12 +308,10 @@ export namespace Codex {
   }
 
   // the app-server on proc's stdio: on, a notification; serve, a request
-  // of its own, whose result (or error) goes back, its wait dropped (stop)
-  // once Codex has resolved it itself, as when its turn ends
-  function connect(proc: Proc, on: (method: string, params: unknown) => void, serve: (method: string, params: unknown, stop: AbortSignal) => Promise<unknown>): Server {
+  // of its own, whose result (or error) goes back
+  function connect(proc: Proc, on: (method: string, params: unknown) => void, serve: (method: string, params: unknown) => Promise<unknown>): Server {
     let n = 0;
     const waits = new Map<number, { ok: (x: unknown) => void; no: (err: Error) => void }>();
-    const serving = new Map<string, AbortController>();
     const write = (msg: Msg) => {
       try {
         void proc.stdin.write(JSON.stringify(msg) + "\n");
@@ -328,11 +340,7 @@ export namespace Codex {
             }
           } else if (msg.method !== undefined && msg.id !== undefined) {
             const id = msg.id;
-            const stop = new AbortController();
-            serving.set(String(id), stop);
-            void serve(msg.method, msg.params, stop.signal).then((result) => write({ id, result }), (err: unknown) => write({ id, error: { code: -32603, message: err_why(err) } })).finally(() => serving.delete(String(id)));
-          } else if (msg.method === "serverRequest/resolved") {
-            serving.get(String(get(msg.params, "requestId")))?.abort();
+            void serve(msg.method, msg.params).then((result) => write({ id, result }), (err: unknown) => write({ id, error: { code: -32603, message: err_why(err) } }));
           } else if (msg.method !== undefined) {
             on(msg.method, msg.params);
           }
@@ -392,15 +400,13 @@ export namespace Codex {
     return { type: "text", text, text_elements: [] };
   }
 
-  // a request of Codex's: an approval through the holder's gate, dropped
-  // (stop) if Codex stops waiting for it (note: what the owner said with
-  // it, for the model once the item it's for is done, null: none), one of
+  // a request of Codex's: an approval through the holder's gate, one of
   // Montroop's tools run by the holder, a fresh access token; what no one
   // here can answer, refused
-  async function answer(method: string, params: unknown, stop: AbortSignal, job: Job, io: Io, items: Map<string, unknown>, signin: Signin, note: (item: string | null, text: string) => void): Promise<unknown> {
+  async function answer(method: string, params: unknown, { job, io, items, signin, note }: Answering): Promise<unknown> {
     const item = str(get(params, "itemId")) ?? null;
     const gated = async (call: Call): Promise<boolean> => {
-      const said: Gated = await io.gate(call, stop);
+      const said: Gated = await io.gate(call, NEVER);
       if (said.note !== "") {
         note(item, said.note);
       }
@@ -453,7 +459,7 @@ export namespace Codex {
         const asked = list(get(params, "questions"));
         const questions = asked.map((q) => ({ question: str(get(q, "question")) ?? "", header: str(get(q, "header")) ?? "", options: list(get(q, "options")).map((o) => ({ label: str(get(o, "label")) ?? "", description: str(get(o, "description")) ?? "" })), multiSelect: false }));
         const input = { questions };
-        const said = await io.ask({ id, tool: QUESTION, args: input, native: QUESTION, input }, stop);
+        const said = await io.ask({ id, tool: QUESTION, args: input, native: QUESTION, input }, NEVER);
         if (!said.ok) {
           note(null, said.note);
           return { answers: {} };
