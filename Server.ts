@@ -2009,18 +2009,27 @@ export namespace Main {
     return Response.json(why === null ? {} : { error: why }, { status: why === null ? 200 : 409 });
   }
 
-  // the pins whose time is up leave quietly, a note each in the first
-  // agent's chat, no push
-  export function pin_sweep(): void {
-    Pins.sweep().forEach(({ pin, why }) => Chat.note(Main.first(), "📌 unpinned (" + why + "): " + Pins.line(pin)));
+  // a note in the chats of the agents a pin held for
+  function pin_note(pin: Pins.Pin, text: string): void {
+    Pins.homes(pin).forEach((id) => {
+      const chat = Main.chats.get(id);
+      if (chat !== undefined) {
+        Chat.note(chat, text);
+      }
+    });
   }
 
-  // the Settings page's list of pins: read them, or unpin one ({ unpin: id })
+  // the pins whose time is up leave quietly, a note each, no push
+  export function pin_sweep(): void {
+    Pins.sweep().forEach(({ pin, why }) => pin_note(pin, "📌 unpinned (" + why + "): " + Pins.line(pin)));
+  }
+
+  // the memory page's list of pins: read them, or unpin one ({ unpin: id })
   export async function pins(req: Request): Promise<Response> {
     if (req.method === "POST") {
       const pin = Pins.unpin(Number(get(await req.json().catch(() => null), "unpin")));
       if (pin !== null) {
-        Chat.note(Main.first(), "📌 unpinned by the user: " + Pins.line(pin));
+        pin_note(pin, "📌 unpinned by the user: " + Pins.line(pin));
       }
     }
     return Response.json(Pins.read());
@@ -2406,6 +2415,7 @@ export namespace Main {
     Tools.unseat(Main.tools, chat.who);
     Team.drop(chat.id);
     Setup.drop(chat.id);
+    Pins.drop(chat.id);
     chat.socks.forEach((sock) => Chat.join(Main.first(), sock, chat.id));
     Main.team_soon();
     for (const [device] of Tools.opened(Main.tools)) {

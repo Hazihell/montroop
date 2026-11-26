@@ -125,3 +125,18 @@ test.concurrent("the owner answers a work session's questions on their cards: pi
   await s.status("done");
   await k.kill();
 });
+
+test.concurrent("the owner sees on the memory page who each pin holds for, and shows only one mon's", async () => {
+  const k = await Troop.up();
+  const pin = (id: number, text: string, mons: string[] | null) => ({ id, text, from: null, until: null, mons, made: "2026-11-01", used: "2026-11-02" });
+  await Bun.write(path.join(k.dir, "pins.json"), JSON.stringify([pin(1, "Answer in Portuguese.", null), pin(2, "Track the heron count.", [k.agent])]));
+  const page = await phone(k, true);
+  await page.goto(k.url + "/a/" + k.agent + "/memory");
+
+  await page.getByText("Shared · lasting · used 2026-11-02").waitFor();
+  await page.getByText("Montroop · lasting · used 2026-11-02").waitFor();
+  await page.getByRole("group", { name: "Show the pins of" }).getByRole("button", { name: "Montroop" }).click();
+  await page.getByText("Answer in Portuguese.").waitFor({ state: "detached" });
+  expect(await page.getByText("Track the heron count.").isVisible()).toBe(true);
+  await k.kill();
+});
