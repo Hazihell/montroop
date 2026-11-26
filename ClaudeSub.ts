@@ -123,13 +123,13 @@ export namespace ClaudeSub {
 
   export function installed(): string {
     try {
-      return Bun.fileURLToPath(import.meta.resolve("@anthropic-ai/claude-agent-sdk-" + ClaudeSub.platform() + (process.platform === "win32" ? "/claude.exe" : "/claude")));
+      return Bun.fileURLToPath(import.meta.resolve("@anthropic-ai/claude-agent-sdk-" + platform() + (process.platform === "win32" ? "/claude.exe" : "/claude")));
     } catch {
       throw new Error(NO_BIN);
     }
   }
 
-  export function platform(): string {
+  function platform(): string {
     const musl = process.platform === "linux" && fs.existsSync("/lib") && fs.readdirSync("/lib").some((f) => f.startsWith("ld-musl-"));
     return process.platform + "-" + process.arch + (musl ? "-musl" : "");
   }

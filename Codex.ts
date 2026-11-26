@@ -23,7 +23,6 @@ import type { Out } from "./Agent.ts";
 import { AskAI } from "./AskAI.ts";
 import { BIN } from "./Browser.ts";
 import { ChatGPT } from "./ChatGPT.ts";
-import { ClaudeSub } from "./ClaudeSub.ts";
 import * as config from "./Config.ts";
 import type { Call, Driver, Gated, Io, Job } from "./Driver.ts";
 import { err_why } from "./Err.ts";
@@ -41,10 +40,6 @@ const NO_BIN = "Codex isn't here: install it (npm install -g @openai/codex), or 
 // writes in the workspace and off the network, unless the command asks to
 // run outside it, which is asked too
 const POLICY = { approvalPolicy: "untrusted", sandbox: "workspace-write" };
-
-// its question tool, which Codex offers only while planning unless this
-// feature is on, so it asks the owner (io.ask) in its default mode too
-const FEATURES = ["default_mode_request_user_input"];
 
 // what the model is told of a file change a job that may not write makes
 const NO_WRITE = "This job may not write: its edits are denied.";
@@ -84,7 +79,7 @@ export namespace Codex {
     }
     const home = home_of(job);
     instructions(home);
-    const proc = Bun.spawn([bin(), "app-server", ...FEATURES.flatMap((f) => ["--enable", f])], {
+    const proc = Bun.spawn([bin(), "app-server"], {
       cwd    : job.cwd,
       env    : env(job, home),
       stdin  : "pipe",
@@ -239,28 +234,14 @@ export namespace Codex {
     return AskAI.labeled({ text, imgs: [], from: Prompts.sender("app") });
   }
 
-  // the codex it runs: config.json's, the one Montroop carries, or the one
-  // on PATH
+  // the codex it runs: config.json's, else the one installed on this
+  // computer's PATH (Montroop carries none of its own)
   function bin(): string {
-    const found = config.CODEX || carried() || Bun.which("codex");
+    const found = config.CODEX || Bun.which("codex");
     if (found === null || found === "") {
       throw new Error(NO_BIN);
     }
     return found;
-  }
-
-  // the codex installed with Montroop's packages: its package for this
-  // platform, which @openai/codex brings
-  function carried(): string | null {
-    try {
-      const codex = path.dirname(Bun.fileURLToPath(import.meta.resolve("@openai/codex/package.json")));
-      const pkg = path.dirname(Bun.resolveSync("@openai/codex-" + ClaudeSub.platform().replace(/-musl$/, "") + "/package.json", codex));
-      const vendor = path.join(pkg, "vendor");
-      const exe = fs.readdirSync(vendor).map((triple) => path.join(vendor, triple, "bin", process.platform === "win32" ? "codex.exe" : "codex")).find((f) => fs.existsSync(f));
-      return exe ?? null;
-    } catch {
-      return null;
-    }
   }
 
   // the account's Codex home: a plan's own folder (its sign-in stays
