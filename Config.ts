@@ -99,6 +99,13 @@ export const PERSONAL = "personal";
 const ACCOUNT = /^(?!sub$)(?=[a-z0-9-]*[a-z])[a-z0-9][a-z0-9-]{0,23}$/;
 export const CLAUDE     = config_path(config_get("claude", ""));
 
+// Codex's home for the ChatGPT sign-in's work (CODEX_HOME): its own
+// config, instructions and threads; the sign-in stays CHATGPT
+export const CODEX_HOME = config_path(config_get("codex_home", DIR + "/codex"));
+
+// the codex Codex runs ("": the one Montroop carries, else the one on PATH)
+export const CODEX      = config_path(config_get("codex", ""));
+
 // the agent-browser a work session's browser runs ("": the one on PATH)
 export const AGENT_BROWSER = config_path(config_get("agent_browser", ""));
 

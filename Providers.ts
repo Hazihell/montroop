@@ -2,16 +2,17 @@
 // =========
 // Which driver runs a job: its provider's, for the kind of account it
 // runs on and the kind of context it has. A plan runs on its provider's
-// harness (Claude Code, in either context) or its plan's API (ChatGPT's),
-// an API key on the API, with Montroop's own loop (Loop) over the vendor's
-// wire. A model or effort the provider doesn't offer is refused before
-// any call; Claude Code takes names of its own for its models too (opus),
-// as its default.
+// harness (Claude Code, in either context; Codex, which keeps its own) or,
+// given its context, on its plan's API (ChatGPT's), an API key on the API,
+// with Montroop's own loop (Loop) over the vendor's wire. A model or
+// effort the provider doesn't offer is refused before any call; Claude
+// Code takes names of its own for its models too (opus), as its default.
 
 import type { Vendor } from "./AskAI.ts";
 import { Anthropic } from "./Anthropic.ts";
 import { ChatGPT } from "./ChatGPT.ts";
 import { Code } from "./Code.ts";
+import { Codex } from "./Codex.ts";
 import type { Driver, Job } from "./Driver.ts";
 import { Loop } from "./Loop.ts";
 import { OpenAI } from "./OpenAI.ts";
@@ -27,7 +28,7 @@ const PROVIDERS: Record<string, Record<Kind, { vendor: Vendor; driver: (job: Job
     key  : { vendor: "claude-api", driver: () => Loop.over(Anthropic.wire, "claude-api") },
   },
   openai: {
-    plan : { vendor: "openai-sub", driver: () => Loop.over(ChatGPT.wire, "openai-sub") },
+    plan : { vendor: "openai-sub", driver: (job) => (job.context.kind === "given" ? Loop.over(ChatGPT.wire, "openai-sub") : Codex.native) },
     key  : { vendor: "openai-api", driver: () => Loop.over(OpenAI.wire, "openai-api") },
   },
 };

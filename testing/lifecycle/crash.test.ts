@@ -1,6 +1,6 @@
 import { afterAll, expect, test } from "bun:test";
 import { wake_text } from "../../Wake.ts";
-import { chat, down, fake, gate, kill, Troop, procs, repo, said, tag, until, VIAS, waiting } from "../rig.ts";
+import { asks, chat, down, fake, gate, kill, model, shell, Troop, procs, repo, said, tag, until, VIAS, waiting } from "../rig.ts";
 
 const GONE = "its holder ended before the run did";
 
@@ -23,42 +23,48 @@ test.concurrent("a holder killed mid-run fails the run once, leaves nothing of i
   expect(await said(k, wake_text("session", "hk", "failed: ") + GONE)).toBe(1);
 });
 
-test.concurrent("subagent: a holder killed mid-run is tried again with no message, told its last calls' outcome is unknown, and finishes", async () => {
-  const k = await Troop.up();
-  const t = tag();
-  await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
-  const [s] = await k.subagents({ task: t + ": work", name: "rk", repo: repo(), base: "main" });
-  await until("the command running", () => waiting(t));
-  const first = s.holder();
-  kill(first);
+// each provider's process, under its holder, and how its run fails once killed
+const PROCESS = { "claude-code": { cmd: /\/claude(\s|$)/, why: "Claude Code process terminated by signal SIGKILL" }, codex: { cmd: /\/codex app-server/, why: "Codex process terminated by signal SIGKILL" } };
 
-  expect((await s.status("done")).runs).toMatchObject([{ n: 1, status: "done", attempts: 2 }]);
-  expect((await fake.seen(t + ": work")).map((x) => x.latest).filter((x) => x.includes("Your process was stopped before you were done"))).toHaveLength(1);
-  await until("the done wake", async () => await said(k, s.woke("done:")) === 1);
-  expect(await said(k, s.woke("failed:"))).toBe(0);
-});
+for (const via of ["subagent", "codex"] as const) {
+  test.concurrent(via + ": a holder killed mid-run is tried again with no message, told its last calls' outcome is unknown, and finishes", async () => {
+    const k = await Troop.on(via);
+    const t = tag();
+    await fake.next(t + ": work", { what: "tool", calls: [shell(via, gate(t))] });
+    const [s] = await k.subagents({ task: t + ": work", name: "rk", repo: repo(), base: "main", ...model(via) });
+    await until("the command running", () => waiting(t));
+    const first = s.holder();
+    kill(first);
+
+    expect((await s.status("done")).runs).toMatchObject([{ n: 1, status: "done", attempts: 2 }]);
+    expect((await fake.seen(t + ": work")).map((x) => x.latest).filter((x) => x.includes("Your process was stopped before you were done"))).toHaveLength(1);
+    await until("the done wake", async () => await said(k, s.woke("done:")) === 1);
+    expect(await said(k, s.woke("failed:"))).toBe(0);
+  });
+}
 
 for (const via of VIAS) {
-  test.concurrent(via + ": Claude Code killed under its holder fails the run, and its holder exits leaving nothing running", async () => {
-    const k = await Troop.up();
+  test.concurrent(via + ": its provider's process killed under its holder fails the run, and its holder exits leaving nothing running", async () => {
+    const k = await Troop.on(via);
     const t = tag();
-    await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
+    const { cmd, why } = PROCESS[via === "codex" ? "codex" : "claude-code"];
+    await fake.next(t + ": work", { what: "tool", calls: [shell(via, gate(t))] });
     const s = await k.work(via, "cc", t + ": work", repo());
     await until("the command running", () => waiting(t));
     const holder = s.holder();
-    kill(procs().find((p) => p.ppid === holder && /\/claude(\s|$)/.test(p.cmd))?.pid);
+    kill(procs().find((p) => p.ppid === holder && cmd.test(p.cmd))?.pid);
 
-    expect((await s.status("failed")).runs[0].why).toBe("Claude Code process terminated by signal SIGKILL");
+    expect((await s.status("failed")).runs[0].why).toBe(why);
     await until("its holder gone", () => s.holder() === null);
     expect(waiting(t)).toBe(false);
-    await until("the failed wake", async () => await said(k, s.woke("failed: Claude Code process terminated by signal SIGKILL")) === 1);
+    await until("the failed wake", async () => await said(k, s.woke("failed: " + why)) === 1);
   });
 
   test.concurrent(via + ": a question asked while the server is down reaches it once it's back, and is answered; each wake comes once across restarts", async () => {
-    const k = await Troop.up();
+    const k = await Troop.on(via);
     const t = tag();
-    await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
-    await fake.next(t + "-done", { what: "tool", calls: [[via === "session" ? "ask_owner" : "ask", { question: "Which word should it be?" }]] });
+    await fake.next(t + ": work", { what: "tool", calls: [shell(via, gate(t))] });
+    await fake.next(t + "-done", { what: "tool", calls: [[asks(via), { question: "Which word should it be?" }]] });
     await fake.next("The answer: heron " + t, { what: "reply", text: "It is heron." });
     await fake.next(t + ": after", { what: "reply", text: t + " after" });
     const s = await k.work(via, "q", t + ": work", repo());
@@ -84,12 +90,12 @@ for (const via of VIAS) {
   });
 
   test.concurrent(via + ": a run that ends while the server is down is taken from its log at the next start, and the message queued for it runs next", async () => {
-    const k = await Troop.up();
+    const k = await Troop.on(via);
     const t = tag();
-    await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
+    await fake.next(t + ": work", { what: "tool", calls: [shell(via, gate(t))] });
     const s = await k.work(via, "qd", t + ": work", repo());
     await until("the command running", () => waiting(t));
-    expect((await s.say(t + ": next", "q-1", "queue")).json.sent).toBe("Queued: it starts the " + via + "'s next run once this one ends.");
+    expect((await s.say(t + ": next", "q-1", "queue")).json.sent).toBe("Queued: it starts the " + s.kind + "'s next run once this one ends.");
     await k.kill();
     s.open(t);
     await until("the run's end logged", () => s.logged().some((x) => x.ev.k === "end"));
@@ -107,9 +113,9 @@ for (const via of VIAS) {
   });
 
   test.concurrent(via + ": a holder whose run ended while the server was down is adopted while it waits to be acked, and its end wakes the agent once", async () => {
-    const k = await Troop.up();
+    const k = await Troop.on(via);
     const t = tag();
-    await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
+    await fake.next(t + ": work", { what: "tool", calls: [shell(via, gate(t))] });
     await fake.next(t + "-done", { what: "reply", text: t + " finished" });
     const s = await k.work(via, "ld", t + ": work", repo());
     await until("the command running", () => waiting(t));
@@ -128,9 +134,9 @@ for (const via of VIAS) {
   });
 
   test.concurrent(via + ": a new server waits for the running one's lock, then takes over its running holders", async () => {
-    const k = await Troop.up();
+    const k = await Troop.on(via);
     const t = tag();
-    await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
+    await fake.next(t + ": work", { what: "tool", calls: [shell(via, gate(t))] });
     const s = await k.work(via, "up", t + ": work", repo());
     await until("the command running", () => waiting(t));
     const holder = s.holder();
