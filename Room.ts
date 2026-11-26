@@ -1,18 +1,18 @@
 // Room
 // ====
 // What this computer has free for more subagents, and what those running
-// use, measured, for an agent to judge how many more it starts: its cores and how busy they are, its memory available and in
-// all, how many run (across all agents, and the agent's own) and the CPU
-// and memory each one's processes use (its holder, the model's CLI and
-// all they started, as Service measures a unit). How busy the cores are
-// is read from /proc/stat, sampled every SAMPLE from the server's start
-// and averaged over the last WINDOW, not from the load average, which
-// counts tasks waiting on anything (WSL's runs far above what the CPU
-// does); where /proc/stat is missing, the load average stands in. What the
-// running ones use is sampled every SAMPLE too, and again as an agent is
-// told it, once FRESH old. Nothing here caps how many
-// start, but below FLOOR of memory available, none does: the computer
-// would run out.
+// use, measured, for an agent to judge how many more it starts: its cores
+// and how busy they are, its memory available and in all, how many run
+// (across all agents, and the agent's own) and the CPU and memory each
+// one's processes use (its holder, the model's CLI and all they started, as
+// Service measures a unit). How busy the cores are is read from /proc/stat,
+// sampled every SAMPLE from the server's start and averaged over the last
+// WINDOW, not from the load average, which counts tasks waiting on anything
+// (WSL's runs far above what the CPU does); where /proc/stat is missing,
+// the load average stands in. What the running ones use is sampled every
+// SAMPLE too, and again as an agent is told it, once FRESH old. Nothing
+// here caps how many start, but below FLOOR of memory available, none does:
+// the computer would run out.
 
 import * as fs from "node:fs";
 import * as os from "node:os";

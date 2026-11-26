@@ -92,7 +92,7 @@ for (const via of VIAS) {
   });
 }
 
-test.concurrent("a subagent's call of Montroop's tools while a server from before they ran in sessions owns its holder is told that server runs none", async () => {
+test.concurrent("a subagent's call of Montroop's tools while a server from before it ran them for holders owns its holder is told that server runs none", async () => {
   const k = await Troop.up();
   const t = tag();
   await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });

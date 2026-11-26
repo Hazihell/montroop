@@ -426,7 +426,7 @@ export function signed(dir: string): string {
 export async function hold(home: string, job: Omit<Job, "dir">, prompt: string, meanwhile = (_dir: string) => Promise.resolve(), dir = fs.mkdtempSync(path.join(os.tmpdir(), "hold-")), env: Record<string, string> = {}, more: object = {}): Promise<ReturnType<typeof Hold.told>> {
   const ends = () => Hold.told(dir).filter((x) => x.ev.k === "end").length;
   const before = ends();
-  fs.writeFileSync(path.join(dir, "start.json"), JSON.stringify({ job, prompt: job.context.kind === "given" ? "" : prompt, rules: [], scratch: {}, sock: path.join(dir, "hold.sock"), ...more }));
+  fs.writeFileSync(path.join(dir, "start.json"), JSON.stringify({ job, prompt: job.context.kind === "given" ? "" : prompt, rules: [], scratch: {}, tools: job.tools.map((t) => ({ device: null, ...t })), sock: path.join(dir, "hold.sock"), ...more }));
   const p = Bun.spawn(["bun", path.join(ROOT, "Cli.ts"), "hold", dir], { env: { ...process.env, TROOP_DIR: home, ...env }, stdio: ["ignore", "ignore", "ignore"] });
   await meanwhile(dir);
   // with no server to take what it told, it would wait a minute to exit

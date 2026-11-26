@@ -53,10 +53,11 @@ export type Asking = { id: string; text: string };
 
 // what a run did. began: the provider's session id, which resumes it;
 // heard: a message the server sent went in; replied: a question got its
-// answer; turn: the model finished a turn; limit: a usage limit stopped
-// it, till until (ms since 1970), when it goes on by itself; used: the tokens of its latest request; setup: its
-// new worktree's setup began (ok null, text: its command) or ended (text:
-// its output's last lines); end: the holder's run is over and it exits
+// answer; turn: the model finished a turn; limit: a usage limit stopped it,
+// till until (ms since 1970), when it goes on by itself; used: the tokens
+// of its latest request; setup: its new worktree's setup began (ok null,
+// text: its command) or ended (text: its output's last lines); end: the
+// holder's run is over and it exits
 export type Ev =
   | { k: "began"; sdk: string }
   | { k: "text"; text: string }

@@ -1,7 +1,7 @@
 // Subagents
 // =========
-// The subagent tool: an agent's workers, each on one task, run on the
-// engine (a session of a provider, which Sessions runs, through restarts).
+// The subagent tool: an agent's workers, each on one task, each a session
+// of a provider, which Sessions runs, through restarts.
 // A task's options make its job: its model and effort (by default its
 // agent's) pick its provider and account; memory gives it its agent's
 // view and the memory tools on its agent's chat; repo, a worktree of its
@@ -137,7 +137,7 @@ export namespace Subagents {
       const vendor = pick?.vendor;
       const bad = task === "" ? "no task text" :
         !NAME.test(name) ? "a name is 1 to 40 lowercase letters, digits and dashes" :
-        taken.has(name) ? "you have a session or subagent " + name + " already: pick another name, or leave it out" :
+        taken.has(name) ? "you have a subagent " + name + " already: pick another name, or leave it out" :
         pick === null || vendor === undefined ? "no model " + (role.model ?? base.model) + "; one of " + [...offered].join(", ") :
         no_effort(base, role) ?? ("why" in top ? top.why : repo !== "" && !OWN_TOOLS.includes(vendor) ? pick.model + " has no tools of its own to work on a repo with: pick a model on a Claude or ChatGPT plan" : null);
       if (bad !== null || pick === null || "why" in top) {
@@ -188,8 +188,7 @@ export namespace Subagents {
     return role.effort === null || on.model === undefined ? on.given : Pick.on({ ...on.given, effort: role.effort }, on.given.vendor, on.model);
   }
 
-  // a name none of the agent's sessions and subagents has: an adjective
-  // and an animal
+  // a name none of the agent's subagents has: an adjective and an animal
   function fresh(taken: Set<string>): string {
     for (;;) {
       const name = Names.name_random();
@@ -219,7 +218,7 @@ export namespace Subagents {
     if (t.repo !== "") {
       Setup.arm(agent, t.repo, folder, dir);
     }
-    const media = t.browser && Browser.make(dir, id) ? Prompts.prompt("session-browser", { media: path.join(dir, MEDIA) }) : "";
+    const media = t.browser && Browser.make(dir, id) ? Prompts.prompt("subagent-browser", { media: path.join(dir, MEDIA) }) : "";
     const own = "Your folder on this server's computer, where your own tools work: " + folder + (t.repo === "" ? "" : ", a worktree of " + t.repo + (t.branch === "" ? " at " + t.base + " on no branch; your edit tools are denied" : " on your branch " + t.branch + " from " + t.base)) + "." + (media === "" ? "" : "\n" + media);
     const { system, first } = Brief.subagent(a, view, t.repo !== "", own, HOOKS.tools);
     const model = Pick.model(t.pick.vendor, t.pick.model)?.id ?? t.pick.model;

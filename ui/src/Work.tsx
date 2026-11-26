@@ -28,14 +28,14 @@ const AS: Record<string, string> = { Bash: "shell", Read: "read", Write: "write"
 // what a log line for each kind of entry never shows
 const QUIET = new Set(["began", "heard", "replied", "dropped", "result", "used"]);
 
-// the session as the server has it; "gone": it has none such; null: it
+// the subagent as the server has it; "gone": it has none such; null: it
 // could not be reached
 async function load(id: string, query: string): Promise<View.SessionPage | "gone" | null> {
   const res = await fetch("/api/sessions/" + id + "?" + query).catch(() => null);
   return res?.status === 404 ? "gone" : res?.ok === true ? ((await res.json()) as View.SessionPage) : null;
 }
 
-// the session and its log: the latest page, then what comes after it each
+// the subagent and its log: the latest page, then what comes after it each
 // time its row in the team changes (moved) or again is called, and earlier
 // pages as asked
 function useDetail(id: string, moved: string): { d: View.SessionPage | null; log: Told[]; gone: boolean; earlier: () => void; again: () => void } {
@@ -74,7 +74,7 @@ function useDetail(id: string, moved: string): { d: View.SessionPage | null; log
   return { d, log, gone, earlier, again: () => setAsked((n) => n + 1) };
 }
 
-// a media file of the session's, a picture opening in the viewer
+// a media file of the subagent's, a picture opening in the viewer
 function Media({ id, name }: { id: string; name: string }): ReactNode {
   const url = "/api/sessions/" + id + "/media/" + encodeURIComponent(name);
   if (View.VIDEO.test(name)) {
@@ -167,7 +167,7 @@ function Entry({ t, result, media, id, agent, question }: { t: Told; result: { t
   );
 }
 
-// the box that messages the session: steer goes into the run at work at
+// the box that messages the subagent: steer goes into the run at work at
 // its next step, queue waits for the run to end; one that ended starts
 // again on either; sent: one went
 function SayBox({ id, name, live, sent }: { id: string; name: string; live: boolean; sent: () => void }): ReactNode {
@@ -222,7 +222,7 @@ function SayBox({ id, name, live, sent }: { id: string; name: string; live: bool
 // what waits on someone now
 function Log({ d, log, id, agent, live, earlier }: { d: View.SessionPage; log: Told[]; id: string; agent: string; live: boolean; earlier: () => void }): ReactNode {
   const working = live && d.waits !== "limit";
-  const asks = useMontroop((s) => s.asks).filter((a) => a.from === "subagent" && a.who === d.who);
+  const asks = useMontroop((s) => s.asks).filter((a) => a.who === d.who);
   const results = new Map(log.flatMap((t) => (t.ev.k === "result" ? [[t.ev.id, { text: t.ev.text, error: t.ev.error }] as const] : [])));
   const questions = new Set(log.flatMap((t) => (t.ev.k === "ask" && t.ev.tool === QUESTION ? [t.ev.id] : [])));
   const placed = new Map<number, string[]>();

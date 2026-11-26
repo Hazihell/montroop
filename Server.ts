@@ -1679,7 +1679,7 @@ export namespace Main {
   // view or not
   export function asked(a: Asked): void {
     const agent = Team.get(a.agent);
-    const by = a.who === "" ? agent?.name ?? "" : asker(a);
+    const by = a.who === "" ? agent?.name ?? "" : asker(a.who);
     Push.notify(Owner.open(), (a.tool === QUESTION ? "Asks you" : ASKS + ": " + a.what.toLowerCase()) + ": " + Gate.line(a), { title: by, url: "/a/" + a.agent, tag: "ask-" + a.id });
   }
 

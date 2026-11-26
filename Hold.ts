@@ -28,10 +28,9 @@ import { TOOLS, VERSION, Wire, type Ask, type Asking, type Calling, type Ev, typ
 
 // what one holder starts with: the job its provider's driver runs, its
 // first message, the rules that ask the owner first and the devices'
-// scratch folders they read, the kit of Montroop's tools it's offered (none
-// given: the job's own tools, run on the device they name), the socket it
-// listens on
-export type Start = { job: Omit<Job, "dir">; prompt: string; rules: Rule[]; scratch: Scratch; tools?: Kit[]; sock: string };
+// scratch folders they read, the kit of Montroop's tools it's offered, the
+// socket it listens on
+export type Start = { job: Omit<Job, "dir">; prompt: string; rules: Rule[]; scratch: Scratch; tools: Kit[]; sock: string };
 
 type Parked = { ask: Ask; done: (g: Gated) => void };
 
@@ -46,8 +45,8 @@ type Box = { queue: string[]; wake: () => void; shut: boolean };
 // parked, the calls the server runs till their results come, the
 // questions waiting for an answer, the messages the server sent (by id),
 // the driver's inbox, the rules that park a call and the devices' scratch
-// folders they read, whether the linked server is from before Montroop's
-// tools ran in sessions, the connection that owns it now, how it tells an
+// folders they read, whether the linked server is from before it ran
+// Montroop's tools for holders, the connection that owns it now, how it tells an
 // event
 type Held = {
   out     : Outbox;
@@ -333,14 +332,13 @@ export namespace Hold {
       h.box.queue[0] = failed + "\n\n" + (h.box.queue[0] ?? "");
     }
 
-    const kit: Kit[] = start.tools ?? start.job.tools.map((t) => ({ device: null, ...t }));
-    const job: Job = { ...start.job, dir, tools: [...HOLDS, ...kit] };
+    const job: Job = { ...start.job, dir, tools: [...HOLDS, ...start.tools] };
     const driver = Providers.driver(job);
     // the provider's own tools work on this computer: its scratch folder
     // is the one the rules read their arguments with
     const scratch = Machine.home(SCRATCH);
     const own = (call: Call) => Rules.match(h.rules, call.tool, call.args, scratch);
-    const io: Io = { emit: h.emit, inbox: inbox(h.box), parks: (call) => own(call) !== null, gate: (call, stop) => gate(h, own(call), call, stop), ask: (call, stop) => gate(h, ASKED, call, stop), call: (c) => call(h, kit, c) };
+    const io: Io = { emit: h.emit, inbox: inbox(h.box), parks: (call) => own(call) !== null, gate: (call, stop) => gate(h, own(call), call, stop), ask: (call, stop) => gate(h, ASKED, call, stop), call: (c) => call(h, start.tools, c) };
     let end: End;
     try {
       end = typeof driver === "string" ? { ok: false, text: driver } : await driver(job, io);

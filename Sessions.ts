@@ -195,7 +195,7 @@ export namespace Sessions {
     LATELY.set(s.id, { ...lately(s), until: null });
     const first = s.launches > 0 && s.sdk === "" ? Session.runs(s.id)[0]?.prompt ?? prompt : prompt;
     const text = first === prompt ? prompt : first + "\n\n" + prompt;
-    const why = launch_sub(s, h, text);
+    const why = start_holder(s, h, text);
     if (why !== null) {
       after(s.id, Session.move(s.id, "failed", why, about === null ? null : { about, text: why }) ?? []);
       return why;
@@ -204,10 +204,10 @@ export namespace Sessions {
     return null;
   }
 
-  // a subagent's holder on its job, in its folder (a worktree on no
+  // its holder on its job, in its folder (a worktree on no
   // branch made again, and set up again, if its last run's end removed
   // it). null: started; else why not
-  function launch_sub(s: Session, h: Holder, prompt: string): string | null {
+  function start_holder(s: Session, h: Holder, prompt: string): string | null {
     const sub = job_of(s);
     if (typeof sub === "string") {
       return sub;
@@ -440,7 +440,7 @@ export namespace Sessions {
     }
     const stop = new AbortController();
     waits.set(p.id, stop);
-    void Gate.wait(HOOKS.tools.gate, s.agent, Session.label(s), "subagent", p.tool, args_of(p.input), p.what, stop.signal, HOOKS.asked).then((said) => {
+    void Gate.wait(HOOKS.tools.gate, s.agent, Session.label(s), p.tool, args_of(p.input), p.what, stop.signal, HOOKS.asked).then((said) => {
       waits.delete(p.id);
       if (said !== null) {
         const answers = said.answers ?? {};
@@ -813,7 +813,7 @@ export namespace Sessions {
       return new Response("a session act is a POST", { status: 405 });
     }
     if (!Owner.browser(req)) {
-      return Response.json({ error: "Start or change a session in the web app: a device can't." }, { status: 403 });
+      return Response.json({ error: "Change a subagent in the web app: a device can't." }, { status: 403 });
     }
     if (id === undefined) {
       return Response.json({ error: "A subagent is started with its agent's subagent tool." }, { status: 405 });

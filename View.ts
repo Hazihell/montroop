@@ -71,9 +71,9 @@ export type SessionPage = SessionRow & {
 // who a subagent's calls are asked by, on the owner's cards
 export const SUBAGENT = "Subagent ";
 
-// who asked, as the owner reads it: a subagent is a submon
-export function asker(a: { who: string; from: string }): string {
-  return a.from === "agent" ? a.who : "Submon " + a.who.slice(a.who.indexOf(" ") + 1);
+// who asked, as the owner reads it: a subagent is a submon, the agent ""
+export function asker(who: string): string {
+  return who === "" ? "" : "Submon " + who.slice(SUBAGENT.length);
 }
 
 // a subagent's media files the app shows inline, by name

@@ -14,7 +14,7 @@ function opened(): { file: string; gate: Gate } {
 
 function ask(gate: Gate, args: Record<string, unknown> = PUSH, signal = new AbortController().signal): { said: ReturnType<typeof Gate.wait>; cards: Asked[] } {
   const cards: Asked[] = [];
-  const said = Gate.wait(gate, "agent1", "Subagent fix", "subagent", "shell", args, WHAT, signal, (a) => cards.push(a));
+  const said = Gate.wait(gate, "agent1", "Subagent fix", "shell", args, WHAT, signal, (a) => cards.push(a));
   return { said, cards };
 }
 
@@ -31,6 +31,13 @@ test("an answer counts once", () => {
   const { cards } = ask(gate);
   expect(Gate.decide(gate, cards[0].id, { ok: false, note: "" })).not.toBeNull();
   expect(Gate.decide(gate, cards[0].id, { ok: true, note: "" })).toBeNull();
+});
+
+test("cards kept from calls that can't come again, an in-chat subagent's or a work session's, are dropped on load", () => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "gate-")), "asks.json");
+  const card = (id: string, who: string) => ({ id, key: "{}", agent: "agent1", who, tool: "shell", input: "{}", what: WHAT, at: Date.now(), ok: null, note: "" });
+  fs.writeFileSync(file, JSON.stringify([card("own", ""), card("sub", "Subagent fix"), card("old", "BraveOtter"), card("ws", "Session typo")]));
+  expect(Gate.shown(Gate.open(file, () => {}), "agent1").map((c) => c.id)).toEqual(["own", "sub"]);
 });
 
 test("a card is kept across a restart, and the same call waits on it again", async () => {

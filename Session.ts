@@ -21,17 +21,18 @@ export type Status = "running" | "waiting" | "done" | "failed" | "stopped";
 type Step = "ask" | "answered" | "ended" | "failed" | "stop" | "run";
 
 // A subagent (one its agent started with the subagent tool) is a session:
-// it runs on its provider's driver, as its job file says (Sessions). repo: "" for none, its worktree then its
-// own folder; branch: "" for none (no repo, or a detached worktree);
-// account: its account at its provider (a Claude plan's name, "" for
-// personal; key, an API key; chatgpt, the ChatGPT plan); model, effort:
-// its own ("": the account's default); memory: 1 if it reads its agent's
-// memory; write: 0 if its edit tools are denied; device: the computer it
-// runs on ("": the server's); dir: its folder in Montroop's, with its log;
-// sdk: the provider's session it resumes; ack: the last of its holder's
-// events taken in; launches: its holders so far; unit, sock: the latest
-// one's systemd unit and socket, as named at its launch; last: its latest
-// words; seen: when the owner last looked at it
+// it runs on its provider's driver, as its job file says (Sessions). repo:
+// "" for none, its worktree then its own folder; branch: "" for none (no
+// repo, or a detached worktree); account: its account at its provider (a
+// Claude plan's name, "" for personal; key, an API key; chatgpt, the
+// ChatGPT plan); model, effort: its own ("": the account's default);
+// memory: 1 if it reads its agent's memory; write: 0 if its edit tools are
+// denied; device: the computer it runs on ("": the server's); dir: its
+// folder in Montroop's, with its log; sdk: the provider's session it
+// resumes; ack: the last of its holder's events taken in; launches: its
+// holders so far; unit, sock: the latest one's systemd unit and socket, as
+// named at its launch; last: its latest words; seen: when the owner last
+// looked at it
 export type Session = {
   id: string; name: string; agent: string; repo: string; base: string; branch: string; worktree: string;
   provider: string; account: string; model: string; effort: string; memory: number; write: number; device: string;
@@ -130,8 +131,15 @@ export namespace Session {
         Object.entries(TABLES).forEach(([name, columns]) => fit(db, name, columns));
       })();
       // a work session of the retired session tool reads as a finished
-      // Claude subagent
-      db.run("update work_sessions set provider = 'claude', status = case when status in ('running', 'waiting') then 'stopped' else status end where provider = ''");
+      // Claude subagent: one cut short as stopped, nothing of it waiting
+      db.transaction(() => {
+        const cut = "(select id from work_sessions where provider = '' and status in ('running', 'waiting'))";
+        db.run("update work_runs set status = 'stopped', ended = coalesce(ended, started) where session in " + cut + " and status in ('running', 'waiting')");
+        ["work_asks", "work_questions", "work_calls"].forEach((t) => db.run("delete from " + t + " where session in " + cut));
+        db.run("update work_says set heard = -1 where heard = 0 and session in " + cut);
+        db.run("update work_sessions set status = 'stopped' where id in " + cut);
+        db.run("update work_sessions set provider = 'claude' where provider = ''");
+      })();
       MADE = true;
     }
     return db;

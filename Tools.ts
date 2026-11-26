@@ -123,7 +123,7 @@ const boss = (): Spec[] => [
     text   : STR,
     from   : INT,
     until  : { type: "string", description: "YYYY-MM-DD: the last day a temporary pin holds." },
-    for    : { type: "array", items: STR, description: "Who it holds for, with their subagents and sessions: [\"all\"] for the whole team, or agents' names (\"me\": you); by default you alone." },
+    for    : { type: "array", items: STR, description: "Who it holds for, with their subagents: [\"all\"] for the whole team, or agents' names (\"me\": you); by default you alone." },
     id     : INT,
     ids    : { type: "array", items: INT },
   }, ["action"]),
@@ -135,7 +135,7 @@ const SUBAGENT = (): Spec => spec("subagent", "Subagents: workers of your own, e
   action  : { type: "string", enum: ["start", "send", "read", "stop", "list", "archive", "setup"] },
   tasks   : { type: "array", items: { type: "object", properties: {
     task   : { type: "string", description: "Its whole brief: it knows only this, what the other options give it, and the pins." },
-    name   : { type: "string", description: "1 to 40 lowercase letters, digits and dashes, none of your other subagents' or sessions'; by default a new one." },
+    name   : { type: "string", description: "1 to 40 lowercase letters, digits and dashes, none of your other subagents'; by default a new one." },
     model  : { type: "string", description: "Its model, one offered here; by default, yours. Set it only when the user asks for that model or vendor, since another vendor may cost more. A repo needs a Claude plan's model." },
     effort : { type: "string", description: "How hard it thinks, one of its model's own levels (" + Subagents.efforts() + "); by default, as hard as you, or its model's default level if it has no level of that name." },
     memory : { type: "boolean", description: "Whether it starts with your view and can zoom, search and date your memory; by default true without a repo, false with one." },
@@ -356,7 +356,7 @@ export namespace Tools {
     if (!tools.seats.has(who)) {
       return { text: "No agent " + who + ".", fail: true };
     }
-    const said = await Gate.wait(tools.gate, who, "", "agent", name, args, rule.what, signal, (a) => tools.hub.asked(a));
+    const said = await Gate.wait(tools.gate, who, "", name, args, rule.what, signal, (a) => tools.hub.asked(a));
     if (said === null) {
       return { text: "Stopped.", fail: true };
     }
@@ -370,17 +370,17 @@ export namespace Tools {
 
   // the owner's answer to a call that asked, from a browser: a note in the
   // asking agent's chat, and, with no call waiting, a message to it (not
-  // for a session's call: its holder keeps it)
+  // for a subagent's call: its holder keeps it)
   export function decide(tools: Tools, id: string, ok: boolean, note: string, answers: Answers): string | null {
     const said = Gate.decide(tools.gate, id, { ok, note, answers });
     if (said === null) {
       return "This was already answered, or its call was stopped.";
     }
-    const { agent, from, tool, what } = said.held;
+    const { agent, who, tool, what } = said.held;
     const text = tool === QUESTION ? (ok ? "Answered by the user: " + Question.said(answers) : "Dismissed by the user, unanswered: " + Gate.line(said.held)) : (ok ? "Approved" : "Denied") + " by the user: " + what.toLowerCase() + " (" + Gate.line(said.held) + ")." + (note === "" ? "" : " Note: “" + note + "”");
     const seat = tools.seats.get(agent);
     seat?.note(text);
-    if (!said.waited && from !== "subagent") {
+    if (!said.waited && who === "") {
       seat?.report(wake_text("approval", id, text + (ok ? " No call was waiting for it (the server restarted): call " + tool + " again with the same arguments to do it." : " Don't do it another way.")));
     }
     return null;
@@ -531,7 +531,7 @@ export namespace Tools {
   // the memory tools on who's memory, the devices' tools and skills, and
   // the devices' MCP tools as last listed, each with the device it runs
   // on (write false: none that edits a file)
-  export function kit(tools: Tools, who: string, as = { memory: true, mcp: true, write: true }): Kit[] {
+  export function kit(tools: Tools, who: string, as: { memory: boolean; mcp: boolean; write: boolean }): Kit[] {
     const servers = !as.mcp ? [] : [...Tools.held(tools, who).values()].sort((a, b) => Mcp.by_name(a.conf.name, b.conf.name));
     const mcp = servers.flatMap((s) => (Mcp.kept(s) ?? []).map((t) => ({ ...t, device: s.conf.device })));
     const own = Tools.list(true).filter((t) => (as.memory || !OWN.includes(t)) && (as.write || !EDITS.includes(t.name)));

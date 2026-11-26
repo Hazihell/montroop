@@ -18,12 +18,9 @@ import { QUESTION, type Answers } from "./Question.ts";
 import { SUBAGENT } from "./View.ts";
 
 // a waiting call as the chat shows it: agent is the chat it shows in, who
-// the subagent that called ("" for the agent itself), from which of those
-// it is, input its arguments as JSON, whole, so a card
-// shows all that its yes runs
-export type Asked = { id: string; agent: string; who: string; from: From; tool: string; input: string; what: string; at: number };
-
-type From = "agent" | "subagent";
+// the subagent that called ("" for the agent itself), input its arguments
+// as JSON, whole, so a card shows all that its yes runs
+export type Asked = { id: string; agent: string; who: string; tool: string; input: string; what: string; at: number };
 
 // answers: the owner's, to a question (Question)
 type Said = { ok: boolean; note: string; answers?: Answers };
@@ -48,10 +45,9 @@ export namespace Gate {
     let held: Held[] = [];
     try {
       const kept: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
-      // told by who asked: a card of a call that can't come again (a
-      // subagent's that ran in its agent's chat, a work session's) dropped
-      const all = (Array.isArray(kept) ? kept : []).filter((h): h is Omit<Held, "from"> => rec(h) && typeof h.id === "string" && typeof h.key === "string" && typeof h.agent === "string" && typeof h.who === "string");
-      held = all.flatMap((h): Held[] => (h.who === "" ? [{ ...h, from: "agent" }] : h.who.startsWith(SUBAGENT) ? [{ ...h, from: "subagent" }] : []));
+      // a card of a call that can't come again (a subagent's that ran in
+      // its agent's chat, a work session's), told by who asked, dropped
+      held = (Array.isArray(kept) ? kept : []).filter((h): h is Held => rec(h) && typeof h.id === "string" && typeof h.key === "string" && typeof h.agent === "string" && typeof h.who === "string" && (h.who === "" || h.who.startsWith(SUBAGENT)));
     } catch {}
     const gate = { file, held, waits: new Map(), change };
     prune(gate, Date.now());
@@ -77,7 +73,7 @@ export namespace Gate {
 
   // the owner's answer to a call a rule named; null: the call was stopped
   // first. asked runs for a new card, not when a call re-attaches to one
-  export function wait(gate: Gate, agent: string, who: string, from: From, tool: string, args: Record<string, unknown>, what: string, signal: AbortSignal, asked: (a: Asked) => void): Promise<Said | null> {
+  export function wait(gate: Gate, agent: string, who: string, tool: string, args: Record<string, unknown>, what: string, signal: AbortSignal, asked: (a: Asked) => void): Promise<Said | null> {
     const now = Date.now();
     prune(gate, now);
     const key = key_of(args);
@@ -89,7 +85,7 @@ export namespace Gate {
     }
     let h = gate.held.find((x) => same(x) && x.ok === null && !gate.waits.has(x.id));
     if (h === undefined) {
-      h = { id: crypto.randomUUID().slice(0, 8), agent, who, from, tool, input: JSON.stringify(args), what, at: now, key, ok: null, note: "" };
+      h = { id: crypto.randomUUID().slice(0, 8), agent, who, tool, input: JSON.stringify(args), what, at: now, key, ok: null, note: "" };
       gate.held = [...gate.held, h];
       save(gate);
       asked(h);
@@ -140,8 +136,8 @@ export namespace Gate {
     return gate.held.filter((h) => h.ok === null && h.agent === agent).map(card);
   }
 
-  function card({ id, agent, who, from, tool, input, what, at }: Held): Asked {
-    return { id, agent, who, from, tool, input, what, at };
+  function card({ id, agent, who, tool, input, what, at }: Held): Asked {
+    return { id, agent, who, tool, input, what, at };
   }
 
   // a card as one line: its call, or the questions it asks

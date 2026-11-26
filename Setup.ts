@@ -119,7 +119,7 @@ export namespace Setup {
     opened().query("delete from setup_asks where agent = ?").run(agent);
   }
 
-  // a new worktree of repo, made for a subagent or session of agent's
+  // a new worktree of repo, made for a subagent of agent's
   // whose folder is dir: its setup armed for its holder, if it has any
   export function arm(agent: string, repo: string, worktree: string, dir: string): void {
     const armed: Armed = { repo, worktree, command: command(agent, repo) };
