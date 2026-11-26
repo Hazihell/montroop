@@ -5,14 +5,10 @@ import { down, fake, git, repo, tag, Troop, until } from "../rig.ts";
 
 afterAll(down);
 
-// the agent sets its setup for repo's new worktrees with its tool: the
-// session tool, or the subagent tool once its setting is on
-async function set_up(k: Troop, tool: "session" | "subagent", repo: string, command: string): Promise<void> {
-  if (tool === "subagent") {
-    await k.api("POST", "/api/agents/" + k.agent, { subagents: true });
-  }
+// the agent sets its setup for repo's new worktrees with its subagent tool
+async function set_up(k: Troop, repo: string, command: string): Promise<void> {
   const t = tag();
-  await fake.next(t + ": set up", { what: "tool", calls: [[tool, { action: "setup", repo, command }]] });
+  await fake.next(t + ": set up", { what: "tool", calls: [["subagent", { action: "setup", repo, command }]] });
   await k.tell(t + ": set up");
   await until("the setup set", async () => (await fake.seen("Set: each new worktree of " + repo)).length > 0);
 }
@@ -31,18 +27,17 @@ function with_env(): string {
 }
 
 const WAYS = [
-  ["a work session", "session", {}],
-  ["a subagent", "subagent", {}],
-  ["a review on no branch", "subagent", { write: false }],
+  ["a subagent", {}],
+  ["a review on no branch", { write: false }],
 ] as const;
 
-test.concurrent.each(WAYS)("%s: a new worktree runs its agent's setup before the first turn, in the worktree with the repo and its path, the files .worktreeinclude names copied in first", async (_what, via, more) => {
+test.concurrent.each(WAYS)("%s: a new worktree runs its agent's setup before the first turn, in the worktree with the repo and its path, the files .worktreeinclude names copied in first", async (_what, more) => {
   const k = await Troop.up();
   const t = tag();
   const r = with_env();
-  await set_up(k, via, r, "echo \"$TROOP_REPO|$TROOP_WORKTREE|$PWD|$(cat .env)\" > ../setup-" + t);
+  await set_up(k, r, "echo \"$TROOP_REPO|$TROOP_WORKTREE|$PWD|$(cat .env)\" > ../setup-" + t);
   await fake.next(t + ": work", { what: "reply", text: "Done." });
-  const s = await k.work(via, "su", t + ": work", r, { ...more });
+  const s = await k.work("subagent", "su", t + ": work", r, { ...more });
 
   const done = await s.status("done");
   expect(fs.readFileSync(path.join(path.dirname(s.worktree), "setup-" + t), "utf8")).toBe([r, s.worktree, s.worktree, "SECRET=1"].join("|") + "\n");
@@ -55,7 +50,7 @@ test.concurrent("a review's worktree on no branch, made again for its next run, 
   const k = await Troop.up();
   const t = tag();
   const r = repo();
-  await set_up(k, "subagent", r, "echo run >> ../setup-" + t);
+  await set_up(k, r, "echo run >> ../setup-" + t);
   await fake.next(t + ": review", { what: "reply", text: "Reviewed." });
   const [s] = await k.subagents({ task: t + ": review", name: "sr", repo: r, base: "main", write: false });
   await s.status("done");
@@ -81,13 +76,13 @@ test.concurrent("a worktree's .worktreeinclude files are copied even with no set
   expect(listed).not.toContain("big.log");
 });
 
-test.concurrent.each(WAYS)("%s: a setup that fails still starts it, its first message telling it so with the setup's last lines", async (_what, via, more) => {
+test.concurrent.each(WAYS)("%s: a setup that fails still starts it, its first message telling it so with the setup's last lines", async (_what, more) => {
   const k = await Troop.up();
   const t = tag();
   const r = repo();
-  await set_up(k, via, r, "echo installing; echo broken-" + t + " >&2; exit 3");
+  await set_up(k, r, "echo installing; echo broken-" + t + " >&2; exit 3");
   await fake.next(t + ": work", { what: "reply", text: "Fixed it." });
-  const s = await k.work(via, "sf", t + ": work", r, { ...more });
+  const s = await k.work("subagent", "sf", t + ": work", r, { ...more });
 
   const done = await s.status("done");
   expect(done.log.filter((x) => x.ev.k === "setup").map((x) => [x.ev.ok, x.ev.text])).toEqual([[null, "echo installing; echo broken-" + t + " >&2; exit 3"], [false, "installing\nbroken-" + t]]);
@@ -101,16 +96,27 @@ test.concurrent("a submon of another agent gets no setup of this agent's", async
   const k = await Troop.up();
   const t = tag();
   const r = repo();
-  await set_up(k, "session", r, "touch ../setup-" + t);
+  await set_up(k, r, "touch ../setup-" + t);
   const other = ((await k.api("POST", "/api/agents", { name: "Other", about: "Another agent.", prompt: "You are Other." })).json as { agent: { id: string } }).agent.id;
   await fake.next(t + ": work", { what: "reply", text: "Done." });
-  const res = await k.api("POST", "/api/sessions", { agent: other, repo: r, base: "main", name: "so", brief: "", prompt: t + ": work" });
-  expect(res.status).toBe(200);
+  k.agent = other;
+  const [s] = await k.subagents({ task: t + ": work", name: "so", repo: r, base: "main" });
 
-  const page = await until("its run over", async () => {
-    const p = (await k.api("GET", "/api/sessions/" + String(res.json.id))).json as { status: string; worktree: string; log: Array<{ ev: { k: string } }> };
-    return p.status === "done" ? p : null;
-  });
+  const page = await s.status("done");
   expect(fs.existsSync(path.join(path.dirname(page.worktree), "setup-" + t))).toBe(false);
   expect(page.log.filter((x) => x.ev.k === "setup")).toEqual([]);
+});
+
+test.concurrent("a mon starting a submon on a repo with no setup is told, in the start's result, to agree one with the user; one with no repo isn't", async () => {
+  const k = await Troop.up();
+  const t = tag();
+  const r = repo();
+  const start = async (name: string, more: Record<string, string>) => {
+    await fake.next(t + ": " + name, { what: "reply", text: "Done." });
+    await k.subagents({ task: t + ": " + name, name, ...more });
+    return await until("its start's result", async () => (await fake.last("Started " + name + " (")).at(-1)?.text);
+  };
+
+  expect(await start("first", { repo: r, base: "main" })).toContain("No worktree setup is saved for " + r + ", so a new worktree of it starts bare");
+  expect(await start("folder", {})).not.toContain("No worktree setup is saved");
 });

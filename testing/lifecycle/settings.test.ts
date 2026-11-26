@@ -3,9 +3,7 @@ import { chat, down, fake, tag, Troop, until } from "../rig.ts";
 
 afterAll(down);
 
-type Shown = { name: string; about: string; prompt: string; own: boolean; leader: boolean; lines: number; manage: boolean; subagents: boolean };
-
-const SETUP = "Your Lasting submons setting is on now";
+type Shown = { name: string; about: string; prompt: string; own: boolean; leader: boolean; lines: number; manage: boolean };
 
 // the agent calls its settings tool with args, as the fake model is told to,
 // and ends its turn: the call's result as its chat shows it ("error: …" for
@@ -50,7 +48,7 @@ test.concurrent("a mon sets its own settings, the answer telling each change bef
   const show = await settings(k, { action: "show" });
   expect(show).toStartWith("name: Nova\nabout: Watches the " + t + " herons.\npicture: logo (a drawn look av:shape.eyes.glasses.extra.body.detail, shape: scallop, ");
   expect(show).toContain("\nclaude: personal (the user's to change, in the app)\nmodel: openai-api:gpt-6-luna (offered: ");
-  expect(show).toContain("\neffort: medium (gpt-6-luna's: none, low, medium, high, xhigh, max)\nleader: on\nlines: 5 (1 to 30)\nsubagents: off\nmanage: on (the user's to change, in the app)\nWorktree setups: none.\nprompt (the default):\nYou are Nova.");
+  expect(show).toContain("\neffort: medium (gpt-6-luna's: none, low, medium, high, xhigh, max)\nleader: on\nlines: 5 (1 to 30)\nmanage: on (the user's to change, in the app)\nWorktree setups: none.\nprompt (the default):\nYou are Nova.");
 });
 
 test.concurrent("a mon's change of what only the owner changes, or to a model not offered, or Leader mode as anything but on or off, is refused and saves nothing", async () => {
@@ -68,7 +66,7 @@ test.concurrent("the settings tool is offered to a mon, not to its subagents", a
   const k = await Troop.up();
   const t = tag();
   await k.tell(t + ": hello");
-  // its own turn, before turning subagents on sends messages that would join it
+  // its own turn, before the subagent's start sends messages that would join it
   await until("its turn", async () => (await fake.seen(t + ": hello")).length > 0);
   const [s] = await k.subagents({ task: t + ": sub", name: "sb", memory: false });
   await s.status("done");
@@ -92,29 +90,4 @@ test.concurrent("a system prompt a mon sets keeps the one before in its history,
 
   expect((await k.api("POST", "/api/agents/" + k.agent + "/prompts", { id: history.versions[0].id })).status).toBe(200);
   expect(await shown(k)).toMatchObject({ prompt: "You are Montroop.", own: false });
-});
-
-test.concurrent("Lasting submons turned on, from the app or by the mon itself, or on for a new mon, sends it one message from the app, which starts its turn; left on, none", async () => {
-  const k = await Troop.up();
-  const notes = async (agent = k.agent) => (await chat(k, agent)).filter((m) => m.kind === "note" && m.text.startsWith(SETUP));
-
-  expect(await k.api("POST", "/api/agents/" + k.agent, { subagents: "yes" })).toEqual({ status: 400, json: { error: "subagents is true or false." } });
-  await k.api("POST", "/api/agents/" + k.agent, { subagents: true });
-  await until("its turn on the message", async () => (await chat(k)).at(-1)?.kind === "reply" && (await notes()).length === 1);
-  await k.api("POST", "/api/agents/" + k.agent, { subagents: true, about: "Still on." });
-  expect(await settings(k, { action: "set", subagents: false })).toBe("Changed your settings:\nsubagents: on → off\nThey apply from your next turn.");
-  expect(await notes()).toHaveLength(1);
-
-  expect(await settings(k, { action: "set", subagents: true })).toBe("Changed your settings:\nsubagents: off → on\nThey apply from your next turn.");
-  await until("the second message", async () => (await notes()).length === 2);
-  const text = (await notes())[0].text;
-  expect(text).toContain("worktree setup command");
-  expect(text).toContain("the subagent tool's setup action");
-  expect(text).toContain("one-time step");
-
-  const made = ((await k.api("POST", "/api/agents", { name: "Other", about: "Another agent.", prompt: "You are Other.", subagents: true })).json as { agent: { id: string } }).agent.id;
-  await until("the new mon's turn on the message", async () => (await chat(k, made)).at(-1)?.kind === "reply" && (await notes(made)).length === 1);
-  await k.tell("hello", made);
-  await until("its next turn", async () => (await chat(k, made)).filter((m) => m.kind === "reply").length === 2);
-  expect(await notes(made)).toHaveLength(1);
 });

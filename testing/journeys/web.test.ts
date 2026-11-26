@@ -40,11 +40,11 @@ test.concurrent("the owner signs in with a code, opens an agent and gets its ans
   await k.kill();
 });
 
-test.concurrent("the owner opens a work session from what runs, reads its report, and sends it on", async () => {
+test.concurrent("the owner opens a subagent from what runs, reads its result, and sends it on", async () => {
   const k = await Troop.up();
-  await fake.next("j2: fix the typo", { what: "tool", calls: [["report", { result: "Fixed the typo in README.md." }]] });
+  await fake.next("j2: fix the typo", { what: "reply", text: "Fixed the typo in README.md." });
   await fake.next("j2: and the other one", { what: "reply", text: "Fixed the other one too." });
-  const s = await k.session("typo", "j2: fix the typo", repo());
+  const s = await k.work("subagent", "typo", "j2: fix the typo", repo());
   await s.status("done");
   await until("its holder ended", () => s.holder() === null);
   const page = await phone(k, true);
@@ -57,7 +57,7 @@ test.concurrent("the owner opens a work session from what runs, reads its report
   await page.getByText("Fixed the typo in README.md.", { exact: true }).last().waitFor();
   await page.getByRole("textbox", { name: "Message typo" }).fill("j2: and the other one");
   await page.getByRole("button", { name: "Send" }).click();
-  await page.getByText("Fixed the other one too.").waitFor();
+  await page.getByText("Fixed the other one too.", { exact: true }).last().waitFor();
   await until("its second run done", async () => (await s.page()).runs.map((r) => r.status).join() === "done,done");
   await k.kill();
 });
@@ -98,7 +98,7 @@ test.concurrent("the owner's settings page open on a mon shows what the mon chan
   await k.kill();
 });
 
-test.concurrent("the owner answers a work session's questions on their cards: picks sent together, then a lone question answered with one tap", async () => {
+test.concurrent("the owner answers a subagent's questions on their cards: picks sent together, then a lone question answered with one tap", async () => {
   const k = await Troop.up();
   const t = tag();
   const option = (label: string) => ({ label, description: label + " " + t });
@@ -107,7 +107,7 @@ test.concurrent("the owner answers a work session's questions on their cards: pi
     { question: "Which colors " + t + "?", header: "Colors", multiSelect: true, options: [option("red"), option("blue"), option("green")] },
   ] }]] });
   await fake.next('"Which bird ' + t + '?"', { what: "tool", calls: [["AskUserQuestion", { questions: [{ question: "Ship it " + t + "?", header: "Ship", multiSelect: false, options: [option("yes"), option("later")] }] }]] });
-  const s = await k.session("asks", t + ": ask", repo());
+  const s = await k.work("subagent", "asks", t + ": ask", repo());
   const page = await phone(k, true);
   await page.goto(k.url + "/a/" + k.agent);
 

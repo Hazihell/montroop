@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { err_code } from "../../Err.ts";
 import type { Job } from "../../Driver.ts";
 import type { Rule } from "../../Rules.ts";
 import { VERSION, type Ask, type Ev } from "../../Wire.ts";
@@ -200,7 +201,18 @@ test.concurrent("codex: the ChatGPT sign-in stays Montroop's: a token due is ref
   const after = JSON.parse(fs.readFileSync(file, "utf8")) as { tokens: { access_token: string; refresh_token: string } };
   expect(after.tokens.refresh_token).not.toBe(before.tokens.refresh_token);
   expect(JSON.stringify(await fake.body(t + ": work"))).not.toContain(stale);
-  const kept = fs.readdirSync(path.join(home, "codex"), { recursive: true, encoding: "utf8" }).filter((f) => fs.statSync(path.join(home, "codex", f)).isFile() && fs.readFileSync(path.join(home, "codex", f)).includes(after.tokens.refresh_token));
+  // Codex removes some of its files as it ends, maybe between the listing and the read
+  const has = (f: string) => {
+    try {
+      return fs.readFileSync(path.join(home, "codex", f)).includes(after.tokens.refresh_token);
+    } catch (err) {
+      if (err_code(err) === "ENOENT" || err_code(err) === "EISDIR") {
+        return false;
+      }
+      throw err;
+    }
+  };
+  const kept = fs.readdirSync(path.join(home, "codex"), { recursive: true, encoding: "utf8" }).filter(has);
   expect(kept).toEqual([]);
   expect(fs.existsSync(path.join(home, "codex", "auth.json"))).toBe(false);
 });

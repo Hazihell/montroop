@@ -19,11 +19,6 @@ export const LIMIT = 1800e3;
 
 const POLL = 300e3;
 
-const STAGGER      = 60e3;
-const STAGGER_LOOK = 1e3;
-
-let ANSWERING: () => { queued: boolean; busy: boolean } = () => ({ queued: false, busy: false });
-
 const LIMITS = new Map<string, number>();
 
 const PARKED = new Set<{ vendor: Vendor; poke: () => void }>();
@@ -68,10 +63,6 @@ export namespace Limit {
     return ms >= LONG && (ask.no_wait === true || ((ask.fallback === true || ask.repick !== undefined) && !acted));
   }
 
-  export function answering(turn: () => { queued: boolean; busy: boolean }): void {
-    ANSWERING = turn;
-  }
-
   function off(why: string, until: number | null, ask: { vendor: Vendor }, n: number): Off {
     const say = limit_note(ask.vendor, "resets", until);
     return { why: why + "; " + say, say, until: until ?? undefined, limits: n };
@@ -88,12 +79,8 @@ export namespace Limit {
     if (!parked) {
       Limit.busy(l.on, ms);
     }
-    const until = AbortSignal.any([l.signal, wake.signal]);
     try {
-      await Limit.wait(vendor, ms, until);
-      if (parked && l.ask.agent === true && !until.aborted && ANSWERING().queued) {
-        await let_lead_answer_first(l, until);
-      }
+      await Limit.wait(vendor, ms, AbortSignal.any([l.signal, wake.signal]));
     } finally {
       l.poke = () => {};
       if (parked) {
@@ -104,15 +91,6 @@ export namespace Limit {
 
   export function busy(on: (ev: Event) => void, ms: number): void {
     on({ $: "Entry", kind: "mind", text: "The AI service is busy: asking again in " + Math.ceil(ms / 1e3) + " s." });
-  }
-
-  async function let_lead_answer_first(l: Limit, until: AbortSignal): Promise<void> {
-    const end = Date.now() + STAGGER;
-    const answering = () => ANSWERING().queued || ANSWERING().busy;
-    l.on({ $: "Limit", limit: { until: end, known: false, vendor: l.ask.vendor } });
-    while (!until.aborted && answering() && Date.now() < end) {
-      await Machine.nap(STAGGER_LOOK, until);
-    }
   }
 
   export async function wait(vendor: Vendor, ms: number, signal: AbortSignal): Promise<void> {

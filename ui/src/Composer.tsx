@@ -182,7 +182,6 @@ function Knobs({ opener, shut, leaving, gone }: { opener: React.RefObject<HTMLBu
 export function Composer({ agent, name }: { agent: string; name: string }): ReactNode {
   const stoppable = useMontroop((s) => s.stoppable);
   const knobs = useMontroop((s) => s.knobs);
-  const page = useMontroop((s) => s.page);
   const hearing = useMontroop((s) => s.hearing);
   const draft = "montroop.draft." + agent;
   const [text, setText] = useState(() => sessionStorage.getItem(draft) ?? "");
@@ -419,9 +418,7 @@ export function Composer({ agent, name }: { agent: string; name: string }): Reac
           <input ref={file} type="file" multiple hidden onChange={(ev) => { attach([...(ev.target.files ?? [])]); ev.target.value = ""; }} />
           <span className="mid">
             <label htmlFor={id} aria-hidden>{hint}</label>
-            {pill === "" ? null : page === null
-              ? <button ref={opener} type="button" className="knob" aria-haspopup="menu" aria-expanded={menu === "on"} onClick={pick}><span>{pill}</span><CaretDownIcon size={12} weight="bold" /></button>
-              : <span className="knob">{pill}</span>}
+            {pill === "" ? null : <button ref={opener} type="button" className="knob" aria-haspopup="menu" aria-expanded={menu === "on"} onClick={pick}><span>{pill}</span><CaretDownIcon size={12} weight="bold" /></button>}
           </span>
           <button type="button" className={stream === null ? "" : "live"} aria-label={stream === null ? "Dictate" : "Stop recording"} aria-pressed={stream !== null} disabled={hearing} onClick={() => void mic()}>
             {stream === null ? <MicrophoneIcon size={21} /> : <StopIcon size={17} weight="fill" />}

@@ -7,15 +7,15 @@ export type Wake = { id: string; agent: string; text: string };
 
 type Tagged = "job" | "timer" | "session" | "subagent" | "approval";
 
-type Kind = Tagged | "sub" | "agent";
+type Kind = Tagged | "agent";
 
 const TAGS: Record<Tagged, string> = { job: "Job", timer: "Timer", session: "Session", subagent: "Subagent", approval: "Approval" };
 
 const READ = /^\[([^\]\n]+)\]\s*([\s\S]*?)\s*$/;
 
 export function wake_text(kind: Kind, name: string, body: string): string {
-  const tag = kind === "sub" || kind === "agent" ? "" : TAGS[kind] + " ";
-  return "[" + tag + name + "]" + (kind === "timer" || kind === "sub" ? "\n" : " ") + body;
+  const tag = kind === "agent" ? "" : TAGS[kind] + " ";
+  return "[" + tag + name + "]" + (kind === "timer" ? "\n" : " ") + body;
 }
 
 // who: what the brackets hold; kind: null for a subagent's or an agent's

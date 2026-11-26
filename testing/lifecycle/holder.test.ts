@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Hold } from "../../Hold.ts";
-import { CLAUDE, down, fake, gate, git, shell, Troop, repo, said, tag, until, VIAS, waiting } from "../rig.ts";
+import { down, fake, gate, git, shell, Troop, repo, said, tag, until, VIAS, waiting } from "../rig.ts";
 
 afterAll(down);
 
@@ -56,33 +56,31 @@ for (const via of VIAS) {
 }
 
 // what Claude Code alone does
-for (const via of CLAUDE) {
-  test.concurrent(via + ": a command left running in the background keeps it at work past its turn, till it ends", async () => {
-    const k = await Troop.up();
-    const t = tag();
-    await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) + " > bg.txt", run_in_background: true }]] });
-    const s = await k.work(via, "bg", t + ": work", repo());
-    await until("its first turn's end", () => s.logged().some((x) => x.ev.k === "turn"));
-    expect((await s.page()).status).toBe("running");
-    s.open(t);
+test.concurrent("a command left running in the background keeps it at work past its turn, till it ends", async () => {
+  const k = await Troop.up();
+  const t = tag();
+  await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) + " > bg.txt", run_in_background: true }]] });
+  const s = await k.work("subagent", "bg", t + ": work", repo());
+  await until("its first turn's end", () => s.logged().some((x) => x.ev.k === "turn"));
+  expect((await s.page()).status).toBe("running");
+  s.open(t);
 
-    const done = await s.status("done");
-    expect(fs.readFileSync(path.join(done.worktree, "bg.txt"), "utf8")).toBe(t + "-done\n");
-  });
+  const done = await s.status("done");
+  expect(fs.readFileSync(path.join(done.worktree, "bg.txt"), "utf8")).toBe(t + "-done\n");
+});
 
-  test.concurrent(via + ": a project's own deny rule still stops its call", async () => {
-    const k = await Troop.up();
-    const t = tag();
-    const r = repo();
-    fs.mkdirSync(path.join(r, ".claude"));
-    fs.writeFileSync(path.join(r, ".claude", "settings.json"), JSON.stringify({ permissions: { deny: ["Bash(touch:*)"] } }));
-    git(r, "add", ".");
-    git(r, "commit", "-qm", "deny touch");
-    await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: "touch denied-" + t }]] });
-    const s = await k.work(via, "dn", t + ": work", r);
+test.concurrent("a project's own deny rule still stops its call", async () => {
+  const k = await Troop.up();
+  const t = tag();
+  const r = repo();
+  fs.mkdirSync(path.join(r, ".claude"));
+  fs.writeFileSync(path.join(r, ".claude", "settings.json"), JSON.stringify({ permissions: { deny: ["Bash(touch:*)"] } }));
+  git(r, "add", ".");
+  git(r, "commit", "-qm", "deny touch");
+  await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: "touch denied-" + t }]] });
+  const s = await k.work("subagent", "dn", t + ": work", r);
 
-    const done = await s.status("done");
-    expect(done.log.find((x) => x.ev.k === "result")?.ev).toMatchObject({ error: true });
-    expect(fs.existsSync(path.join(s.worktree, "denied-" + t))).toBe(false);
-  });
-}
+  const done = await s.status("done");
+  expect(done.log.find((x) => x.ev.k === "result")?.ev).toMatchObject({ error: true });
+  expect(fs.existsSync(path.join(s.worktree, "denied-" + t))).toBe(false);
+});

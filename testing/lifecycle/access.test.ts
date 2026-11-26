@@ -11,7 +11,7 @@ afterAll(down);
 
 const CALLS = [["GET", ""], ["GET", "/0123abcd"], ["POST", "/0123abcd/say"], ["POST", "/0123abcd/stop"], ["POST", "/0123abcd/archive"], ["POST", "/0123abcd/resume"], ["POST", ""]];
 
-test("work sessions answer only the signed-in owner; a malformed sign-in cookie reads as signed out", async () => {
+test("the sessions' calls answer only the signed-in owner; a malformed sign-in cookie reads as signed out", async () => {
   const stranger = "0".repeat(43);
   for (const [method, p] of CALLS) {
     for (const cookie of ["", "montroop=" + stranger, "montroop=%E0%A4%A"]) {

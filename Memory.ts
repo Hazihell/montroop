@@ -3,16 +3,14 @@ import { AskAI, type Again, type Ask, type Block, type Call, type End as Answere
 import { clip_page, text_pages } from "./Clip.ts";
 import * as config from "./Config.ts";
 import { Disk } from "./Disk.ts";
-import { err_code, err_why } from "./Err.ts";
-import { rec } from "./Json.ts";
-import * as Names from "./Names.ts";
+import { err_why } from "./Err.ts";
 import { Pick } from "./Pick.ts";
 import * as Prompts from "./Prompts.ts";
 import type { Timer } from "./Timer.ts";
 import { FIT, HEAD, IMAGE, image_kind, LINES, MEDIA, media_ext, PIXELS, STORED, TOKEN, type Pending } from "./View.ts";
-import { move_over, write_whole } from "./Write.ts";
+import { move_over } from "./Write.ts";
 
-export type Root = Msg & { i: number; size: number; date: string };
+type Root = Msg & { i: number; size: number; date: string };
 
 // from: the agent whose message it is, by id; copy: a team line's
 // message there (a copy made before 41)
@@ -39,7 +37,7 @@ type End = [number, number];
 
 type Kept = { parts: Array<[number, number]>; batch: boolean };
 
-type Saved = Kept & { seen?: Kept; main: End; tree: End; pick: object | null; goal?: string | null; work?: string[]; timers?: Timer[]; talk?: number | null; leader?: boolean; lines?: number; manage?: boolean | null; subagents?: boolean; used?: number | null; used_at?: number; origin?: string | null };
+type Saved = Kept & { seen?: Kept; main: End; tree: End; pick: object | null; goal?: string | null; work?: string[]; timers?: Timer[]; talk?: number | null; leader?: boolean; lines?: number; manage?: boolean | null; used?: number | null; used_at?: number; origin?: string | null };
 
 // main: the run's inbox, as it was last; held: what came for an archived
 // agent, delivered on its restore
@@ -66,8 +64,6 @@ type Chosen = {
   lines  : number;
   // manage: may use the agents tool (null: only the first)
   manage : boolean | null;
-  // subagents: its subagents run on the engine (the subagent tool)
-  subagents: boolean;
   talked : Map<number, number>;
   used   : number | null;
   used_at: number;
@@ -135,11 +131,6 @@ const IMAGES = "/docs/images/";
 
 const MEDIA_DIR = "/docs/media/";
 
-// a subagent's log, in its spawner's folder (#116)
-const AGENTS = "/docs/agent/";
-const DROPPED = ".dropped.json";
-const AGENT_LOGS = new Map<string, number>();
-
 const PAGE_MAX = 4 * 2 ** 20;
 
 
@@ -148,7 +139,7 @@ export namespace Memory {
   export function load(dir: string, share: Memory["share"], acted: Memory["acted"] = () => {}): Memory {
     fs.mkdirSync(dir, { recursive: true });
     const mem: Memory = {
-      dir, fds: new Map(), count: 0, open: 0, pick: null, goal: null, talk: null, leader: false, lines: LINES, manage: null, subagents: false, talked: new Map(), used: null, used_at: 0, work: [], timers: [], origin: null, queue: [], held: [], nodes: new Map(), ready: [[], []], ends: { main: [0, 0], tree: [0, 0] },
+      dir, fds: new Map(), count: 0, open: 0, pick: null, goal: null, talk: null, leader: false, lines: LINES, manage: null, talked: new Map(), used: null, used_at: 0, work: [], timers: [], origin: null, queue: [], held: [], nodes: new Map(), ready: [[], []], ends: { main: [0, 0], tree: [0, 0] },
       view: { parts: [], size: 0, batch: false, high: VIEW_HIGH }, seen: { parts: [], size: 0, batch: false, high: config.COMPACTOR_CONTEXT },
       busy: new Map(), sides: new Map(), calls: new Map(), hold: [null, "paused"], done: false, wait: new Set(), share, acted, again: null,
     };
@@ -159,7 +150,6 @@ export namespace Memory {
     mem.leader = saved?.leader ?? false;
     mem.lines = saved?.lines ?? LINES;
     mem.manage = saved?.manage ?? null;
-    mem.subagents = saved?.subagents ?? false;
     mem.used = saved?.used ?? null;
     mem.work = saved?.work ?? [];
     mem.timers = saved?.timers ?? [];
@@ -201,7 +191,7 @@ export namespace Memory {
   export function save(mem: Memory): void {
     const file = mem.dir + "/view.json";
     const [chat, seen] = [mem.view, mem.seen].map((view): Kept => ({ parts: view.parts.map((part) => [part.l, part.i]), batch: view.batch }));
-    fs.writeFileSync(file + ".new", JSON.stringify({ ...chat, seen, pick: mem.pick, goal: mem.goal, talk: mem.talk, leader: mem.leader, lines: mem.lines, manage: mem.manage, subagents: mem.subagents, used: mem.used, used_at: mem.used_at, work: mem.work, timers: mem.timers, origin: mem.origin, ...mem.ends }));
+    fs.writeFileSync(file + ".new", JSON.stringify({ ...chat, seen, pick: mem.pick, goal: mem.goal, talk: mem.talk, leader: mem.leader, lines: mem.lines, manage: mem.manage, used: mem.used, used_at: mem.used_at, work: mem.work, timers: mem.timers, origin: mem.origin, ...mem.ends }));
     move_over(file + ".new", file);
     void Disk.wrote(file);
   }
@@ -315,14 +305,6 @@ export namespace Memory {
 
   export function path(mem: Memory, stream: Stream, day: number): string {
     return mem.dir + "/" + stream + "/" + new Date(day * DAY).toISOString().slice(0, 10) + ".jsonl";
-  }
-
-  export function file(file: string): Root[] {
-    const data = fs.readFileSync(file, "utf8");
-    if (data !== "" && !data.endsWith("\n")) {
-      fs.appendFileSync(file, "\n");
-    }
-    return data.split("\n").flatMap((line) => (Memory.parse(line, file) as Root | null) ?? []);
   }
 
   export function parse(line: string, file: string): unknown {
@@ -1195,109 +1177,6 @@ export namespace Memory {
     const when = Memory.date(mem, a) + (a === b ? "" : " – " + Memory.date(mem, b));
     const head = root === null ? ["LVL" + l + " #" + a + (a === b ? "" : "-" + b), when, Memory.bytes(text) + " B"] : ["ROOT #" + i, when, root.kind, root.size + " B"];
     return { h: head.join(" · "), t: text, k: root?.kind };
-  }
-
-  // what a subagent was told and hasn't read yet, kept for a restart
-  export function agent_held(mem: Memory, name: string, texts?: string[]): string[] {
-    const file = mem.dir + AGENTS + name + ".held.json";
-    if (texts === undefined) {
-      try {
-        const got: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
-        return Array.isArray(got) ? got.filter((t) => typeof t === "string") : [];
-      } catch {
-        return [];
-      }
-    }
-    if (texts.length === 0) {
-      fs.rmSync(file, { force: true });
-    } else {
-      fs.writeFileSync(file, JSON.stringify(texts));
-    }
-    return texts;
-  }
-
-  // the last model a subagent ran on, independent of its spawner's later pick
-  export function agent_pick(mem: Memory, name: string, pick?: Pick): Pick | null {
-    if (!/^[A-Za-z]+$/.test(name)) {
-      return null;
-    }
-    const file = mem.dir + AGENTS + name + ".pick.json";
-    if (pick !== undefined) {
-      write_whole(file, JSON.stringify(pick) + "\n");
-      return pick;
-    }
-    try {
-      return JSON.parse(fs.readFileSync(file, "utf8")) as Pick;
-    } catch {
-      return null;
-    }
-  }
-
-  export function agent(mem: Memory, name: string): Root[] | null {
-    const file = mem.dir + AGENTS + name + ".jsonl";
-    return /^[A-Za-z]+$/.test(name) && fs.existsSync(file) ? Memory.file(file) : null;
-  }
-
-  export function agent_new(mem: Memory, taken: (name: string) => boolean): string {
-    let name = Names.name_random();
-    for (let k = 0; k < 50 && taken(name); k++) {
-      name = Names.name_random();
-    }
-    fs.mkdirSync(mem.dir + AGENTS, { recursive: true });
-    try {
-      fs.writeFileSync(mem.dir + AGENTS + name + ".jsonl", "", { flag: "wx" });
-    } catch (err) {
-      if (err_code(err) === "EEXIST") {
-        return Memory.agent_new(mem, taken);
-      }
-      throw err;
-    }
-    AGENT_LOGS.set(mem.dir + name, 0);
-    return name;
-  }
-
-  export function agent_push(mem: Memory, name: string, kind: Kind, text: string, pair: Pair = {}): Root {
-    const n = AGENT_LOGS.get(mem.dir + name) ?? Memory.agent(mem, name)?.length ?? 0;
-    const root = Memory.root(n, { kind, text, ...pair });
-    Memory.append(mem.dir + AGENTS + name + ".jsonl", [JSON.stringify(root)]);
-    AGENT_LOGS.set(mem.dir + name, n + 1);
-    return root;
-  }
-
-  // the subagents whose log file was last written to before `before`
-  export function agents_ended(mem: Memory, before: number): string[] {
-    return Memory.agents(mem).filter((name) => {
-      try {
-        return fs.statSync(mem.dir + AGENTS + name + ".jsonl").mtimeMs < before;
-      } catch {
-        return false;
-      }
-    });
-  }
-
-  // the devices a subagent's scratch folder was dropped on; with one, it
-  // was dropped on that one too
-  export function agent_dropped(mem: Memory, name: string, device?: string): string[] {
-    const file = mem.dir + AGENTS + DROPPED;
-    let all: Record<string, string[]> = {};
-    try {
-      const got: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
-      all = rec(got) ? Object.fromEntries(Object.entries(got).map(([k, v]) => [k, Array.isArray(v) ? v.filter((d) => typeof d === "string") : []])) : {};
-    } catch {}
-    const on = all[name] ?? [];
-    if (device !== undefined && !on.includes(device)) {
-      all[name] = [...on, device];
-      fs.writeFileSync(file, JSON.stringify(all));
-    }
-    return all[name] ?? [];
-  }
-
-  export function agents(mem: Memory): string[] {
-    return (fs.existsSync(mem.dir + AGENTS) ? fs.readdirSync(mem.dir + AGENTS) : []).filter((f) => /^[A-Za-z]+\.jsonl$/.test(f)).map((f) => f.slice(0, -".jsonl".length));
-  }
-
-  export function agent_show(mem: Memory, name: string): string {
-    return Memory.agent(mem, name)?.map((root) => root.i + "|" + Memory.show(root)).join("\n\n") ?? "No agent " + name + ".";
   }
 
 }

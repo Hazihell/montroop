@@ -29,10 +29,12 @@ import { transients } from "./Service.ts";
 import { Session } from "./Session.ts";
 import { Setup } from "./Setup.ts";
 import { DIR, NAME, Sessions } from "./Sessions.ts";
-import { Sub, type Role } from "./Sub.ts";
 import { Team } from "./Team.ts";
 import { SEARCHES, type Tools } from "./Tools.ts";
 import { Worktree } from "./Worktree.ts";
+
+// a task's own model and effort, null for its agent's
+type Role = { model: string | null; effort: string | null };
 
 // a task checked: its name, model and effort as its agent's pick makes
 // them, its account, the repo's top folder ("": none), its base and its
@@ -64,9 +66,19 @@ export namespace Subagents {
     Object.assign(HOOKS, { tools, view, pick });
   }
 
+  // each offered model's efforts, for the tool's description
+  export function efforts(): string {
+    const by = new Map<string, string[]>();
+    for (const [, m] of Pick.models(config.OFFER.vendors, config.OFFER.models)) {
+      const levels = m.efforts.length === 0 ? "none to set" : m.efforts.join(", ");
+      by.set(levels, [...new Set([...by.get(levels) ?? [], m.label])]);
+    }
+    return [...by].map(([levels, labels]) => labels.join(", ") + ": " + levels).join("; ");
+  }
+
   export async function tool(agent: string, args: Record<string, unknown>): Promise<Out> {
     if (text_of(args.action, "") !== "start") {
-      return Sessions.act(agent, "subagent", args);
+      return Sessions.act(agent, args);
     }
     const tasks = checked(agent, args.tasks);
     if (typeof tasks === "string") {
@@ -90,7 +102,9 @@ export namespace Subagents {
       return typeof m === "string" ? t.name + " not started: " + m : s?.status === "failed" ? t.name + " didn't start: " + (Session.run(m.id)?.why ?? "") : t.name + " (" + knobs.join(", ") + ")";
     });
     const any = ids.some((id) => Session.get(id)?.status !== "failed");
-    return { text: (any ? "Started " : "") + said.join("; ") + "." + (any ? " Each works on its own: you get one message \"[Subagent name] …\" when it's done (with its result), fails, waits on the user's approval or a usage limit, or asks you something. Don't wait for them or read them to check: go on with other work, or end your turn. This computer now: " + Room.said(Room.now(agent)) + "." : ""), fail: !any };
+    const repos = [...new Set(made.flatMap((m) => (typeof m === "string" || m.repo === "" || Session.get(m.id)?.status === "failed" ? [] : [m.repo])))];
+    const asks = repos.filter((r) => Setup.mark_asked(agent, r)).map((repo) => "\n\n" + Prompts.prompt("subagents-setup", { repo }));
+    return { text: (any ? "Started " : "") + said.join("; ") + "." + (any ? " Each works on its own: you get one message \"[Subagent name] …\" when it's done (with its result), fails, waits on the user's approval or a usage limit, or asks you something. Don't wait for them or read them to check: go on with other work, or end your turn. This computer now: " + Room.said(Room.now(agent)) + "." : "") + asks.join(""), fail: !any };
   }
 
   // the tasks given, each checked, or why one can't start (then none does)
@@ -119,15 +133,15 @@ export namespace Subagents {
       const name = t.name === undefined ? fresh(taken) : text_of(t.name, "").trim();
       const repo = t.repo === undefined ? "" : text_of(t.repo, "").trim();
       const top = repo === "" ? { dir: "", git: "" } : Worktree.top(Machine.home(repo));
-      const pick = role.model !== null && !offered.has(role.model) ? null : picked(base, role, name);
+      const pick = role.model !== null && !offered.has(role.model) ? null : picked(base, role);
       const vendor = pick?.vendor;
       const bad = task === "" ? "no task text" :
         !NAME.test(name) ? "a name is 1 to 40 lowercase letters, digits and dashes" :
         taken.has(name) ? "you have a session or subagent " + name + " already: pick another name, or leave it out" :
         pick === null || vendor === undefined ? "no model " + (role.model ?? base.model) + "; one of " + [...offered].join(", ") :
-        Sub.no_effort(base, role) ?? ("why" in top ? top.why : repo !== "" && !OWN_TOOLS.includes(vendor) ? pick.model + " has no tools of its own to work on a repo with: pick a model on a Claude or ChatGPT plan" : null);
+        no_effort(base, role) ?? ("why" in top ? top.why : repo !== "" && !OWN_TOOLS.includes(vendor) ? pick.model + " has no tools of its own to work on a repo with: pick a model on a Claude or ChatGPT plan" : null);
       if (bad !== null || pick === null || "why" in top) {
-        return Sub.refused(k, task, bad ?? "");
+        return refused(k, task, bad ?? "");
       }
       const write = t.write !== false;
       const named = text_of(t.branch, "").trim();
@@ -138,7 +152,7 @@ export namespace Subagents {
         other !== undefined ? "another of these tasks works on branch " + other + " in this repo" + (other === branch ? " already: give each its own" : ", so git can't keep " + branch + " beside it: pick another name") :
         Worktree.taken(top.dir, branch);
       if (no_branch !== null) {
-        return Sub.refused(k, task, no_branch);
+        return refused(k, task, no_branch);
       }
       taken.add(name);
       branches.push({ git: top.git, branch });
@@ -147,21 +161,38 @@ export namespace Subagents {
     return out;
   }
 
-  // the agent's pick with the task's model and effort; null: its model
-  // isn't offered
-  function picked(base: Pick, role: Role, name: string): Pick | null {
-    try {
-      return Sub.pick(base, role, name);
-    } catch {
+  function refused(k: number, task: string, why: string): string {
+    return "Task " + (k + 1) + (task === "" ? "" : " (" + JSON.stringify(task.length > 60 ? task.slice(0, 60) + "…" : task) + ")") + ": " + why + ". Nothing started.";
+  }
+
+  // the agent's pick on the task's model, and that model; null: it isn't
+  // offered
+  function on_model(base: Pick, role: Role): { given: Pick; model: ReturnType<typeof Pick.model> } | null {
+    const given = role.model === null ? base : Pick.to_model(base, role.model, config.OFFER.vendors, config.OFFER);
+    return given === null ? null : { given, model: Pick.model(given.vendor, given.model) };
+  }
+
+  // why a task can't run at its effort
+  function no_effort(base: Pick, role: Role): string | null {
+    const model = on_model(base, role)?.model;
+    return role.effort === null || model === undefined || Pick.offers(model, role.effort) ? null : Pick.no_effort(model, role.effort);
+  }
+
+  // the agent's pick with the task's model and effort (an effort its model
+  // doesn't have: its model's default); null: its model isn't offered
+  function picked(base: Pick, role: Role): Pick | null {
+    const on = on_model(base, role);
+    if (on === null) {
       return null;
     }
+    return role.effort === null || on.model === undefined ? on.given : Pick.on({ ...on.given, effort: role.effort }, on.given.vendor, on.model);
   }
 
   // a name none of the agent's sessions and subagents has: an adjective
   // and an animal
   function fresh(taken: Set<string>): string {
     for (;;) {
-      const name = Names.name_random().replace(/(?<=.)([A-Z])/g, "-$1").toLowerCase();
+      const name = Names.name_random();
       if (!taken.has(name)) {
         return name;
       }

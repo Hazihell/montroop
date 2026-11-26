@@ -56,12 +56,10 @@ test("a pin for a few agents reaches each of them, named to each with the others
   expect(texts(deals, true)).not.toContain("No mailbox rules.");
 });
 
-test("a work session's and a subagent's prompts carry their agent's pins and not another agent's", () => {
+test("a subagent's prompt carries its agent's pins and not another agent's", () => {
   Pins.tool({ action: "add", text: "Deals rule." }, deals);
   Pins.tool({ action: "add", text: "Mail rule." }, mail);
-  const session = Brief.append({ id: deals, name: "Deals" }, null, "the brief", null);
   const sub = Brief.subagent({ id: mail, name: "Mail" }, [], false, "own", null).system;
-  expect([session.includes("Deals rule."), session.includes("Mail rule.")]).toEqual([true, false]);
   expect([sub.includes("Deals rule."), sub.includes("Mail rule.")]).toEqual([false, true]);
 });
 

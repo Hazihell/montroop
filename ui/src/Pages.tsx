@@ -83,7 +83,7 @@ export function Agents({ side = false }: { side?: boolean }): ReactNode {
 // hold the agent for one of its pages, without its chat counted read
 function useHold(agent: string): void {
   useEffect(() => {
-    show(agent, null, false);
+    show(agent, false);
     return () => show(null);
   }, [agent]);
 }

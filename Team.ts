@@ -34,7 +34,7 @@ const TEXTS = ["name", "about", "picture", "prompt", "claude"];
 
 // what an agent sets of its own settings (the settings tool), and what only
 // the owner changes, in the app, with why
-const MINE = ["name", "about", "picture", "prompt", "model", "effort", "leader", "lines", "subagents"];
+const MINE = ["name", "about", "picture", "prompt", "model", "effort", "leader", "lines"];
 const OWNERS: Record<string, string> = {
   manage : "Manage mons, which gives power over the other mons, is the user's to turn on or off, in your settings in the app.",
   claude : "Your Claude account is the user's to pick, in your settings in the app.",

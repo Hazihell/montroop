@@ -1,17 +1,18 @@
 // Setup
 // =====
-// An agent's setup for the new worktrees of a repo, so its subagents and
-// work sessions don't start in a bare checkout (no dependencies, no
-// gitignored env files). Each agent keeps one shell command per repo (its
-// top folder) in montroop.db, set with its session or subagent tool. When
-// one of its workers gets a new worktree of that repo, the setup is armed
-// in the worker's folder; its holder, before the first turn, copies the
-// repo's gitignored files that the repo's .worktreeinclude names (as Claude
-// Code does), then runs the command in the worktree with TROOP_REPO (the
-// repo's main checkout) and TROOP_WORKTREE set, for at most MINUTES. The
-// output's last lines go into the worker's log; a setup that failed is told
-// in its first message (again by the next holder, if one ends before the
-// provider has that message), so it can fix what it needs.
+// An agent's setup for the new worktrees of a repo, so its subagents don't
+// start in a bare checkout (no dependencies, no gitignored env files). Each
+// agent keeps one shell command per repo (its top folder) in montroop.db,
+// set with its subagent tool. When one of its workers gets a new worktree
+// of that repo, the setup is armed in the worker's folder; its holder,
+// before the first turn, copies the repo's gitignored files that the repo's
+// .worktreeinclude names (as Claude Code does), then runs the command in
+// the worktree with TROOP_REPO (the repo's main checkout) and
+// TROOP_WORKTREE set, for at most MINUTES. The output's last lines go into
+// the worker's log; a setup that failed is told in its first message (again
+// by the next holder, if one ends before the provider has that message), so
+// it can fix what it needs. An agent that starts its first worker on a repo
+// with no setup is told once to agree one with the user.
 
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
@@ -47,6 +48,8 @@ const KEPT = 8000;
 const LINES = 30;
 
 const SCHEMA = "create table if not exists setups (agent text not null, repo text not null, command text not null, primary key (agent, repo))";
+// the repos each agent was told to agree a setup for
+const ASKED = "create table if not exists setup_asks (agent text not null, repo text not null, primary key (agent, repo))";
 
 let MADE = false;
 
@@ -56,6 +59,7 @@ export namespace Setup {
     const db = Owner.open();
     if (!MADE) {
       db.run(SCHEMA);
+      db.run(ASKED);
       MADE = true;
     }
     return db;
@@ -73,7 +77,7 @@ export namespace Setup {
     return rows.map((r) => "Worktree setup for " + r.repo + ": " + r.command);
   }
 
-  // the setup action of the session and subagent tools: repo's command
+  // the subagent tool's setup action: repo's command
   // shown (no command given), set, or cleared (an empty one)
   export function tool(agent: string, args: Record<string, unknown>): Out {
     const given = text_of(args.repo, "").trim();
@@ -100,12 +104,19 @@ export namespace Setup {
       return { text: "Cleared the worktree setup for " + repo + "." + include, fail: false };
     }
     opened().query("insert into setups (agent, repo, command) values (?, ?, ?) on conflict (agent, repo) do update set command = excluded.command").run(agent, repo, next);
-    return { text: "Set: each new worktree of " + repo + " that a subagent or work session of yours gets runs this in it before its first turn, with TROOP_REPO=" + repo + " and TROOP_WORKTREE its path, for at most " + MINUTES + " minutes: " + next + include, fail: false };
+    return { text: "Set: each new worktree of " + repo + " that a subagent of yours gets runs this in it before its first turn, with TROOP_REPO=" + repo + " and TROOP_WORKTREE its path, for at most " + MINUTES + " minutes: " + next + include, fail: false };
+  }
+
+  // the agent, starting a worker on repo, marked as told to agree a setup
+  // for it with the user: true the first time, unless it has one
+  export function mark_asked(agent: string, repo: string): boolean {
+    return command(agent, repo) === "" && opened().query("insert into setup_asks (agent, repo) values (?, ?) on conflict do nothing").run(agent, repo).changes > 0;
   }
 
   // an agent gone: its setups with it
   export function drop(agent: string): void {
     opened().query("delete from setups where agent = ?").run(agent);
+    opened().query("delete from setup_asks where agent = ?").run(agent);
   }
 
   // a new worktree of repo, made for a subagent or session of agent's

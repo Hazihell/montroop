@@ -1,8 +1,9 @@
 // Gate
 // ====
-// Risky tool calls wait for the owner's yes. Every tool call of every agent,
-// subagent and vendor goes through Montroop's MCP endpoint (Tools.fetch), so the
-// gate stands there: a call whose tool name and arguments match a rule
+// Risky tool calls wait for the owner's yes. Every tool call of every agent
+// and vendor goes through Montroop's MCP endpoint (Tools.fetch), so the gate
+// stands there (a subagent's holder gates its calls itself, with a card here
+// too): a call whose tool name and arguments match a rule
 // (Settings, config.json's `ask`) waits, shown in its agent's chat as a
 // card and pushed to the owner's phones, until a browser approves or
 // denies it. A call waiting is kept in Montroop's folder (asks.json), so it is
@@ -22,7 +23,7 @@ import { SESSION } from "./View.ts";
 // shows all that its yes runs
 export type Asked = { id: string; agent: string; who: string; from: From; tool: string; input: string; what: string; at: number };
 
-type From = "agent" | "sub" | "session";
+type From = "agent" | "session";
 
 // answers: the owner's, to a question (Question)
 type Said = { ok: boolean; note: string; answers?: Answers };
@@ -47,8 +48,14 @@ export namespace Gate {
     let held: Held[] = [];
     try {
       const kept: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
-      // a card kept before its origin was: told by who asked
-      held = (Array.isArray(kept) ? kept : []).filter((h): h is Omit<Held, "from"> & { from?: From } => rec(h) && typeof h.id === "string" && typeof h.key === "string" && typeof h.agent === "string").map((h) => ({ ...h, from: h.from ?? (h.who === "" ? "agent" : h.who.startsWith(SESSION) ? "session" : "sub") }));
+      // a card kept before its origin was: told by who asked; one of a
+      // subagent that ran in its agent's chat, which none does any more,
+      // dropped
+      const all = (Array.isArray(kept) ? kept : []).filter((h): h is Omit<Held, "from"> & { from?: string } => rec(h) && typeof h.id === "string" && typeof h.key === "string" && typeof h.agent === "string" && typeof h.who === "string");
+      held = all.flatMap((h) => {
+        const from = h.from ?? (h.who === "" ? "agent" : h.who.startsWith(SESSION) ? "session" : "sub");
+        return from === "agent" || from === "session" ? [{ ...h, from }] : [];
+      });
     } catch {}
     const gate = { file, held, waits: new Map(), change };
     prune(gate, Date.now());

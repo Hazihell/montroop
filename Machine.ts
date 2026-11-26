@@ -154,13 +154,9 @@ export namespace Machine {
           if (agent === "main" || agent === "jobs" || agent === "") {
             return { text: "Not an agent's folder: " + agent, fail: true };
           }
-          await Machine.halt(agent, true);
+          await Machine.halt(agent);
           fs.rmSync(Machine.agent_dir(agent), { recursive: true, force: true });
           return { text: "Removed " + Machine.agent_dir(agent) + ".", fail: false };
-        }
-        case "halt": {
-          const left = await Machine.halt(String(input.agent), input.jobs === true);
-          return { text: left === null ? "Its shells' trees killed; Windows can't find a process that left one." : left + " left", fail: (left ?? 0) > 0 };
         }
         default: {
           return { text: "No tool " + job.name + ".", fail: true };
@@ -334,23 +330,22 @@ export namespace Machine {
     Machine.sweep(null);
   }
 
-  // jobs: its background jobs too, which then report nothing
-  export async function halt(agent: string, jobs = false): Promise<number | null> {
+  // its background jobs too, which then report nothing
+  export async function halt(agent: string): Promise<void> {
     const until = Date.now() + GONE;
-    let left = Machine.sweep(agent, jobs);
+    let left = Machine.sweep(agent);
     while (left !== null && left > 0 && Date.now() < until) {
       await Bun.sleep(100);
-      left = Machine.sweep(agent, jobs);
+      left = Machine.sweep(agent);
     }
-    return left;
   }
 
-  export function sweep(agent: string | null, jobs = false): number | null {
-    if (agent !== null && jobs) {
+  export function sweep(agent: string | null): number | null {
+    if (agent !== null) {
       JOBS.running.forEach((job, proc) => job.agent === agent && KILLED.add(proc));
     }
     for (const [proc, who] of SHELLS) {
-      if ((agent === null || (who === agent && (jobs || !JOBS.running.has(proc)))) && Machine.group_may_hold_job(proc)) {
+      if ((agent === null || who === agent) && Machine.group_may_hold_job(proc)) {
         Machine.kill(-proc.pid);
       }
     }
@@ -358,8 +353,7 @@ export namespace Machine {
       return null; // no ps: a process that left its shell's tree lives on
     }
     const marks = ["TROOP_RUN=" + RUN, ...(agent === null ? [] : ["TROOP_AGENT=" + agent])];
-    const kept = new Set(agent === null || jobs ? [] : [...JOBS.running.keys()].map((p) => String(p.pid)));
-    const found = Bun.spawnSync(PS).stdout.toString().split("\n").map((line) => line.trim().split(/\s+/)).filter((words) => marks.every((m) => words.includes(m)) && !kept.has(words[1]));
+    const found = Bun.spawnSync(PS).stdout.toString().split("\n").map((line) => line.trim().split(/\s+/)).filter((words) => marks.every((m) => words.includes(m)));
     found.forEach((words) => Machine.kill(Number(words[0])));
     return found.length;
   }

@@ -61,7 +61,7 @@ export namespace OpenAI {
   }
 
   export function sharer(ask: Ask): string {
-    return ask.agent === true ? "sub" : ask.who ?? "main";
+    return ask.who ?? "main";
   }
 
   function input(item: Item): unknown[] {

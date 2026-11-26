@@ -1,7 +1,6 @@
 import { SidebarSimpleIcon, XIcon } from "@phosphor-icons/react";
 import { createRootRoute, createRoute, createRouter, lazyRouteComponent, Outlet, redirect, useLocation, useMatches, useNavigate, useRouter } from "@tanstack/react-router";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import * as View from "../../View.ts";
 import { Avatar, Face, look_of } from "./Avatar.tsx";
 import { Composer } from "./Composer.tsx";
 import { intro_end, MOODS, mood_of, noted, show, useMontroop, welcomed } from "./Montroop.ts";
@@ -111,7 +110,7 @@ function useMedia(query: MediaQueryList): boolean {
 // where the ground's lamps sit for each screen
 function lamps(path: string): string {
   const own = /^\/a\/[^/]+\/(running|memory|tree|w)\b/.exec(path)?.[1];
-  return own === "tree" ? "memory" : own === "w" ? "running" : own ?? (/^\/a\/[^/]+(\/s\/[^/]+)?$/.test(path) ? "chat" : "team");
+  return own === "tree" ? "memory" : own === "w" ? "running" : own ?? (/^\/a\/[^/]+$/.test(path) ? "chat" : "team");
 }
 
 // the view transition's own animations, once they have started: a phone
@@ -191,7 +190,7 @@ function Shell(): ReactNode {
   // with the column away the button takes the top left corner: a chat's floating
   // head has it level with its own buttons, and a page with a back button of
   // its own moves over for it
-  const tucked = !split || listed ? "" : " tucked" + (at === chat.id || at === sub.id ? " headed" : "") + (at === home.id || at === chat.id ? "" : " backed");
+  const tucked = !split || listed ? "" : " tucked" + (at === chat.id ? " headed" : "") + (at === home.id || at === chat.id ? "" : " backed");
   const [aurora, setAurora] = useState<HTMLElement | null>(null);
   useLamps(aurora);
   if (signed === null) {
@@ -230,14 +229,10 @@ function Tree({ agent }: { agent: string }): ReactNode {
   return <Grown agent={agent} view={useLocation().hash === "view"} />;
 }
 
-// what a face acts out, which no word repeats beside it; idle acts out
-// nothing, and its "" among them leaves no note
-const ACTED = new Set(Object.values(MOODS).map((m) => m.toLowerCase()));
-
 // the name on a glass pill over the face's chin, and after it what the face
-// can't show (Montroop offline, a subagent's tool, its usage limit, it done). The
-// pill's width follows its words; a note gone stays in it, fading, as it
-// narrows back to the name, which gives way first when both don't fit
+// can't show: Montroop offline. The pill's width follows its words; a note
+// gone stays in it, fading, as it narrows back to the name, which gives way
+// first when both don't fit
 function Tag({ name, note }: { name: string; note: string }): ReactNode {
   const pill = useRef<HTMLSpanElement>(null);
   const named = useRef<HTMLElement>(null);
@@ -271,77 +266,61 @@ function Tag({ name, note }: { name: string; note: string }): ReactNode {
   return (
     <span ref={pill} className="tag">
       <b ref={named}>{name}</b>
-      <i ref={told} className={(note === "" ? "" : "on") + (said === "Offline" ? " off" : "")}>{said}</i>
+      <i ref={told} className={note === "" ? "" : "on"}>{said}</i>
     </span>
   );
 }
 
-// an agent's chat, or the page of a subagent it spawned: what that one
-// does, read only
-function Chat({ agent, sub }: { agent: string; sub: string | null }): ReactNode {
+// an agent's chat
+function Chat({ agent }: { agent: string }): ReactNode {
   const navigate = useNavigate();
   const mate = useMontroop((s) => s.team.find((m) => m.id === agent));
-  const loaded = useMontroop((s) => s.loaded && s.agent === agent && s.page === sub);
-  const mood = useMontroop((s) => (sub !== null ? s.mood : mate === undefined ? "idle" : mood_of(mate, s)));
+  const loaded = useMontroop((s) => s.loaded && s.agent === agent);
+  const mood = useMontroop((s) => (mate === undefined ? "idle" : mood_of(mate, s)));
   const offline = useMontroop((s) => s.offline);
-  const row = useMontroop((s) => s.sub);
-  const meter = useMontroop((s) => s.meter);
-  const knobs = useMontroop((s) => s.knobs);
   const welcome = useMontroop((s) => s.welcome);
   const [head, setHead] = useState<HTMLElement | null>(null);
   const [page, setPage] = useState<HTMLElement | null>(null);
-  const back = useBack(sub === null ? "/" : "/a/" + agent);
+  const back = useBack("/");
   const wider = useMedia(WIDER);
   const shown = usePrefs((s) => s.panel);
   const going = useGoing(agent);
   const pop = usePop(going, agent);
   const [menu, openMenu, closeMenu] = useStep(agent, "about");
-  const [drawn, gone] = useLeaving(menu && !wider && sub === null);
+  const [drawn, gone] = useLeaving(menu && !wider);
   const [face, setFace] = useState<HTMLButtonElement | null>(null);
-  const panel = wider && shown && sub === null;
+  const panel = wider && shown;
   useEdgeBack(page, back);
   useEffect(() => {
-    show(agent, sub);
+    show(agent);
     return () => show(null);
-  }, [agent, sub]);
+  }, [agent]);
   // the server shows another agent's chat when it has none of this one
   useEffect(() => useMontroop.subscribe((s) => {
     if (s.loaded && s.agent !== agent) {
       void navigate({ to: "/a/$agent", params: { agent: s.agent }, replace: true });
     }
   }), [agent, navigate]);
-  const doing = offline ? "Offline" : sub === null ? MOODS[mood] : row === null ? "Done" : row.doing;
-  const note = offline || (sub !== null && !ACTED.has(doing.toLowerCase())) ? doing : "";
+  const doing = offline ? "Offline" : MOODS[mood];
+  const note = offline ? doing : "";
   return (
     <section ref={setPage} className={"page swipe" + (panel ? " paned" : "")}>
       <div className="relative flex min-h-0 flex-1 flex-col">
         <header className="top">
-          <Back to={sub === null ? "/" : "/a/" + agent} label={sub === null ? "Back to your mons" : "Back to " + (mate?.name ?? "the chat")} className={sub === null ? "back" : ""} />
-          {sub === null ? (
-            <button ref={setFace} type="button" className="isl" aria-haspopup={wider ? undefined : "menu"} aria-expanded={wider ? panel : menu} aria-label={[mate?.name ?? "This mon", doing, going > 0 ? going + " at work" : ""].filter((t) => t !== "").join(", ")} onClick={() => (wider ? panel_set(!shown) : openMenu())}>
-              <span className="relative">
-                <Face picture={mate?.picture ?? ""} id={agent} mood={mood} size={FACE} />
-                {going > 0 ? <em key={going} className={"count" + pop}>{going}</em> : null}
-              </span>
-              <Tag name={mate?.name ?? ""} note={note} />
-            </button>
-          ) : (
-            <p className="isl" role="img" aria-label={[sub, doing].filter((t) => t !== "").join(", ")}>
-              <Avatar look={look_of("", agent + "/" + sub)} mood={mood} size={FACE} />
-              <Tag name={sub} note={note} />
-            </p>
-          )}
+          <Back to="/" label="Back to your mons" className="back" />
+          <button ref={setFace} type="button" className="isl" aria-haspopup={wider ? undefined : "menu"} aria-expanded={wider ? panel : menu} aria-label={[mate?.name ?? "This mon", doing, going > 0 ? going + " at work" : ""].filter((t) => t !== "").join(", ")} onClick={() => (wider ? panel_set(!shown) : openMenu())}>
+            <span className="relative">
+              <Face picture={mate?.picture ?? ""} id={agent} mood={mood} size={FACE} />
+              {going > 0 ? <em key={going} className={"count" + pop}>{going}</em> : null}
+            </span>
+            <Tag name={mate?.name ?? ""} note={note} />
+          </button>
           <span ref={setHead} className="top-end" />
           {drawn === false ? null : <Menu agent={agent} face={face} close={closeMenu} leaving={drawn === "leaving"} gone={gone} />}
         </header>
-        {loaded ? <Timeline key={agent + "/" + (sub ?? "")} sub={sub !== null} head={head} /> : <Wait />}
-        {welcome && sub === null ? <Suspense><Importer agent={agent} shut={welcomed} /></Suspense> : null}
-        {sub === null ? <Composer key={agent} agent={agent} name={mate?.name ?? ""} /> : (
-          <p className="under">
-            {knobs.map((k) => k.text).join(" · ")}
-            {meter === null ? "" : " · context " + View.talk_percent(meter) + "%"}
-          </p>
-        )}
+        {loaded ? <Timeline key={agent} head={head} /> : <Wait />}
+        {welcome ? <Suspense><Importer agent={agent} shut={welcomed} /></Suspense> : null}
+        <Composer key={agent} agent={agent} name={mate?.name ?? ""} />
       </div>
       {panel ? <Panel agent={agent} /> : null}
     </section>
@@ -360,8 +339,7 @@ const own = (where: "running" | "memory" | "tree", hash?: string) => () => {
 
 const root     = createRootRoute({ component: Shell });
 const home     = createRoute({ getParentRoute: () => root, path: "/", component: Home });
-const chat     = createRoute({ getParentRoute: () => root, path: "/a/$agent", validateSearch: steps_of, component: () => <Chat agent={chat.useParams().agent} sub={null} /> });
-const sub      = createRoute({ getParentRoute: () => root, path: "/a/$agent/s/$name", component: () => <Chat agent={sub.useParams().agent} sub={sub.useParams().name} /> });
+const chat     = createRoute({ getParentRoute: () => root, path: "/a/$agent", validateSearch: steps_of, component: () => <Chat agent={chat.useParams().agent} /> });
 const fresh    = createRoute({ getParentRoute: () => root, path: "/new", component: () => <AgentPage agent={null} /> });
 const edit     = createRoute({ getParentRoute: () => root, path: "/a/$agent/edit", component: () => <AgentPage agent={edit.useParams().agent} /> });
 const look     = createRoute({ getParentRoute: () => root, path: "/a/$agent/look", component: () => <Look agent={look.useParams().agent} /> });
@@ -382,7 +360,7 @@ const treeOld    = createRoute({ getParentRoute: () => root, path: "/tree", befo
 const team     = createRoute({ getParentRoute: () => root, path: "/team", beforeLoad: () => redirect({ to: "/", replace: true, throw: true }) });
 const settings = createRoute({ getParentRoute: () => root, path: "/settings", component: Settings });
 
-export const router = createRouter({ routeTree: root.addChildren([home, chat, sub, fresh, edit, look, running, work, memory, tree, runningOld, memoryOld, treeOld, team, settings]), defaultViewTransition: TURNS && { types: turn } });
+export const router = createRouter({ routeTree: root.addChildren([home, chat, fresh, edit, look, running, work, memory, tree, runningOld, memoryOld, treeOld, team, settings]), defaultViewTransition: TURNS && { types: turn } });
 
 declare module "@tanstack/react-router" {
   interface Register {

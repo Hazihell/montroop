@@ -1,26 +1,58 @@
 import { afterAll, expect, test } from "bun:test";
 import { wake_text } from "../../Wake.ts";
-import { asks, chat, down, fake, gate, kill, model, shell, Troop, procs, repo, said, tag, until, VIAS, waiting } from "../rig.ts";
+import { chat, down, fake, gate, kill, model, older, shell, Troop, procs, repo, ROOT, said, tag, until, VIAS, waiting } from "../rig.ts";
 
 const GONE = "its holder ended before the run did";
 
 afterAll(down);
 
-test.concurrent("a holder killed mid-run fails the run once, leaves nothing of it running, and a resume finishes it", async () => {
+// a subagent's holder that dies is tried again three times in five minutes;
+// killed once more, it fails: five holders in one test, given twice the time
+const KILLS = 4;
+
+test.concurrent("a holder killed more often than it's tried again fails the run once, leaves nothing of it running, and a resume finishes it", async () => {
   const k = await Troop.up();
   const t = tag();
-  await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
-  const s = await k.session("hk", t + ": work", repo());
-  await until("the command running", () => waiting(t));
-  kill(s.holder());
+  for (let n = 0; n < KILLS; n++) {
+    await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
+  }
+  const [s] = await k.subagents({ task: t + ": work", name: "hk", repo: repo(), base: "main" });
+  let last: number | null = null;
+  for (let n = 0; n < KILLS; n++) {
+    const holder = await until("a holder at work", () => waiting(t) && s.holder() !== last && s.holder());
+    kill(holder);
+    await until("the killed holder gone", () => s.holder() !== holder && !waiting(t));
+    last = holder;
+  }
 
   expect((await s.status("failed")).runs[0].why).toBe(GONE);
   await until("its holder gone", () => s.holder() === null);
   expect(waiting(t)).toBe(false);
   expect((await k.api("POST", "/api/sessions/" + s.id + "/resume", {})).status).toBe(200);
+  expect((await s.status("done")).runs).toMatchObject([{ n: 1, status: "done", attempts: KILLS + 1 }]);
+  await until("the done wake", async () => await said(k, s.woke("done:")) === 1);
+  expect(await said(k, s.woke("failed: ") + GONE)).toBe(1);
+}, 2 * 30e3);
+
+test.concurrent("an old work session's holder killed mid-run fails the run once, not tried again, leaves nothing of it running, and a resume finishes it", async () => {
+  const k = await Troop.up({}, older());
+  const t = tag();
+  await fake.next(t + ": work", { what: "tool", calls: [["Bash", { command: gate(t) }]] });
+  const started = await k.api("POST", "/api/sessions", { agent: k.agent, repo: repo(), base: "main", name: "ws", brief: "", prompt: t + ": work" });
+  const s = await k.adopt(String(started.json.id), "ws");
+  await until("the command running", () => waiting(t));
+  await k.kill();
+  k.root = ROOT;
+  await k.start();
+  kill(s.holder());
+
+  expect((await s.status("failed")).runs[0]).toMatchObject({ why: GONE, attempts: 1 });
+  await until("its holder gone", () => s.holder() === null);
+  expect(waiting(t)).toBe(false);
+  expect((await k.api("POST", "/api/sessions/" + s.id + "/resume", {})).status).toBe(200);
   expect((await s.status("done")).runs).toMatchObject([{ n: 1, status: "done", attempts: 2 }]);
-  await until("the done wake", async () => await said(k, wake_text("session", "hk", "done:")) === 1);
-  expect(await said(k, wake_text("session", "hk", "failed: ") + GONE)).toBe(1);
+  await until("the done wake", async () => await said(k, wake_text("session", "ws", "done:")) === 1);
+  expect(await said(k, wake_text("session", "ws", "failed: ") + GONE)).toBe(1);
 });
 
 // each provider's process, under its holder, and how its run fails once killed
@@ -64,7 +96,7 @@ for (const via of VIAS) {
     const k = await Troop.on(via);
     const t = tag();
     await fake.next(t + ": work", { what: "tool", calls: [shell(via, gate(t))] });
-    await fake.next(t + "-done", { what: "tool", calls: [[asks(via), { question: "Which word should it be?" }]] });
+    await fake.next(t + "-done", { what: "tool", calls: [["ask", { question: "Which word should it be?" }]] });
     await fake.next("The answer: heron " + t, { what: "reply", text: "It is heron." });
     await fake.next(t + ": after", { what: "reply", text: t + " after" });
     const s = await k.work(via, "q", t + ": work", repo());
@@ -95,7 +127,7 @@ for (const via of VIAS) {
     await fake.next(t + ": work", { what: "tool", calls: [shell(via, gate(t))] });
     const s = await k.work(via, "qd", t + ": work", repo());
     await until("the command running", () => waiting(t));
-    expect((await s.say(t + ": next", "q-1", "queue")).json.sent).toBe("Queued: it starts the " + s.kind + "'s next run once this one ends.");
+    expect((await s.say(t + ": next", "q-1", "queue")).json.sent).toBe("Queued: it starts the subagent's next run once this one ends.");
     await k.kill();
     s.open(t);
     await until("the run's end logged", () => s.logged().some((x) => x.ev.k === "end"));

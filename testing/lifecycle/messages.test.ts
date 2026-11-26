@@ -2,7 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { down, driven, fake, gate, git, shell, Troop, repo, said, tag, until, VIAS, waiting } from "../rig.ts";
+import { down, fake, gate, git, shell, Troop, repo, said, tag, until, VIAS, waiting } from "../rig.ts";
 
 afterAll(down);
 
@@ -42,7 +42,7 @@ for (const via of VIAS) {
     const b = await k.work(via, "st-b", tb + ": work", r);
     await until("both commands running", () => waiting(ta) && waiting(tb));
 
-    await fake.next(ta + ": stop st-a", { what: "tool", calls: [[driven(via), { action: "stop", name: "st-a" }]] });
+    await fake.next(ta + ": stop st-a", { what: "tool", calls: [["subagent", { action: "stop", name: "st-a" }]] });
     await k.tell(ta + ": stop st-a");
     await a.status("stopped");
     expect((await k.api("POST", "/api/sessions/" + b.id + "/stop", {})).status).toBe(200);

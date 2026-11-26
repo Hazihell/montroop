@@ -41,8 +41,10 @@ export type Session = {
   unit: string; sock: string; last: string; made: number; at: number; archived: number; seen: number;
 };
 
-// what started it: the session tool or the subagent tool
-export type Kind = "session" | "subagent";
+// what started it: the subagent tool, or (session) the session tool, which
+// is gone: its records are kept only so old work sessions still read and
+// resume, till the old engine's cleanup removes them
+type Kind = "session" | "subagent";
 
 // report: what the session gave as the run's result
 export type Run = { session: string; n: number; prompt: string; status: Status; attempts: number; why: string; report: string; started: number; ended: number | null };
@@ -153,13 +155,12 @@ export namespace Session {
     return (Session.kind(s) === "session" ? "Session " : "Subagent ") + s.name;
   }
 
-  // a work session's fields as the session tool gives them, a subagent's
-  // all; the rest as the session tool's are
-  export function add(s: Omit<Session, "provider" | "effort" | "memory" | "write" | "device" | "status" | "sdk" | "ack" | "launches" | "unit" | "sock" | "last" | "made" | "at" | "archived" | "seen"> & Partial<Pick<Session, "provider" | "effort" | "memory" | "write" | "device">>, prompt: string): Session {
+  // a new record, its first run started on prompt
+  export function add(s: Omit<Session, "status" | "sdk" | "ack" | "launches" | "unit" | "sock" | "last" | "made" | "at" | "archived" | "seen">, prompt: string): Session {
     const db = opened();
     const now = Date.now();
     db.transaction(() => {
-      db.query("insert into work_sessions (id, name, agent, repo, base, branch, worktree, account, model, provider, effort, memory, write, device, dir, status, made, at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)").run(s.id, s.name, s.agent, s.repo, s.base, s.branch, s.worktree, s.account, s.model, s.provider ?? "", s.effort ?? "", s.memory ?? 0, s.write ?? 1, s.device ?? "", s.dir, now, now);
+      db.query("insert into work_sessions (id, name, agent, repo, base, branch, worktree, account, model, provider, effort, memory, write, device, dir, status, made, at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)").run(s.id, s.name, s.agent, s.repo, s.base, s.branch, s.worktree, s.account, s.model, s.provider, s.effort, s.memory, s.write, s.device, s.dir, now, now);
       db.query("insert into work_runs (session, n, prompt, status, started) values (?, 1, ?, 'running', ?)").run(s.id, prompt, now);
     })();
     return Session.get(s.id) as Session;
@@ -230,7 +231,7 @@ export namespace Session {
     } else if (ev.k === "question" && live) {
       db.query("insert or ignore into work_questions (id, session, text, at) values (?, ?, ?, ?)").run(ev.id, s.id, ev.text, at);
       step(db, s.id, "ask");
-      return noted(db, s, String(seq), "question", ev.text + "\n\nIt waits for your answer: give it with " + Session.kind(s) + " send. If only the user knows, ask them first.");
+      return noted(db, s, String(seq), "question", ev.text + "\n\nIt waits for your answer: give it with subagent send. If only the user knows, ask them first.");
     } else if (ev.k === "limit" && live) {
       return noted(db, s, String(seq), "waiting", "a usage limit, till " + clock(ev.until) + ". It goes on by itself then: nothing to do.");
     } else if (ev.k === "replied") {

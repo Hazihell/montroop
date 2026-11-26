@@ -13,7 +13,7 @@ let made = 0;
 
 function session(name = "s" + ++made): Session {
   const id = crypto.randomUUID().slice(0, 8);
-  return Session.add({ id, name, agent: "agent1", repo: "/repo", base: "main", branch: "troop/" + name, worktree: "/repo-" + name, account: "", model: "", dir: path.join(DIR, "sessions", id) }, "the first message");
+  return Session.add({ id, name, agent: "agent1", repo: "/repo", base: "main", branch: "troop/" + name, worktree: "/repo-" + name, provider: "", account: "", model: "", effort: "", memory: 0, write: 1, device: "", dir: path.join(DIR, "sessions", id) }, "the first message");
 }
 
 // a subagent's record, as the subagent tool makes it
@@ -114,7 +114,7 @@ test("the session is at work again once every call parked is answered", () => {
 test("a question makes the session wait for its agent's answer, and wakes it with the question", () => {
   const s = session("curious");
   const q = crypto.randomUUID();
-  expect(woke(told(s, 1, { k: "question", id: q, text: "Which word?" }))).toEqual([wake_text("session", "curious", "question: Which word?\n\nIt waits for your answer: give it with session send. If only the user knows, ask them first.")]);
+  expect(woke(told(s, 1, { k: "question", id: q, text: "Which word?" }))).toEqual([wake_text("session", "curious", "question: Which word?\n\nIt waits for your answer: give it with subagent send. If only the user knows, ask them first.")]);
   expect(Session.get(s.id)?.status).toBe("waiting");
   told(s, 2, { k: "replied", id: q });
   expect(Session.get(s.id)?.status).toBe("running");

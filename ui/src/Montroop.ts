@@ -2,7 +2,6 @@ import { create } from "zustand";
 import type { Asked } from "../../Gate.ts";
 import { get, parse as parsed, text_of } from "../../Json.ts";
 import type { Answers } from "../../Question.ts";
-import type { Row as SubRow } from "../../Sub.ts";
 import type { Timer } from "../../Timer.ts";
 import * as View from "../../View.ts";
 import type { Mood } from "./Avatar.tsx";
@@ -27,11 +26,8 @@ type Montroop = {
   timers    : Timer[];
   jobs      : View.BgJob[];
   talk      : View.Talk | null;
-  meter     : View.Talk | null;
   knobs     : View.Knob[];
   plugs     : View.Plug[];
-  page      : string | null;
-  sub       : SubRow | null;
   hearing   : boolean;
   importing : View.Progress | null;
   note      : string;
@@ -66,7 +62,7 @@ const v = View.view_new(AGENT.exec(location.pathname)?.[1] ?? localStorage.getIt
 // the chat on screen, counted read by the server while the window has focus
 const SEEN = { agent: null as string | null, at: 0, on: false, ws: null as WebSocket | null };
 
-export const useMontroop = create<Montroop>(() => ({ signed: null, agent: v.agent, loaded: false, greeted: false, offline: false, team: [], rows: [], tail: [], stoppable: false, mood: "idle", asks: [], timers: [], jobs: [], talk: null, meter: null, knobs: [], plugs: [], page: null, sub: null, hearing: false, importing: null, note: "", stale: false, intro: localStorage.getItem(INTRO) === null && !new URLSearchParams(location.search).has("skip"), welcome: false }));
+export const useMontroop = create<Montroop>(() => ({ signed: null, agent: v.agent, loaded: false, greeted: false, offline: false, team: [], rows: [], tail: [], stoppable: false, mood: "idle", asks: [], timers: [], jobs: [], talk: null, knobs: [], plugs: [], hearing: false, importing: null, note: "", stale: false, intro: localStorage.getItem(INTRO) === null && !new URLSearchParams(location.search).has("skip"), welcome: false }));
 
 let due = false;
 // a piece of a reply streaming in changes only the tail: the chat's rows
@@ -78,13 +74,12 @@ function mood(): Mood {
   if (View.view_offline(v) || v.limit !== null) {
     return "sleeping";
   }
-  if (v.asks.length > 0 && v.page === null) {
+  if (v.asks.length > 0) {
     return "asking";
   }
-  const page = v.page;
-  const last = (page?.live ?? v.live).at(-1);
+  const last = v.live.at(-1);
   if (last === undefined) {
-    return (page === null ? v.busy : View.view_sub(v) !== undefined) ? "thinking" : "idle";
+    return v.busy ? "thinking" : "idle";
   }
   return last.kind === "mind" ? "thinking" : last.kind === "reply" ? "writing" : "working";
 }
@@ -173,11 +168,8 @@ function draw(rows = true): void {
       timers    : v.timers,
       jobs      : v.bg,
       talk      : v.talk,
-      meter     : v.page === null ? v.talk : View.view_sub(v)?.meter ?? null,
       knobs     : View.view_pick(v),
       plugs     : v.mcp,
-      page      : v.page?.name ?? null,
-      sub       : View.view_sub(v) ?? null,
       hearing   : v.out.some((p) => p.msg.$ === "voice"),
       importing : v.importing,
       ...(note === undefined ? {} : { note }),
@@ -218,12 +210,10 @@ function hear(msg: View.Server): void {
   for (const out of View.view_hear(v, msg)) {
     View.link_send(v, out);
   }
-  // a subagent the server has none of keeps no copy here, nor an agent gone
-  if (msg.$ === "agent" && !msg.found) {
-    localStorage.removeItem(COPY + v.on + "/s/" + msg.name);
-  }
+  // an agent gone keeps no copy here, nor a subagent's page an older
+  // Montroop kept one of
   if (msg.$ === "team") {
-    copy_keys().filter((k) => !v.team.some((m) => k.slice(COPY.length).split("/")[0] === m.id)).forEach((k) => localStorage.removeItem(k));
+    copy_keys().filter((k) => !v.team.some((m) => k === COPY + m.id)).forEach((k) => localStorage.removeItem(k));
   }
   if (msg.$ === "state") {
     if (v.held === v.agent) {
@@ -275,7 +265,7 @@ async function me(): Promise<boolean> {
 }
 
 function copy_key(): string {
-  return COPY + v.agent + (v.page === null ? "" : "/s/" + v.page.name);
+  return COPY + v.agent;
 }
 
 function copy_keys(): string[] {
@@ -294,26 +284,21 @@ function copy_draw(): void {
   copy_take();
 }
 
-// the wanted chat's or subagent page's copy, while the view holds none of it
+// the wanted chat's copy, while the view holds none of it
 function copy_take(): void {
   const copy = parsed(localStorage.getItem(copy_key()));
   const msgs = get(copy, "msgs");
-  if (get(copy, "wire") !== View.WIRE || !Array.isArray(msgs)) {
-    return;
-  }
-  if (v.page === null) {
+  if (get(copy, "wire") === View.WIRE && Array.isArray(msgs)) {
     View.view_adopt(v, msgs as View.Server[]);
-  } else {
-    View.view_page_adopt(v, msgs as View.Server[]);
   }
 }
 
 // what this page last kept under each key, but for when
 const COPIES = { kept: new Map<string, string>(), soon: undefined as ReturnType<typeof setTimeout> | undefined };
 
-// the team, and the chat held or the subagent page open: its last
-// COPY_PARTS (a run of tool calls is many parts and one row), fewer while
-// they are too big, by as many as the copy is over
+// the team, and the chat held: its last COPY_PARTS (a run of tool calls
+// is many parts and one row), fewer while they are too big, by as many as
+// the copy is over
 function copy_keep(): void {
   if (localStorage.getItem(SIGNED) === null) {
     return;
@@ -322,15 +307,14 @@ function copy_keep(): void {
     const team = JSON.stringify({ wire: View.WIRE, team: v.team });
     copy_put(TEAM, team, () => team);
   }
-  const page = v.page;
-  const ids = page === null ? (v.held === v.agent ? v.parts.map(([id]) => id) : []) : (page.log ?? []).flatMap((e) => (e.id === undefined ? [] : [e.id]));
+  const ids = v.held === v.agent ? v.parts.map(([id]) => id) : [];
   const key = copy_key();
   for (let k = Math.max(0, ids.length - COPY_PARTS); k < ids.length;) {
     const from = ids[k];
     if (from === undefined) {
       break;
     }
-    const msgs = page === null ? View.view_copy(v, from) : View.view_page_copy(page, from);
+    const msgs = View.view_copy(v, from);
     const said = JSON.stringify(msgs);
     if (said.length <= COPY_MOST) {
       copy_put(key, said, () => JSON.stringify({ wire: View.WIRE, at: Date.now(), msgs }));
@@ -424,7 +408,7 @@ async function renew(): Promise<void> {
 // the importer, offered once on a computer to a chat that has only its
 // opening message, after the intro
 function welcome(): void {
-  if (localStorage.getItem(WELCOMED) === null && !useMontroop.getState().intro && DESK.matches && v.pick !== null && v.held === v.agent && v.page === null && v.parts.length === View.OPENING && v.importing === null) {
+  if (localStorage.getItem(WELCOMED) === null && !useMontroop.getState().intro && DESK.matches && v.pick !== null && v.held === v.agent && v.parts.length === View.OPENING && v.importing === null) {
     localStorage.setItem(WELCOMED, "1");
     useMontroop.setState({ welcome: true });
   }
@@ -501,19 +485,13 @@ export async function boot(go: (url: string) => void): Promise<void> {
   setInterval(seen, View.USE_PING);
 }
 
-// the chat the screen shows now, null for none (the agent list), or the
-// page of one of its subagents, which doesn't count its spawner's chat read;
-// read false holds an agent for one of its pages (what runs, its memory)
+// the chat the screen shows now, null for none (the agent list); read
+// false holds an agent for one of its pages (what runs, its memory)
 // without its chat on screen
-export function show(agent: string | null, sub: string | null = null, read = true): void {
-  SEEN.agent = sub === null && read ? agent : null;
+export function show(agent: string | null, read = true): void {
+  SEEN.agent = read ? agent : null;
   for (const out of agent === null ? [] : View.view_switch(v, agent)) {
     View.link_send(v, out);
-  }
-  if (agent !== null && (v.page?.name ?? null) !== sub) {
-    for (const out of View.view_act(v, { $: "Goto", name: sub })) {
-      View.link_send(v, out);
-    }
   }
   if (agent !== null) {
     copy_take();
@@ -533,14 +511,6 @@ export function act(a: View.Act, failed?: () => void): void {
   };
   for (const out of View.view_act(v, a)) {
     View.link_send(v, out, a.$ === "Send" ? back : undefined, said);
-  }
-  draw();
-}
-
-// a subagent's page near its top asks for its earlier entries
-export function earlier(): void {
-  for (const out of View.view_earlier(v)) {
-    View.link_send(v, out);
   }
   draw();
 }

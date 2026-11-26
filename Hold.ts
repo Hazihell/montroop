@@ -29,7 +29,7 @@ import { TOOLS, VERSION, Wire, type Ask, type Asking, type Calling, type Ev, typ
 // what a session keeps for its life: its worktree, its Claude account's
 // folder, its model ("": the account's default) and what its system
 // prompt adds, fixed at its start
-export type Spec = { cwd: string; claude: string; model: string; append: string };
+type Spec = { cwd: string; claude: string; model: string; append: string };
 
 // what one holder starts with: the driver that runs it (claude-code: a
 // work session's, on its spec and the provider's session it resumes, ""
@@ -99,7 +99,7 @@ const NEVER = new AbortController().signal;
 // session began, or the model answered
 const TAKEN = new Set<Ev["k"]>(["began", "text", "tool", "turn"]);
 
-export const SPEC = "spec.json";
+const SPEC = "spec.json";
 export const START = "start.json";
 const LOG = "log.jsonl";
 

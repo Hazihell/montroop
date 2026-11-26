@@ -6,12 +6,10 @@ import { Rules } from "./Rules.ts";
 import { QUESTION, Question, type Answers } from "./Question.ts";
 import { Limit } from "./Limit.ts";
 import { INT, STR, TOOLS, spec, type Bg, type Job, type Skill, type Spec } from "./Machine.ts";
-import { clip_page } from "./Clip.ts";
 import { Mcp, NAME_MOST, type Held, type Servers } from "./Mcp.ts";
 import { Memory } from "./Memory.ts";
 import { Search } from "./Search.ts";
 import { Holders } from "./Holders.ts";
-import { Sessions } from "./Sessions.ts";
 import { Subagents } from "./Subagents.ts";
 import { MINUTES } from "./Setup.ts";
 import * as Prompts from "./Prompts.ts";
@@ -20,7 +18,6 @@ import { Team } from "./Team.ts";
 import * as Timer from "./Timer.ts";
 import * as Pins from "./Pins.ts";
 import { PING, type BgJob } from "./View.ts";
-import { Sub, type Spawn } from "./Sub.ts";
 import { err_why } from "./Err.ts";
 import { get, list as items, rec, text_of } from "./Json.ts";
 import { wake_relayed, wake_text } from "./Wake.ts";
@@ -48,32 +45,17 @@ type Kept = { device: string; job: Job; out: Promise<Out>; end: (out: Out) => vo
 
 type Link = { send: (msg: object) => void; live: () => boolean; work: string; scratch: string | null; shell: string | null };
 
-// an agent's place at the tools: its memory, and its chat's hooks; a
-// subagent's has no subs: it spawns none, messages no one (#116)
+// an agent's place at the tools: its memory, and its chat's hooks
 export type Seat = {
   mem    : Memory;
   note   : (text: string) => void;
   report : (text: string) => void;
   timed  : () => void;
   message: (to: string, text: string) => Promise<Out>;
-  subs   : Subs | null;
   // the agents tool, for an agent whose Manage agents setting is on
-  agents?: { on: () => boolean; run: (args: Record<string, unknown>) => Out };
+  agents : { on: () => boolean; run: (args: Record<string, unknown>) => Out };
   // the settings tool, an agent's own
-  settings?: (args: Record<string, unknown>) => Out;
-  mcp?   : boolean;
-  // whether its subagents run on the engine (its Lasting subagents
-  // setting): the subagent tool in place of spawn, tell, stop and session
-  subagents?: () => boolean;
-};
-
-// an agent's subagents
-export type Subs = {
-  spawn   : (tasks: Spawn[]) => Promise<Out>;
-  tell    : (name: string, text: string) => Promise<Out>;
-  stop    : (name: string, why: string) => Promise<Out>;
-  working : () => string[];
-  show    : (name: string) => string | null;
+  settings: (args: Record<string, unknown>) => Out;
 };
 
 // what the agents share: their notes on devices and MCP servers go to the
@@ -94,8 +76,6 @@ export type Tools = {
   key     : string;
   url     : string;
   hub     : Hub;
-  // the seat of the agent that spawned a subagent, one done now too
-  owner   : (who: string) => Seat | undefined;
   // the tools last left out of an agent's list for their names' length
   short   : Map<string, string>;
   gate    : Gate;
@@ -119,15 +99,15 @@ const SESSION = "mcp-session-id";
 const LOOK = 3000;
 
 const OWN: Spec[] = [
-  spec("zoom", "Open the line id+n of the view into the two lines of n/2 under it; n = 1 gives the message whole. A long text comes in pages from character at, saying where to go on. With agent, a line of that agent's memory, by its name; a subagent's name gives its whole chat (id: 0).", { id: INT, n: INT, at: INT, agent: STR }, ["id"]),
+  spec("zoom", "Open the line id+n of the view into the two lines of n/2 under it; n = 1 gives the message whole. A long text comes in pages from character at, saying where to go on. With agent, a line of that agent's memory, by its name.", { id: INT, n: INT, at: INT, agent: STR }, ["id"]),
   spec("search", "Search every message in this chat for a literal, case-insensitive word or phrase (1–500 characters), however old. Returns oldest first: message id, UTC date, kind and a short matching excerpt; zoom(id, 1) opens the full message. since/until are inclusive YYYY-MM-DD dates. limit defaults to 20, at most 100. after continues after a message id. No regular expressions.", { query: STR, since: STR, until: STR, limit: INT, after: INT }, ["query"]),
   spec("date", "The date and time of message id.", { id: INT }, ["id"]),
 ];
-// the setup action, the same in the session and subagent tools
+// the subagent tool's setup action
 const SETUP = "setup: what each new worktree of a repo runs before its first turn, so it doesn't start bare (no dependencies, no gitignored env files): repo and command set it, an empty command clears it, no command shows it, no repo lists them all. The command runs in the worktree with your shell, with TROOP_REPO (the repo's main checkout) and TROOP_WORKTREE set, for at most " + MINUTES + " minutes, after the gitignored files the repo's .worktreeinclude names are copied in; one that fails is told to the worker in its first message, with its last lines.";
 const COMMAND = { type: "string", description: "Setup: a shell command, such as cp \"$TROOP_REPO\"/.env* . 2>/dev/null; bun install --frozen-lockfile" };
-// built at each listing: spawn names the models offered now, which
-// Settings change while Montroop runs
+// built at each listing: the subagent tool names the models offered now,
+// which Settings change while Montroop runs
 const boss = (): Spec[] => [
   spec("schedule", "Schedule a message to yourself: at its time it reaches you as a new message from the timer, starting \"[Timer id]\", and starts a turn as a report does, whether or not the user is online. Give `at` to send it once, or `cron` to send it again and again, and the time zone both are read in (the user's). Write the message as the task to do then, whole: by then this turn is far back in the view.", {
     message : STR,
@@ -137,16 +117,7 @@ const boss = (): Spec[] => [
   }, ["message", "zone"]),
   spec("schedules", "List the chat's schedules: id, when each comes next, its message.", {}, []),
   spec("unschedule", "Cancel a schedule, by its id.", { id: STR }, ["id"]),
-  spec("message", "Message another agent of the team, by name. Only send useful messages: no thanks, confirmations, acknowledgements. A message that needs no answer gets none. It lands in their chat as a new message from you, starting \"[your name]\", and starts a turn there; one at work gets it right after its current tool calls. No one answers by itself: the only way to answer an agent is to call message to it, and your plain reply stays in your own chat, for the user. A subagent's report needs no answer: while one runs, use tell.", { agent: STR, text: STR }, ["agent", "text"]),
-  spec("spawn", "Start one subagent per task, in parallel, and return their names at once. Each one's report reaches you when it finishes, as a new message from it, starting \"[Name]\"; then it is done, and zoom with its name as agent reads its whole chat. One that hits an AI service's usage limit waits for the reset and goes on. A subagent starts with your view (memory: false: with only its task) and knows what you want only from its task. Each task names its own model and effort, if any.", { tasks: { type: "array", items: { type: "object", properties: {
-    task   : STR,
-    model  : { type: "string", description: "Its model, one offered here; by default, yours. Set it only when the user asks for that model or vendor, since another vendor may cost more." },
-    effort : { type: "string", description: "How hard it thinks, one of its model's own levels (" + Sub.efforts() + "); by default, as hard as you, or its model's default level if it has no level of that name." },
-    memory : { type: "boolean", description: "Whether it starts with your view; default true." },
-    mcp    : { type: "boolean", description: "Whether it gets the devices' MCP tools; default true." },
-  }, required: ["task"] } } }, ["tasks"]),
-  spec("tell", "Send a message to a running subagent, by name: it gets it right after its current tool calls, and its report answers it. A subagent that has reported or was stopped is done: spawn a new one.", { name: STR, message: STR }, ["name", "message"]),
-  spec("stop", "Stop a running subagent at once, by name, whatever it is doing (mid-call, waiting on a usage limit, running a tool on a device). Others keep running. It is done then, and its jobs end with it: its report says it was stopped.", { name: STR, why: { type: "string", description: "Why, for its report." } }, ["name"]),
+  spec("message", "Message another agent of the team, by name. Only send useful messages: no thanks, confirmations, acknowledgements. A message that needs no answer gets none. It lands in their chat as a new message from you, starting \"[your name]\", and starts a turn there; one at work gets it right after its current tool calls. No one answers by itself: the only way to answer an agent is to call message to it, and your plain reply stays in your own chat, for the user. A subagent's message is answered with the subagent tool, never with this one.", { agent: STR, text: STR }, ["agent", "text"]),
   spec("pin", "Change the pins, listed under Pinned: add one (text, from: the id of the message it came from, until: YYYY-MM-DD for a temporary one, for: who it holds for), replace one by id (only the fields given change; for moves it), unpin some by ids, or mark some used by ids.", {
     action : { type: "string", enum: ["add", "replace", "unpin", "used"] },
     text   : STR,
@@ -156,33 +127,17 @@ const boss = (): Spec[] => [
     id     : INT,
     ids    : { type: "array", items: INT },
   }, ["action"]),
-  spec("session", "Work sessions: a Claude Code session of your own on a git repo of this server's computer, in its own new branch and worktree, that runs on its own for as long as the task takes, through server restarts. start: repo, base (the ref its branch starts from; default the repo's HEAD), branch (its new branch's name, one the repo doesn't have yet; default troop/<name>), name, brief (its whole task: it knows only that, the repo and its instructions), model. It never waits on you while it runs: you get one message \"[Session name] done|failed|stopped|waiting|question: …\" when its run ends, it waits on the user's approval of a call (only the user can give it, in the app), or it asks you something; that message starts your turn, so don't wait for it, read it to check, or schedule a check. send: a message (text) to it, by name: mode steer (default: into its work now; to a session that asked you something, the answer) or queue (for its next run, once this one ends); to a session done or stopped it starts a new run; request: an id of yours for this message, the same on a retry, so it's sent once. read: its state, what it waits on, its report and its latest lines; after (a line's number) and n for its log from there. stop: stop it at once (its worktree stays). list: your sessions. archive: remove its worktree and branch once its work is merged or not wanted (force: even with commits or changes found nowhere else). " + SETUP, {
-    action  : { type: "string", enum: ["start", "send", "read", "stop", "list", "archive", "setup"] },
-    name    : { type: "string", description: "The session's name: 1 to 40 lowercase letters, digits and dashes." },
-    repo    : { type: "string", description: "Start and setup: the repo's folder (~ is the home folder)." },
-    base    : STR,
-    branch  : STR,
-    brief   : STR,
-    model   : { type: "string", description: "Start: its Claude model (an alias such as sonnet, or a model id); by default its Claude account's." },
-    text    : STR,
-    mode    : { type: "string", enum: ["steer", "queue"] },
-    request : STR,
-    after   : INT,
-    n       : INT,
-    force   : { type: "boolean" },
-    command : COMMAND,
-  }, ["action"]),
   SUBAGENT(),
   spec("resume", "Wake every call on this server waiting for an AI service's usage limit (other turns, summaries), when the user says a limit was reset early. Each asks again once; one still limited waits again.", {}, []),
 ];
-// the subagent tool, for an agent whose subagents run on the engine
+// the subagent tool
 const SUBAGENT = (): Spec => spec("subagent", "Subagents: workers of your own, each on one task, that run on their own for as long as it takes, through server restarts, each in its own folder on this server's computer (with a repo, its own worktree), with that computer's tools of its provider (files, shell, web) and Montroop's device tools. start: tasks, started at once, their names returned at once; how many is your judgment of what they need beside what this computer has free and the usage limits allow (each turn, start and list tell its free cores and memory and what the running ones use), and none starts while it's nearly out of memory. It never waits on you while it runs: you get one message \"[Subagent name] done|failed|stopped|waiting|question: …\" when its run ends (done: with its last reply, its result), it waits on the user's approval of a call (only the user can give it, in the app) or on a usage limit, or it asks you something; that message starts your turn, so don't wait for it, read it to check, or schedule a check. send: a message (text) to it, by name: mode steer (default: into its work now; to one that asked you something, the answer) or queue (for its next run, once this one ends); to one done or stopped it starts a new run where it left off; request: an id of yours for this message, the same on a retry, so it's sent once. read: its state, what it waits on, what it uses, its result and its latest lines; after (a line's number) and n for its log from there. stop: stop it at once (why: for its record; its folder stays). list: your subagents, with what each uses, and this computer's free cores and memory. archive: remove its folder, worktree and branch once its work is merged or not wanted (force: even with commits or changes found nowhere else). " + SETUP, {
   action  : { type: "string", enum: ["start", "send", "read", "stop", "list", "archive", "setup"] },
   tasks   : { type: "array", items: { type: "object", properties: {
     task   : { type: "string", description: "Its whole brief: it knows only this, what the other options give it, and the pins." },
     name   : { type: "string", description: "1 to 40 lowercase letters, digits and dashes, none of your other subagents' or sessions'; by default a new one." },
     model  : { type: "string", description: "Its model, one offered here; by default, yours. Set it only when the user asks for that model or vendor, since another vendor may cost more. A repo needs a Claude plan's model." },
-    effort : { type: "string", description: "How hard it thinks, one of its model's own levels (" + Sub.efforts() + "); by default, as hard as you, or its model's default level if it has no level of that name." },
+    effort : { type: "string", description: "How hard it thinks, one of its model's own levels (" + Subagents.efforts() + "); by default, as hard as you, or its model's default level if it has no level of that name." },
     memory : { type: "boolean", description: "Whether it starts with your view and can zoom, search and date your memory; by default true without a repo, false with one." },
     repo   : { type: "string", description: "A git repo's folder on this server's computer (~ is the home folder): it works in its own worktree, on a new branch (branch) from base. Without, in a folder of its own." },
     base   : { type: "string", description: "The ref its worktree starts from; by default the repo's HEAD." },
@@ -202,8 +157,6 @@ const SUBAGENT = (): Spec => spec("subagent", "Subagents: workers of your own, e
   repo    : { type: "string", description: "Setup: the repo's folder (~ is the home folder)." },
   command : COMMAND,
 }, ["action"]);
-// what the subagent tool replaces
-const REPLACED = new Set(["spawn", "tell", "stop", "session"]);
 const AGENTS = spec("agents", "Manage the team's agents: list them (archived ones too), show one's settings by name, its system prompt included, create one (name, about: one line for the chat list and the other agents, prompt: its system prompt, by default the standard one), edit one by name, yourself too (only the fields given change; the answer says what changed), archive one by name (its chat and memory stay, and Settings or restore brings it back) or restore an archived one. No agent is ever deleted here. Create, edit, archive or restore only when the user asked for that change, or agreed to what you proposed; to brief a new agent, message it after creating it.", {
   action : { type: "string", enum: ["list", "show", "create", "edit", "archive", "restore"] },
   name   : STR,
@@ -226,7 +179,6 @@ const SETTINGS = spec("settings", "Your own settings, the ones the user sees in 
   effort   : { type: "string", description: "Set: how hard your model thinks, one of the levels show lists." },
   leader   : { type: "boolean", description: "Set: Leader mode, the newest lines of every other mon's memory in each turn." },
   lines    : { type: "integer", description: "Set: Leader mode's lines per mon." },
-  subagents: { type: "boolean", description: "Set: Lasting submons, subagents of your own through the subagent tool, in place of spawn, tell, stop and session." },
 }, ["action"]);
 const DEVICE = { device: { type: "string", description: "The name of the device to run on, one listed under Devices." } };
 const KIT: Spec[] = TOOLS.map((t) => {
@@ -246,7 +198,7 @@ export namespace Tools {
     const run = (device: string, job: Job, signal: AbortSignal) => Tools.job(tools, device, job, signal, crypto.randomUUID());
     const mcp = Mcp.servers((text) => hub.note(text), run, (device) => Tools.live(tools.devices.get(device)), () => hub.off());
     const gate = Gate.open(config.DIR + "/asks.json", () => hub.change());
-    const tools: Tools = { devices: new Map(), seats: new Map(), mcp, held: new Map(), left: false, key, url, hub, owner: () => undefined, short: new Map(), gate, kept: new Map(), since: Date.now() };
+    const tools: Tools = { devices: new Map(), seats: new Map(), mcp, held: new Map(), left: false, key, url, hub, short: new Map(), gate, kept: new Map(), since: Date.now() };
     CHATS.set(key, tools);
     return tools;
   }
@@ -278,7 +230,7 @@ export namespace Tools {
   export async function look(tools: Tools, only: string | null = null): Promise<void> {
     const live = Tools.opened(tools).filter(([name, d]) => (only === null || name === only) && [...d.terms.values()].some((t) => t.live()));
     await Promise.all(live.map(async ([name, d]) => {
-      const run = Tools.start_job(tools, name, { name: "skills", input: {}, cwd: "main" }, crypto.randomUUID());
+      const run = start_job(tools, name, { name: "skills", input: {}, cwd: "main" }, crypto.randomUUID());
       if (typeof run === "string") {
         return;
       }
@@ -300,12 +252,9 @@ export namespace Tools {
   }
 
   export function at_work(tools: Tools, who: string): Block {
-    const subs = tools.seats.get(who)?.subs?.working() ?? [];
-    const mine = (agent: string) => agent === who || subs.some((s) => s.startsWith(agent + " "));
-    const jobs = [...tools.devices].flatMap(([device, d]) => d.bg.jobs.filter((j) => mine(j.agent)).map((j) => j.id + " (" + [device, ...(j.agent === who ? [] : [j.agent]), j.command.replace(/\s+/g, " ").trim().slice(0, 60), Math.round((Date.now() - j.since) / 60e3) + " min"].join(", ") + ")"));
-    const room = tools.seats.get(who)?.subagents?.() === true ? Prompts.prompt("room", { room: Room.said(Room.now(who)) }) + "\n" : "";
-    const text = (subs.length === 0 ? "" : Prompts.prompt("subs", { subs: subs.join(", ") }) + "\n") + (jobs.length === 0 ? "" : Prompts.prompt("jobs", { jobs: jobs.join(", ") }) + "\n") + room;
-    return { text: text === "" ? "" : text + "\n", mark: false };
+    const jobs = [...tools.devices].flatMap(([device, d]) => d.bg.jobs.filter((j) => j.agent === who).map((j) => j.id + " (" + [device, j.command.replace(/\s+/g, " ").trim().slice(0, 60), Math.round((Date.now() - j.since) / 60e3) + " min"].join(", ") + ")"));
+    const text = (jobs.length === 0 ? "" : Prompts.prompt("jobs", { jobs: jobs.join(", ") }) + "\n") + Prompts.prompt("room", { room: Room.said(Room.now(who)) }) + "\n";
+    return { text: text + "\n", mark: false };
   }
 
   export async function fetch(req: Request): Promise<Response> {
@@ -363,12 +312,11 @@ export namespace Tools {
       // notes only for a caller that puts them in the model's request
       // (Agent.notes), heard only then: Claude Code drops them (#190)
       case "tools/list": {
-        const bare = tools.seats.get(who)?.mcp === false;
-        const all = bare ? [] : await Mcp.list(tools.mcp, Tools.held(tools, who));
+        const all = await Mcp.list(tools.mcp, Tools.held(tools, who));
         const theirs = all.filter((t) => t.name.length <= NAME_MOST - prefix.length);
         // a deferred tool overrides alwaysLoad on Montroop's server, tested 20 Nov 2026
         const list = [...Tools.listed(tools, who), ...theirs].map((t) => ({ name: t.name, description: t.info, inputSchema: t.schema, ...(t.defer === true ? { _meta: { "anthropic/alwaysLoad": false } } : {}) }));
-        if (params.notes !== true || bare) {
+        if (params.notes !== true) {
           return { tools: list };
         }
         const short = Tools.shortened(tools, who, all.filter((t) => !theirs.includes(t)).map((t) => t.name), prefix);
@@ -378,7 +326,7 @@ export namespace Tools {
         const name = String(params.name);
         const args = rec(params.arguments) ? params.arguments : {};
         const has = Tools.listed(tools, who).some((t) => t.name === name);
-        const mcp = has || tools.seats.get(who)?.mcp === false ? null : Mcp.find(Tools.held(tools, who), name);
+        const mcp = has ? null : Mcp.find(Tools.held(tools, who), name);
         Mcp.used(tools.mcp);
         const no: Out = { text: "No tool " + name + ".", fail: true };
         const run = () => (has ? Tools.call(tools, who, name, args, signal, id) : mcp !== null ? Mcp.call(tools.mcp, mcp, name, args, signal) : Promise.resolve(no));
@@ -399,32 +347,16 @@ export namespace Tools {
     return null;
   }
 
-  // the chat a caller's cards show in: an agent's own, or its spawner's
-  // for a subagent (who: its name there)
-  export function asker(tools: Tools, who: string): { agent: string; who: string } | null {
-    const seat = tools.seats.get(who);
-    if (seat === undefined) {
-      return null;
-    }
-    if (seat.subs !== null) {
-      return { agent: who, who: "" };
-    }
-    const boss = tools.owner(who);
-    const agent = [...tools.seats].find(([, s]) => s === boss)?.[0];
-    return agent === undefined ? null : { agent, who };
-  }
-
   // a call a rule names runs once the owner approves it
   export async function gated(tools: Tools, who: string, name: string, args: Record<string, unknown>, device: string | null, signal: AbortSignal, run: () => Promise<Out>): Promise<Out> {
     const rule = Rules.montroop(config.ASK, name, args, device, Tools.scratch(tools));
     if (rule === null) {
       return await run();
     }
-    const at = Tools.asker(tools, who);
-    if (at === null) {
+    if (!tools.seats.has(who)) {
       return { text: "No agent " + who + ".", fail: true };
     }
-    const said = await Gate.wait(tools.gate, at.agent, at.who, at.who === "" ? "agent" : "sub", name, args, rule.what, signal, (a) => tools.hub.asked(a));
+    const said = await Gate.wait(tools.gate, who, "", "agent", name, args, rule.what, signal, (a) => tools.hub.asked(a));
     if (said === null) {
       return { text: "Stopped.", fail: true };
     }
@@ -437,25 +369,19 @@ export namespace Tools {
   }
 
   // the owner's answer to a call that asked, from a browser: a note in the
-  // asking agent's or subagent's chat, and, with no call waiting, a
-  // message to it (not for a session's call: its holder keeps it)
-  export async function decide(tools: Tools, id: string, ok: boolean, note: string, answers: Answers): Promise<string | null> {
+  // asking agent's chat, and, with no call waiting, a message to it (not
+  // for a session's call: its holder keeps it)
+  export function decide(tools: Tools, id: string, ok: boolean, note: string, answers: Answers): string | null {
     const said = Gate.decide(tools.gate, id, { ok, note, answers });
     if (said === null) {
       return "This was already answered, or its call was stopped.";
     }
-    const { agent, who, from, tool, what } = said.held;
+    const { agent, from, tool, what } = said.held;
     const text = tool === QUESTION ? (ok ? "Answered by the user: " + Question.said(answers) : "Dismissed by the user, unanswered: " + Gate.line(said.held)) : (ok ? "Approved" : "Denied") + " by the user: " + what.toLowerCase() + " (" + Gate.line(said.held) + ")." + (note === "" ? "" : " Note: “" + note + "”");
-    const boss = tools.seats.get(agent);
-    const seat = (who === "" ? undefined : tools.seats.get(who)) ?? boss;
+    const seat = tools.seats.get(agent);
     seat?.note(text);
     if (!said.waited && from !== "session") {
-      const msg = wake_text("approval", id, text + (ok ? " No call was waiting for it (the server restarted): call " + tool + " again with the same arguments to do it." : " Don't do it another way."));
-      const subs = boss?.subs ?? null;
-      const told = who === "" || subs === null ? null : await subs.tell(who, msg);
-      if (told === null || told.fail) {
-        boss?.report(msg);
-      }
+      seat?.report(wake_text("approval", id, text + (ok ? " No call was waiting for it (the server restarted): call " + tool + " again with the same arguments to do it." : " Don't do it another way.")));
     }
     return null;
   }
@@ -485,16 +411,13 @@ export namespace Tools {
   }
 
   // the same for every agent of the same settings, so one cached copy
-  // serves them all, and the same for every subagent; subagents: its
-  // subagents run on the engine
-  export function list(sub = false, manage = false, subagents = false): Spec[] {
-    const own = boss().filter((t) => (subagents ? !REPLACED.has(t.name) : t.name !== "subagent"));
-    return sub ? [...OWN, ...KIT, SKILL] : [...OWN, ...own, SETTINGS, ...(manage ? [AGENTS] : []), ...KIT, SKILL];
+  // serves them all; sub: the ones a subagent is offered
+  export function list(sub = false, manage = false): Spec[] {
+    return sub ? [...OWN, ...KIT, SKILL] : [...OWN, ...boss(), SETTINGS, ...(manage ? [AGENTS] : []), ...KIT, SKILL];
   }
 
   export function listed(tools: Tools, who: string): Spec[] {
-    const seat = tools.seats.get(who);
-    return Tools.list(seat?.subs === null, seat?.agents?.on() === true, seat?.subagents?.() === true);
+    return Tools.list(false, tools.seats.get(who)?.agents.on() === true);
   }
 
   export function off(tools: Tools): string[] {
@@ -516,10 +439,6 @@ export namespace Tools {
     const mem = seat.mem;
     switch (name) {
       case "zoom": {
-        const log = args.agent === undefined ? null : seat.subs?.show(text_of(args.agent)) ?? null;
-        if (log !== null) {
-          return { text: clip_page(log, Number(args.at ?? 0)), fail: false };
-        }
         const other = args.agent !== undefined;
         const them = other ? Team.by_name(text_of(args.agent)) : null;
         const there = !other ? seat : them === null || them.archived !== 0 ? undefined : Tools.seat(tools, them.id);
@@ -567,10 +486,10 @@ export namespace Tools {
         return Pins.tool(args, who);
       }
       case "agents": {
-        return seat.agents?.on() === true ? seat.agents.run(args) : { text: "Your Manage agents setting is off.", fail: true };
+        return seat.agents.on() ? seat.agents.run(args) : { text: "Your Manage agents setting is off.", fail: true };
       }
       case "settings": {
-        return seat.settings === undefined ? { text: "A subagent has no settings of its own.", fail: true } : seat.settings(args);
+        return seat.settings(args);
       }
       case "schedules": {
         const lines = mem.timers.map(Timer.timer_line);
@@ -583,21 +502,8 @@ export namespace Tools {
       case "message": {
         return await seat.message(text_of(args.agent), text_of(args.text));
       }
-      case "session": {
-        return seat.subs === null ? { text: "A subagent starts no sessions.", fail: true } : Sessions.tool(who, args);
-      }
       case "subagent": {
-        return seat.subs === null ? { text: "A subagent starts none.", fail: true } : seat.subagents?.() !== true ? { text: "Your Lasting subagents setting is off: use spawn, tell, stop and session.", fail: true } : await Subagents.tool(who, args);
-      }
-      case "spawn": {
-        const tasks = Sub.spawns(args);
-        return typeof tasks === "string" ? { text: tasks, fail: true } : seat.subs === null ? { text: "A subagent spawns none.", fail: true } : await seat.subs.spawn(tasks);
-      }
-      case "tell": {
-        return seat.subs === null ? { text: "A subagent tells none.", fail: true } : await seat.subs.tell(text_of(args.name), text_of(args.message));
-      }
-      case "stop": {
-        return seat.subs === null ? { text: "A subagent stops none.", fail: true } : await seat.subs.stop(text_of(args.name), args.why === undefined ? "" : text_of(args.why, "null"));
+        return await Subagents.tool(who, args);
       }
       case "resume": {
         const n = Limit.resume();
@@ -626,7 +532,7 @@ export namespace Tools {
   // devices' MCP tools as last listed, each with the device it runs on;
   // a subagent's as its options say (write false: none that edits a file)
   export function kit(tools: Tools, who: string, as = { memory: true, mcp: true, write: true }): Kit[] {
-    const servers = !as.mcp || tools.seats.get(who)?.mcp === false ? [] : [...Tools.held(tools, who).values()].sort((a, b) => Mcp.by_name(a.conf.name, b.conf.name));
+    const servers = !as.mcp ? [] : [...Tools.held(tools, who).values()].sort((a, b) => Mcp.by_name(a.conf.name, b.conf.name));
     const mcp = servers.flatMap((s) => (Mcp.kept(s) ?? []).map((t) => ({ ...t, device: s.conf.device })));
     const own = Tools.list(true).filter((t) => (as.memory || !OWN.includes(t)) && (as.write || !EDITS.includes(t.name)));
     return [...own.map((t) => ({ ...t, device: null })), ...mcp.filter((t) => t.name.length <= NAME_MOST - HELD.length)];
@@ -656,7 +562,7 @@ export namespace Tools {
     if (Tools.list(true).some((t) => t.name === name)) {
       return await Tools.call(tools, who, name, args, signal, id);
     }
-    const mcp = tools.seats.get(who)?.mcp === false ? null : Mcp.find(Tools.held(tools, who), name);
+    const mcp = Mcp.find(Tools.held(tools, who), name);
     if (mcp === null) {
       return { text: "No tool " + name + ".", fail: true };
     }
@@ -891,7 +797,7 @@ export namespace Tools {
     return d !== undefined && [...d.terms.values()].some((t) => t.live());
   }
 
-  // a turn of who's (an agent's, a subagent's) starts, and ends
+  // a turn of who's starts, and ends
   export function hold(tools: Tools, who: string): void {
     Tools.free(tools, who);
     tools.held.set(who, Mcp.hold(tools.mcp));
@@ -934,7 +840,7 @@ export namespace Tools {
   export function job(tools: Tools, device: string, job: Job, signal: AbortSignal, id: string): Promise<Out> {
     const kept = tools.kept.get(id);
     tools.kept.delete(id);
-    const run = tools.devices.get(device)?.jobs.get(id) ?? kept ?? Tools.start_job(tools, device, job, id);
+    const run = tools.devices.get(device)?.jobs.get(id) ?? kept ?? start_job(tools, device, job, id);
     if (typeof run === "string") {
       return Promise.resolve({ text: run, fail: true });
     }
@@ -943,7 +849,7 @@ export namespace Tools {
     return run.out;
   }
 
-  export function start_job(tools: Tools, device: string, job: Job, id: string): Running | string {
+  function start_job(tools: Tools, device: string, job: Job, id: string): Running | string {
     const d = Tools.open(tools, device);
     if (typeof d === "string") {
       return d;
@@ -972,12 +878,11 @@ export namespace Tools {
     tools.devices.get(device)?.jobs.get(id)?.end(out);
   }
 
-  // a job's report goes to the agent that started it, a done subagent's to
-  // its spawner, or to the oldest active agent if that one is gone
+  // a job's report goes to the agent that started it, or, told as its job,
+  // to the oldest active agent if that one is gone
   export function report(tools: Tools, who: string, text: string): void {
     const seat = tools.seats.get(who);
-    const owner = seat === undefined ? tools.owner(who) : undefined;
-    (seat ?? owner ?? tools.seats.get(Team.first().id))?.report(owner === undefined ? text : wake_relayed(text, who));
+    (seat ?? tools.seats.get(Team.first().id))?.report(seat === undefined ? wake_relayed(text, who) : text);
   }
 
 }

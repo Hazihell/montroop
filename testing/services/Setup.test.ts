@@ -21,34 +21,41 @@ function repo(): string {
 test("a mon's worktree setup for a repo is set, shown, listed and cleared with its tools, and no other mon's", () => {
   const r = repo();
   const command = "cp \"$TROOP_REPO\"/.env* . 2>/dev/null; bun install --frozen-lockfile";
-  expect(Sessions.tool("setter1", { action: "setup", repo: r })).toEqual({ text: "No worktree setup for " + r + ".", fail: false });
-  expect(Sessions.act("setter1", "subagent", { action: "setup", repo: r + "/", command }).text).toStartWith("Set: ");
-  expect(Sessions.tool("setter1", { action: "setup", repo: r })).toEqual({ text: "Worktree setup for " + r + ": " + command, fail: false });
-  expect(Sessions.act("setter1", "subagent", { action: "list" }).text).toContain("\nWorktree setup for " + r + ": " + command);
-  expect(Sessions.tool("setter1", { action: "list" }).text).toContain("\nWorktree setup for " + r + ": " + command);
-  expect(Sessions.tool("setter2", { action: "setup", repo: r })).toEqual({ text: "No worktree setup for " + r + ".", fail: false });
-  expect(Sessions.tool("setter2", { action: "list" })).toEqual({ text: "You have no sessions.", fail: false });
+  expect(Sessions.act("setter1", { action: "setup", repo: r })).toEqual({ text: "No worktree setup for " + r + ".", fail: false });
+  expect(Sessions.act("setter1", { action: "setup", repo: r + "/", command }).text).toStartWith("Set: ");
+  expect(Sessions.act("setter1", { action: "setup", repo: r })).toEqual({ text: "Worktree setup for " + r + ": " + command, fail: false });
+  expect(Sessions.act("setter1", { action: "list" }).text).toContain("\nWorktree setup for " + r + ": " + command);
+  expect(Sessions.act("setter2", { action: "setup", repo: r })).toEqual({ text: "No worktree setup for " + r + ".", fail: false });
+  expect(Sessions.act("setter2", { action: "list" }).text.split("\n").slice(0, -1)).toEqual(["You have no subagents."]);
 
-  expect(Sessions.tool("setter1", { action: "setup", repo: r, command: "" })).toEqual({ text: "Cleared the worktree setup for " + r + ".", fail: false });
-  expect(Sessions.tool("setter1", { action: "setup", repo: r })).toEqual({ text: "No worktree setup for " + r + ".", fail: false });
+  expect(Sessions.act("setter1", { action: "setup", repo: r, command: "" })).toEqual({ text: "Cleared the worktree setup for " + r + ".", fail: false });
+  expect(Sessions.act("setter1", { action: "setup", repo: r })).toEqual({ text: "No worktree setup for " + r + ".", fail: false });
+});
+
+test("a mon is told to agree a repo's setup once, never for a repo with a setup, and each mon for itself", () => {
+  const [bare, set] = [repo(), repo()];
+  Sessions.act("asker1", { action: "setup", repo: set, command: "true" });
+  expect([Setup.mark_asked("asker1", bare), Setup.mark_asked("asker1", bare)]).toEqual([true, false]);
+  expect(Setup.mark_asked("asker1", set)).toBe(false);
+  expect(Setup.mark_asked("asker2", bare)).toBe(true);
 });
 
 test("a setup is for a git repo only", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "plain-"));
-  const out = Sessions.tool("setter3", { action: "setup", repo: dir, command: "true" });
+  const out = Sessions.act("setter3", { action: "setup", repo: dir, command: "true" });
   expect(out.fail).toBe(true);
   expect(out.text).toStartWith(dir + " is no git repository");
 });
 
 test("a setup command needs its repo", () => {
-  expect(Sessions.tool("setter4", { action: "setup", command: "true" })).toEqual({ text: "A setup is for a repo: give repo with command.", fail: true });
+  expect(Sessions.act("setter4", { action: "setup", command: "true" })).toEqual({ text: "A setup is for a repo: give repo with command.", fail: true });
 });
 
 test("a failed setup runs once, and is told again to each holder till its run began", async () => {
   const r = repo();
   const worktree = fs.mkdtempSync(path.join(os.tmpdir(), "worktree-"));
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "holder-"));
-  Sessions.tool("setter5", { action: "setup", repo: r, command: "echo ran >> ../runs-" + path.basename(worktree) + "; echo broken >&2; exit 2" });
+  Sessions.act("setter5", { action: "setup", repo: r, command: "echo ran >> ../runs-" + path.basename(worktree) + "; echo broken >&2; exit 2" });
   Setup.arm("setter5", r, worktree, dir);
   const told: Ev[] = [];
 
@@ -66,7 +73,7 @@ test("a setup's output and errors are told in the order it wrote them", async ()
   const r = repo();
   const worktree = fs.mkdtempSync(path.join(os.tmpdir(), "worktree-"));
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "holder-"));
-  Sessions.tool("setter6", { action: "setup", repo: r, command: "for i in 1 2 3 4 5 6; do echo out$i; echo err$i >&2; done; exit 1" });
+  Sessions.act("setter6", { action: "setup", repo: r, command: "for i in 1 2 3 4 5 6; do echo out$i; echo err$i >&2; done; exit 1" });
   Setup.arm("setter6", r, worktree, dir);
   const told: Ev[] = [];
 

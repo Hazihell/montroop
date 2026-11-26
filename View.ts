@@ -5,7 +5,6 @@ import { LABELS, type Fall, type Move, Pick } from "./Pick.ts";
 import { GLYPH, WHO } from "./Theme.ts";
 import type { Timer } from "./Timer.ts";
 import type { Bg, Job } from "./Machine.ts";
-import type { How, Row as SubRow } from "./Sub.ts";
 import type { Asked } from "./Gate.ts";
 import type { Mode, Status } from "./Session.ts";
 import type { Told } from "./Wire.ts";
@@ -35,7 +34,7 @@ export type Live = { kind: Kind; text: string; of?: string };
 // how many of its calls wait for the owner's yes; works, its work sessions
 // edited: when its settings last changed while this server runs, so a
 // settings page open on it reads them again
-export type Mate = { id: string; name: string; about: string; picture: string; unread: number; last: string; busy: boolean; asks?: number; archived: number; subs?: SubRow[]; works?: SessionRow[]; edited?: number };
+export type Mate = { id: string; name: string; about: string; picture: string; unread: number; last: string; busy: boolean; asks?: number; archived: number; works?: SessionRow[]; edited?: number };
 
 // what a work session waits on: the owner's approval of a call it parked,
 // the owner's answer to a question it put to them, its agent's answer to
@@ -80,13 +79,6 @@ export function asker(a: { who: string; from: string }): string {
 // a work session's media files the app shows inline, by name
 export const PICTURE = /\.(png|jpe?g|gif|webp|avif)$/i;
 export const VIDEO = /\.(mp4|webm|mov)$/i;
-
-// a subagent's page: its log as loaded (from: how many of its first
-// entries aren't yet), what it says now, whether it is done (#116)
-type Logged = Entry & { id?: number };
-
-// how: how it runs or ran, as the server said (#180)
-type Page = { name: string; log: Logged[] | null; live: Live[]; from: number; loading: boolean; done: boolean; how: How | null };
 
 export type Progress = { done: number; total: number; why: string | null; msgs: number; open: number[] };
 
@@ -167,8 +159,6 @@ type View = State & {
   greeted : boolean;
   held  : string;
   kept  : { agent: string; chat: Chat } | null;
-  pages : Map<string, Page>;
-  page  : Page | null;
   team  : Mate[];
   parts : Part[];
   turn  : number;
@@ -199,10 +189,9 @@ export type Server =
   | ({ $: "know" } & Pack)
   | { $: "view"; parts: Part[]; turn: number }
   | { $: "zoom"; id: number; n: number; parts: Part[] }
-  | ({ $: "entry"; agent?: string; id?: number; sent?: boolean } & Entry)
-  | { $: "delta"; agent?: string; kind: Kind; text: string; fresh?: boolean }
-  | { $: "live"; agent?: string; live: Live[] }
-  | { $: "agent"; name: string; found: boolean; from: number; before?: number; entries: Logged[]; done: boolean; end?: boolean; how?: How | null }
+  | ({ $: "entry"; id?: number; sent?: boolean } & Entry)
+  | { $: "delta"; kind: Kind; text: string; fresh?: boolean }
+  | { $: "live"; live: Live[] }
   | ({ $: "state"; replaced?: string } & State)
   | { $: "note"; text: string }
   | { $: "team"; agents: Mate[] }
@@ -232,7 +221,6 @@ type Client =
   | { $: "running"; jobs: Bg[] }
   | { $: "unschedule"; id: string }
   | { $: "zoom"; part: Part }
-  | { $: "agent"; name: string; before?: number }
   | { $: "open"; agent: string };
 
 type Post = { msg: Client & { id: string }; ws: WebSocket | null; done: (a: Answer) => void; said: string };
@@ -252,14 +240,13 @@ export type Act =
   | { $: "Unschedule"; id: string }
   | { $: "Plug"; name: string }
   | { $: "Talk"; on: boolean }
-  | { $: "Goto"; name: string | null }
 
 export type Row =
   | { $: "Sum"; id: number; n: number; msgs: number; text: string }
   | { $: "Box"; id: number; n: number; msgs: number; text: string; rows: Row[] }
   | { $: "Msg"; id: number | null; kind: Kind; who: string; text: string; body: Md.Block[]; call: Call.Call | null; images: string[]; queued?: boolean; from?: string; of?: string; writing?: true }
   | { $: "Line"; id: number | null; call: Call.Call; echo: string | null; rows: Row[]; phase?: Phase }
-  | { $: "Cap"; text: string; think?: true; earlier?: true; wait?: true }
+  | { $: "Cap"; text: string; think?: true; wait?: true }
   | { $: "Ask"; ask: Asked; call: Call.Call }
 
 // a tool call while it's written, then while it runs (#129)
@@ -271,7 +258,7 @@ type Choice = { text: string; to: string; move: Move; here: boolean; vendor: str
 
 export const TURN = "the main turn";
 
-export const WIRE = 6;
+export const WIRE = 7;
 
 export const PING  = 10000;
 export const RETRY = 1000;
@@ -393,8 +380,6 @@ export function view_new(agent: string): View {
     bg        : [],
     held      : "",
     kept      : null,
-    pages     : new Map(),
-    page      : null,
     parts     : [],
     turn      : Infinity,
     nodes     : new Map(),
@@ -443,8 +428,6 @@ function view_to(v: View, agent: string): void {
   view_chat(v);
   Object.assign(v, back ?? {});
   [v.agent, v.held] = [agent, back === null ? "" : agent];
-  v.pages.clear();
-  v.page = null;
   // the open of a chat no longer wanted would take the link back to it
   v.out = v.out.filter((p) => p.msg.$ !== "open");
 }
@@ -478,20 +461,10 @@ export function view_hear(v: View, msg: Server): Client[] {
     view_chat(v);
     v.held = msg.agent;
   }
-  // a new link: the subagents' pages seen before may have missed what
-  // came while it was down, so they're asked for again; the open one now,
-  // shown as it was till its answer replaces it, as a chat is (#185)
-  const fresh = msg.agent !== was;
-  if (fresh) {
+  if (msg.agent !== was) {
     v.greeted = false;
-    v.pages.clear();
   }
-  const again: Client[] = fresh && v.page !== null ? [{ $: "agent", name: v.page.name }] : [];
-  if (fresh && v.page !== null) {
-    v.page.loading = false;
-    v.pages.set(v.page.name, v.page);
-  }
-  return [...again, ...view_heard(v, msg)];
+  return view_heard(v, msg);
 }
 
 function view_heard(v: View, msg: Server): Client[] {
@@ -512,57 +485,22 @@ function view_heard(v: View, msg: Server): Client[] {
       v.turn  = msg.turn;
       return [];
     }
-    case "agent": {
-      const page = v.pages.get(msg.name);
-      if (page === undefined) {
-        return [];
-      }
-      page.done = msg.done;
-      page.how = msg.how ?? page.how;
-      if (msg.end === true) {
-        page.live = [];
-        return [];
-      }
-      if (msg.found && (msg.before === undefined || msg.before === page.from)) {
-        page.log = [...msg.entries, ...(msg.before === undefined ? [] : page.log ?? [])];
-        [page.from, page.loading] = [msg.from, false];
-        return [];
-      }
-      if (!msg.found) {
-        v.pages.delete(msg.name);
-        v.page = v.page === page ? null : v.page;
-        v.notes.push("No submon " + msg.name + ".");
-      }
-      return [];
-    }
     case "zoom":
     case "jobs":
     case "job": {
       return [];
     }
     case "entry": {
-      if (msg.agent !== undefined) {
-        const { $, agent, id, sent, ...entry } = msg;
-        const log = v.pages.get(agent)?.log;
-        log?.push(id === undefined ? entry : { ...entry, id });
-        return [];
-      }
       view_entry(v, msg);
       return [];
     }
     case "delta": {
-      const live = msg.agent === undefined ? v.live : v.pages.get(msg.agent)?.live;
-      if (live !== undefined) {
-        live_push(live, msg.kind, msg.text, msg.fresh);
-      }
+      live_push(v.live, msg.kind, msg.text, msg.fresh);
       return [];
     }
     case "live": {
-      v.greeted ||= msg.agent === undefined;
-      const live = msg.agent === undefined ? v.live : v.pages.get(msg.agent)?.live;
-      if (live !== undefined) {
-        live_set(live, msg.live);
-      }
+      v.greeted = true;
+      live_set(v.live, msg.live);
       return [];
     }
     case "state": {
@@ -616,28 +554,6 @@ export function view_copy(v: View, from: number): Server[] {
   const { busy, wait, sums, again, importing, limit, queue, sent, pick, vendors, models, profiles, timers, mcp, talk, bg, asks, thinking } = v;
   const state = { busy, wait, sums, again, importing, limit, queue, sent, pick, vendors, models, profiles, timers, mcp, talk, bg, asks, thinking };
   return [{ $: "state", agent: v.agent, ...state }, { $: "know", nodes, whole }, { $: "view", parts, turn: v.turn }, { $: "live", live: v.live }];
-}
-
-// a copy of the open subagent page, as the messages a link sends for it,
-// its entries from the one with id from on (#185)
-export function view_page_copy(page: Page, from: number): Server[] {
-  const log = page.log ?? [];
-  const k = Math.max(0, log.findIndex((e) => (e.id ?? Infinity) >= from));
-  return [{ $: "agent", name: page.name, found: true, from: page.from + k, entries: log.slice(k), done: page.done, how: page.how }, { $: "live", agent: page.name, live: page.live }];
-}
-
-// a copy of the open subagent page, while the view holds none of it: the
-// link's answer replaces it in place
-export function view_page_adopt(v: View, copy: Server[]): void {
-  const page = v.page;
-  if (page === null || page.log !== null) {
-    return;
-  }
-  const made = view_new(v.agent);
-  made.on = v.agent;
-  made.pages.set(page.name, { ...page });
-  copy.forEach((msg) => view_heard(made, msg));
-  Object.assign(page, made.pages.get(page.name));
 }
 
 // a copy of the wanted chat, or a page's first messages, while the view
@@ -707,16 +623,6 @@ export function view_act(v: View, act: Act): Client[] {
     case "Talk": {
       return [{ $: "talk", on: act.on }];
     }
-    case "Goto": {
-      if (act.name === null) {
-        v.page = null;
-        return [];
-      }
-      const known = v.pages.get(act.name);
-      v.page = known ?? { name: act.name, log: null, live: [], from: 0, loading: false, done: false, how: null };
-      v.pages.set(act.name, v.page);
-      return known === undefined ? [{ $: "agent", name: act.name }] : [];
-    }
     case "Plug": {
       const asked = v.out.flatMap((p) => (p.msg.$ === "mcp" && p.msg.name === act.name ? [p.msg.on] : [])).at(-1);
       const on = asked ?? v.mcp.find((p) => p.name === act.name)?.on;
@@ -731,37 +637,8 @@ export function view_act(v: View, act: Act): Client[] {
 }
 
 export function view_body(v: View): Row[] {
-  if (v.page !== null) {
-    const sub = view_sub(v);
-    const rows = page_rows(v.page, v.thinking !== false, sub);
-    return backgrounded(sub === undefined ? rows : running(rows, 0), v.bg);
-  }
   const rows = view_lines(view_rows(v, v.parts).flat());
   return backgrounded(v.busy ? running(rows, v.turn) : rows, v.bg);
-}
-
-// a subagent's page shown near its top: its earlier entries (#143)
-export function view_earlier(v: View): Client[] {
-  const page = v.page;
-  if (page === null || page.log === null || page.from === 0 || page.loading) {
-    return [];
-  }
-  page.loading = true;
-  return [{ $: "agent", name: page.name, before: page.from }];
-}
-
-// the shown subagent page's row in the chat list, while it runs
-export function view_sub(v: View): SubRow | undefined {
-  return v.team.find((m) => m.id === v.agent)?.subs?.find((s) => s.name === v.page?.name);
-}
-
-// a subagent's page: its log, earlier entries as it scrolls up (#143),
-// the messages it took but hasn't answered marked (#144)
-function page_rows(page: Page, minds: boolean, sub: SubRow | undefined): Row[] {
-  const log = (page.log ?? []).filter((e) => minds || e.kind !== "mind");
-  const earlier: Row[] = page.from > 0 ? [{ $: "Cap", text: page.loading ? "Loading…" : "", earlier: true }] : [];
-  const rows = log.flatMap((e, k) => (e.id === 0 && e.kind === "note" ? [] : sent_rows(e.id !== undefined && sub?.sent.includes(e.id) === true, whole_rows(e.id ?? null, e, log[k - 1]))));
-  return [...earlier, ...view_lines(rows), ...(page.done && page.log !== null ? [Cap("Done: its report is in the chat that spawned it.")] : [])];
 }
 
 // each tool call and its result are one line that opens in place (#121);
@@ -856,23 +733,13 @@ export function view_tail(v: View): Row[] {
     WAITS.set(key, rows);
     return rows;
   };
-  if (v.page !== null) {
-    const live = v.page.live;
-    const page = live.filter((l) => v.thinking !== false || l.kind !== "mind");
-    const thought = v.thinking === false && live.some((_, k) => thinks(live, k)) ? [THINKING] : [];
-    const sub = view_sub(v);
-    const queued = (sub?.queue ?? []).flatMap((text) => waits("user", text, true));
-    const last = v.page.log?.at(-1);
-    const idle = sub !== undefined && v.page.live.length === 0 && (last?.kind !== "tool" || last.echo !== undefined) && sub.doing !== "usage limit";
-    return [...thought, ...live_rows(page, sub !== undefined), ...(idle ? [WAITING] : []), ...view_asks(v, v.page.name), ...queued];
-  }
   const thought = v.thinking === false && (v.live.some((_, k) => thinks(v.live, k)) || (v.live.length === 0 && v.busy && v.wait === "" && thought_last(v))) ? [THINKING] : [];
   const rows = [...thought, ...live_rows(v.live.filter((l) => v.thinking !== false || l.kind !== "mind"), v.busy && v.wait === "")];
   const load = v.importing !== null ? [Cap(progress_show(v.importing))] : [];
   const said = !v.up ? v.out.flatMap((p) => waits("user", p.said, false)) : [];
   const kept = said.length > 0 ? [...said, Cap(UNSENT)] : [];
   const queued = v.queue.flatMap((q) => waits(q.kind, q.text, true));
-  const after = [...view_asks(v, ""), ...queued, ...kept, ...load];
+  const after = [...v.asks.map(ask_row), ...queued, ...kept, ...load];
   if (v.limit !== null) {
     return [...rows, Cap(limit_show(v.limit)), ...after];
   }
@@ -880,12 +747,6 @@ export function view_tail(v: View): Row[] {
     return [...rows, ...(rows.length > 0 ? [] : [Cap(sums_show(v.sums, v.again))]), ...after];
   }
   return [...rows, ...(v.busy && v.wait !== "" ? [WAITING] : []), ...after];
-}
-
-// the calls waiting for the owner's yes (Gate) made by who: "" for the
-// agent itself and its work sessions, else a subagent's name
-function view_asks(v: View, who: string): Row[] {
-  return v.asks.filter((a) => a.who === who || (who === "" && a.from === "session")).map(ask_row);
 }
 
 export function ask_row(ask: Asked): Extract<Row, { $: "Ask" }> {
@@ -907,9 +768,9 @@ function limit_show(limit: Parked, now = Date.now()): string {
 }
 
 // the one usage-limit note: the parked wait's row, a call ended by one
-// (off in Limit.ts), a subagent's in its spawner's turn (#170)
-export function limit_note(vendor: Vendor, does: string, until: number | null, now = Date.now(), since: number | null = null): string {
-  return "Usage limit on " + vendor + (since === null ? "" : " since " + clock(since, now)) + ", " + (until === null ? "reset time unknown" : does + " at " + clock(until, now));
+// (off in Limit.ts)
+export function limit_note(vendor: Vendor, does: string, until: number | null, now = Date.now()): string {
+  return "Usage limit on " + vendor + ", " + (until === null ? "reset time unknown" : does + " at " + clock(until, now));
 }
 
 export function clock(at: number, now = Date.now()): string {
@@ -929,22 +790,15 @@ export function view_stoppable(v: View): boolean {
   return v.busy || v.limit !== null;
 }
 
-// a subagent's page shows its model and effort, not to be changed (#156),
-// also once it's done (#180)
 export function view_pick(v: View): Knob[] {
-  if (v.page !== null) {
-    const sub = view_sub(v) ?? v.page.how ?? undefined;
-    const shown = (text: string, move: Move): Knob[] => (text === "" ? [] : [{ text, move, hint: text, choices: [] }]);
-    return sub === undefined ? [] : sub.pick !== null ? view_knobs(v, sub.pick, false) : [...shown(sub.model, "model"), ...shown(sub.effort, "effort")];
-  }
-  return v.pick === null ? [] : view_knobs(v, v.pick, true);
+  return v.pick === null ? [] : view_knobs(v, v.pick);
 }
 
-function view_knobs(v: View, pick: Pick, menus: boolean): Knob[] {
+function view_knobs(v: View, pick: Pick): Knob[] {
   const { model, effort, speed, profile } = pick;
   const ranks = (v.profiles?.[profile ?? ""] ?? []).map((f) => f.model.label).join(", ");
   const whose = Pick.twin(pick.vendor, model, v.vendors) ? ", " + pick.vendor : "";
-  const choices = (move: Move) => (menus ? view_choices(pick, move, v) : []);
+  const choices = (move: Move) => view_choices(pick, move, v);
   return [
     { text: profile ?? model, move: "model", hint: profile === undefined ? model + whose : profile + ": " + ranks, choices: choices("model") },
     ...(effort === "" ? [] : [{ text: effort, move: "effort" as const, hint: effort + " effort", choices: choices("effort") }]),

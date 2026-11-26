@@ -1,4 +1,4 @@
-import { AlarmIcon, CaretRightIcon, GearSixIcon, GitBranchIcon, PaintBrushIcon, PlayIcon, TerminalWindowIcon, TreeStructureIcon, BrainIcon } from "@phosphor-icons/react";
+import { AlarmIcon, CaretRightIcon, GearSixIcon, PaintBrushIcon, PlayIcon, TerminalWindowIcon, TreeStructureIcon, BrainIcon } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, type ReactNode } from "react";
 import type { Timer } from "../../Timer.ts";
@@ -13,7 +13,6 @@ import { useWorks, work_live, WorkRows } from "./Works.tsx";
 
 const NO_JOBS: View.BgJob[] = [];
 const NO_TIMERS: Timer[] = [];
-const NO_SUBS: NonNullable<View.Mate["subs"]> = [];
 
 // the client holds one agent at a time: its jobs, timers and context are
 // known only while it is that one
@@ -21,12 +20,12 @@ function useHeld(agent: string): boolean {
   return useMontroop((s) => s.agent === agent && s.loaded);
 }
 
-// how many things work for the agent now: its subagents, its work
-// sessions at work and its background jobs; timers wait, so they don't count
+// how many things work for the agent now: its work sessions and subagents
+// at work and its background jobs; timers wait, so they don't count
 export function useGoing(agent: string): number {
   return useMontroop((s) => {
     const mate = s.team.find((m) => m.id === agent);
-    return (mate?.subs?.length ?? 0) + (mate?.works?.filter(work_live).length ?? 0) + (s.agent === agent ? s.jobs.length : 0);
+    return (mate?.works?.filter(work_live).length ?? 0) + (s.agent === agent ? s.jobs.length : 0);
   });
 }
 
@@ -38,24 +37,16 @@ function useContext(agent: string): number | null {
 export function RunList({ agent }: { agent: string }): ReactNode {
   const held = useHeld(agent);
   const works = useWorks(agent);
-  const subs = useMontroop((s) => s.team.find((m) => m.id === agent)?.subs ?? NO_SUBS);
   const allJobs = useMontroop((s) => s.jobs);
   const allTimers = useMontroop((s) => s.timers);
   const jobs = held ? allJobs : NO_JOBS;
   const timers = held ? allTimers : NO_TIMERS;
-  if (works.length + subs.length + jobs.length + timers.length === 0) {
+  if (works.length + jobs.length + timers.length === 0) {
     return <p className="lede py-2">{held ? "Nothing runs right now. Its submons, background jobs and timers show here." : "…"}</p>;
   }
   return (
     <div className="pb-2">
       <WorkRows agent={agent} />
-      {subs.map((sub) => (
-        <Link key={sub.name} to="/a/$agent/s/$name" params={{ agent, name: sub.name }} className="item go">
-          <GitBranchIcon size={18} />
-          <p><b className="font-semibold">{sub.name}</b><small>{[sub.model, sub.effort, sub.doing === "" ? sub.task : sub.doing].filter((x) => x !== "").join(" · ")}</small></p>
-          <CaretRightIcon size={16} className="self-center" />
-        </Link>
-      ))}
       {jobs.map((job) => (
         <div key={job.device + job.id} className="item">
           <TerminalWindowIcon size={18} />

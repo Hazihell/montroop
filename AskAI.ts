@@ -35,7 +35,6 @@ export type Ask = Pick & {
   patient?  : boolean;
   yields?   : string;
   probe?    : boolean;
-  agent?    : boolean;
   fallback? : boolean;
   no_wait?  : boolean;
   repick?   : () => Pick;

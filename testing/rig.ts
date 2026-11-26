@@ -18,14 +18,10 @@ type Json = Record<string, unknown>;
 
 type Told = { seq: number; at: number; ev: Json & { k: string } };
 
-// how a test starts its work: a work session (the app's form, the session
-// tool's start), or a subagent its agent starts with the subagent tool, on
-// Claude Code, or (codex) on Codex
-export type Via = "session" | "subagent" | "codex";
-export const VIAS: Via[] = ["session", "subagent", "codex"];
-
-// those that run Claude Code
-export const CLAUDE: Via[] = ["session", "subagent"];
+// how a test starts its work: a subagent its agent starts with the
+// subagent tool, on Claude Code, or (codex) on Codex
+type Via = "subagent" | "codex";
+export const VIAS: Via[] = ["subagent", "codex"];
 
 // a shell command as the model of via calls it; outside: it writes past
 // the workspace (a worktree's git folder), so Codex asks to run it outside
@@ -37,14 +33,6 @@ export function shell(via: Via, command: string, outside = false): [string, unkn
 // a new file as the model of via writes it
 export function write(via: Via, file: string, content: string): [string, unknown] {
   return via !== "codex" ? ["Write", { file_path: file, content }] : ["apply_patch", "*** Begin Patch\n*** Add File: " + file + "\n+" + content + "\n*** End Patch\n"];
-}
-
-// the tool an agent drives via with, and the tool via asks its agent with
-export function driven(via: Via): "session" | "subagent" {
-  return via === "session" ? "session" : "subagent";
-}
-export function asks(via: Via): string {
-  return via === "session" ? "ask_owner" : "ask";
 }
 
 // a subagent task's model for via: Codex's on its ChatGPT plan for codex
@@ -128,7 +116,7 @@ function port(): number {
 
 // the agent's chat and compactor run on Montroop's own loop, so a turn starts
 // no Claude Code and a usage limit on claude-sub doesn't stop them: work
-// sessions and subagents (subagents()) run Claude Code on claude-sub all
+// subagents (subagents()) run Claude Code on claude-sub all
 // the same. A test of the chat on claude-sub passes SUB.
 const CHAT = "openai-api:gpt-6-luna:low:slow";
 const SUB_MODEL = "claude-sub:haiku-5.5:low:slow";
@@ -262,36 +250,29 @@ export class Troop {
     return d;
   }
 
-  async session(name: string, prompt: string, repo: string, more: Json = {}): Promise<Session> {
-    const r = await this.api("POST", "/api/sessions", { agent: this.agent, repo, base: "main", name, brief: "", prompt, ...more });
-    if (r.status !== 200) {
-      throw new Error("start " + name + ": " + JSON.stringify(r.json));
-    }
-    const s = new Session(this, String(r.json.id), name, "session");
-    s.worktree = (await s.page()).worktree;
-    return s;
-  }
-
   // a subagent or several its agent starts in one call of the subagent
-  // tool (its setting turned on first), each on its task's options, by
-  // default on claude-sub's haiku-5.5
+  // tool, each on its task's options, by default on claude-sub's haiku-5.5
   async subagents(...tasks: Json[]): Promise<Session[]> {
-    await this.api("POST", "/api/agents/" + this.agent, { subagents: true });
     const t = tag();
     await fake.next(t + ": start", { what: "tool", calls: [["subagent", { action: "start", tasks: tasks.map((task) => ({ model: "haiku-5.5", ...task })) }]] });
     await this.tell(t + ": start");
     return await Promise.all(tasks.map(async (task) => {
       const row = await until("subagent " + String(task.name), async () => ((await this.api("GET", "/api/sessions?agent=" + this.agent)).json as unknown as Array<{ id: string; name: string }>).find((x) => x.name === task.name));
-      const s = new Session(this, row.id, row.name, "subagent");
-      s.worktree = (await s.page()).worktree;
-      return s;
+      return await this.adopt(row.id, row.name);
     }));
   }
 
-  // a work session, or a subagent its agent starts on the same repo,
-  // from main (codex: on Codex, the server one of on("codex"))
+  // a session started some other way, by its id and name
+  async adopt(id: string, name: string): Promise<Session> {
+    const s = new Session(this, id, name);
+    s.worktree = (await s.page()).worktree;
+    return s;
+  }
+
+  // a subagent its agent starts on repo, from main (codex: on Codex, the
+  // server one of on("codex"))
   async work(via: Via, name: string, prompt: string, repo: string, more: Json = {}): Promise<Session> {
-    return via === "session" ? await this.session(name, prompt, repo, more) : (await this.subagents({ task: prompt, name, repo, base: "main", ...model(via), ...more }))[0];
+    return (await this.subagents({ task: prompt, name, repo, base: "main", ...model(via), ...more }))[0];
   }
 }
 
@@ -316,16 +297,11 @@ class Device {
 class Session {
   worktree = "";
 
-  constructor(readonly k: Troop, readonly id: string, readonly name: string, readonly via: Via) {}
-
-  // what it is to its agent
-  get kind(): "session" | "subagent" {
-    return driven(this.via);
-  }
+  constructor(readonly k: Troop, readonly id: string, readonly name: string) {}
 
   // the start of a wake it sends its agent
   woke(body: string): string {
-    return wake_text(this.kind, this.name, body);
+    return wake_text("subagent", this.name, body);
   }
 
   get dir(): string {

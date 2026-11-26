@@ -72,23 +72,16 @@ export namespace Run {
   }
 
   export function take<Q, M>(run: Run<Q, M>, q: Q): Promise<string | null> {
-    return Run.takes(run, [q]).then(([why]) => why);
-  }
-
-  export function takes<Q, M>(run: Run<Q, M>, qs: Q[]): Promise<(string | null)[]> {
-    const dones = qs.map((q) => {
-      const { promise, resolve } = Promise.withResolvers<string | null>();
-      run.queue.push({ q, done: resolve });
-      return promise;
-    });
+    const { promise, resolve } = Promise.withResolvers<string | null>();
+    run.queue.push({ q, done: resolve });
     if (!run.busy) {
       run.going = loop(run);
-      return Promise.all(dones);
+      return promise;
     }
-    run.queue.slice(run.queue.length - qs.length).forEach((x) => x.done(null));
+    resolve(null);
     safe(run, () => run.kind.queued(run));
     run.call?.wake();
-    return Promise.all(dones);
+    return promise;
   }
 
   async function loop<Q, M>(run: Run<Q, M>): Promise<void> {

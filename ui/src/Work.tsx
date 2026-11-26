@@ -282,7 +282,7 @@ export function WorkPage({ agent, id }: { agent: string; id: string }): ReactNod
   const live = row !== undefined && work_live(row);
   const now = useNow(live);
   useEffect(() => {
-    show(agent, null, false);
+    show(agent, false);
     return () => show(null);
   }, [agent]);
   // looked at: it is no longer new for the owner

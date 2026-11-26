@@ -12,9 +12,9 @@ import { Versions } from "./Versions.tsx";
 const Importer = lazy(() => import("./Importer.tsx"));
 
 // an agent as its settings read and save it
-type Agent = { id: string; name: string; about: string; picture: string; prompt: string; own: boolean; template: string; archived: number; leader: boolean; lines: number; manage: boolean; subagents: boolean; claude: string };
+type Agent = { id: string; name: string; about: string; picture: string; prompt: string; own: boolean; template: string; archived: number; leader: boolean; lines: number; manage: boolean; claude: string };
 type All = { agents: Agent[]; template: string; accounts: string[] };
-type Form = Pick<Agent, "name" | "about" | "picture" | "prompt" | "leader" | "manage" | "subagents" | "claude"> & { lines: string };
+type Form = Pick<Agent, "name" | "about" | "picture" | "prompt" | "leader" | "manage" | "claude"> & { lines: string };
 
 const NAME = 24;
 const ABOUT = 120;
@@ -65,7 +65,7 @@ function Plugs({ agent }: { agent: string }): ReactNode {
   const held = useMontroop((s) => s.agent === agent && s.loaded);
   const plugs = useMontroop((s) => s.plugs);
   useEffect(() => {
-    show(agent, null, false);
+    show(agent, false);
     return () => show(null);
   }, [agent]);
   if (!held) {
@@ -97,7 +97,6 @@ function Fields({ a, all }: { a: Agent | null; all: All }): ReactNode {
     prompt  : a?.prompt ?? all.template.replaceAll("{Name}", ""),
     leader  : a?.leader ?? false,
     manage  : a?.manage ?? false,
-    subagents: a?.subagents ?? false,
     claude  : a?.claude ?? all.accounts[0] ?? "",
     lines   : String(a?.lines ?? View.LINES),
   }));
@@ -130,7 +129,7 @@ function Fields({ a, all }: { a: Agent | null; all: All }): ReactNode {
         return;
       }
       const was = kept.current;
-      const fresh: Form = { name: now.name, about: now.about, picture: now.picture, prompt: now.prompt, leader: now.leader, manage: now.manage, subagents: now.subagents, claude: now.claude, lines: String(now.lines) };
+      const fresh: Form = { name: now.name, about: now.about, picture: now.picture, prompt: now.prompt, leader: now.leader, manage: now.manage, claude: now.claude, lines: String(now.lines) };
       kept.current = fresh;
       setForm((f) => Object.fromEntries(Object.entries(f).map(([k, v]) => [k, v === was[k as keyof Form] ? fresh[k as keyof Form] : v])) as Form);
       if (fresh.prompt !== was.prompt) {
@@ -231,9 +230,6 @@ function Fields({ a, all }: { a: Agent | null; all: All }): ReactNode {
           )}
           <Set name="Manage mons" about="It may create, edit, archive and restore mons, when you ask it to. None is deleted.">
             <input type="checkbox" role="switch" className="switch" checked={form.manage} onChange={(ev) => set({ manage: ev.target.checked }, true)} />
-          </Set>
-          <Set name="Lasting submons" about="Its submons (subagents) run on their own through restarts, each in its own folder or worktree, and it drives them with one subagent tool in place of spawn, tell, stop and session.">
-            <input type="checkbox" role="switch" className="switch" checked={form.subagents} onChange={(ev) => set({ subagents: ev.target.checked }, true)} />
           </Set>
           <Set name="Leader mode" about="Each turn, the newest lines of every other mon's memory, to zoom into.">
             <input type="checkbox" role="switch" className="switch" checked={form.leader} onChange={(ev) => set({ leader: ev.target.checked }, true)} />

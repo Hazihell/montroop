@@ -18,21 +18,6 @@ async function asked(match: string): Promise<number> {
   return Math.min(...(await fake.seen(match)).map((s) => Date.parse(s.at)));
 }
 
-// its chat on claude-sub, which lists Montroop's tools through Claude Code
-test.concurrent("the subagent tool is offered, in place of spawn, tell, stop and session, only to an agent whose setting turns it on", async () => {
-  const k = await Troop.up(SUB);
-  const [off, on] = [tag(), tag()];
-  await k.tell(off + ": hello");
-  await until("its turn", async () => (await fake.seen(off + ": hello")).length > 0);
-  await k.api("POST", "/api/agents/" + k.agent, { subagents: true });
-  await k.tell(on + ": hello");
-  await until("its turn", async () => (await fake.seen(on + ": hello")).length > 0);
-
-  const tools = async (t: string) => (await fake.seen(t + ": hello"))[0].tools.map((n) => n.replace(/^mcp__montroop__/, "")).filter((n) => ["subagent", "spawn", "tell", "stop", "session"].includes(n)).sort();
-  expect(await tools(off)).toEqual(["session", "spawn", "stop", "tell"]);
-  expect(await tools(on)).toEqual(["subagent"]);
-});
-
 // its chat on claude-sub, which calls Montroop's subagent tool through Claude Code
 test.concurrent("one with no repo starts with its agent's view, in a folder of its own, and zooms its agent's memory", async () => {
   const k = await Troop.up(SUB);
@@ -124,7 +109,6 @@ test.concurrent("one given a branch works on that new branch, its start says so,
 
 test.concurrent("a start with a task whose branch can't be made starts none of its tasks, and says why", async () => {
   const k = await Troop.up();
-  await k.api("POST", "/api/agents/" + k.agent, { subagents: true });
   const t = tag();
   const r = repo();
   const linked = path.join(path.dirname(r), "linked");
@@ -301,7 +285,6 @@ const FACTS = /\d+ cores, \d+% busy; memory \d+\.\d GB available of \d+\.\d GB; 
 
 test.concurrent("the subagent tool starts every task it's given, however many, an old config's most at once ignored, and its start and list tell the computer's resources", async () => {
   const k = await Troop.up({ submons: 1 });
-  await k.api("POST", "/api/agents/" + k.agent, { subagents: true });
   const t = tag();
   const names = Array.from({ length: 11 }, (_, n) => "w" + n + "-" + t);
   await fake.next(t + ": start", { what: "tool", calls: [["subagent", { action: "start", tasks: names.map((name) => ({ task: t + ": " + name, name, model: "gpt-6-luna", memory: false })) }]] });
@@ -316,20 +299,14 @@ test.concurrent("the subagent tool starts every task it's given, however many, a
   expect(((await k.api("GET", "/api/sessions?agent=" + k.agent)).json as unknown as Array<{ name: string }>).map((x) => x.name).sort()).toEqual([...names].sort());
 });
 
-test.concurrent("a mon whose subagents run on the engine is told to split work into subagents and judge how many from the computer's resources, which each turn tells; one whose don't, to use them only when asked", async () => {
+test.concurrent("a mon is told to split work into subagents and judge how many from the computer's resources, which each turn tells", async () => {
   const k = await Troop.up();
-  const [off, on] = [tag(), tag()];
-  await k.tell(off + ": hello");
-  await until("its turn", async () => (await fake.seen(off + ": hello")).length > 0);
-  await k.api("POST", "/api/agents/" + k.agent, { subagents: true });
-  await k.tell(on + ": hello");
-  await until("its turn", async () => (await fake.seen(on + ": hello")).length > 0);
+  const t = tag();
+  await k.tell(t + ": hello");
+  await until("its turn", async () => (await fake.seen(t + ": hello")).length > 0);
 
-  const asked = async (t: string) => JSON.stringify(await fake.body(t + ": hello"));
-  expect(await asked(off)).toContain("Use subagents only when the user asks for them.");
-  expect(await asked(off)).not.toContain("This computer as this turn started");
-  expect(await asked(on)).not.toContain("Use subagents only when the user asks for them.");
-  expect(await asked(on)).toContain("Split large or parallel work into subagents:");
-  expect(await asked(on)).toContain("How many to start is your judgment.");
-  expect(await asked(on)).toMatch(new RegExp("This computer as this turn started: " + FACTS.source));
+  const asked = JSON.stringify(await fake.body(t + ": hello"));
+  expect(asked).toContain("Split large or parallel work into subagents:");
+  expect(asked).toContain("How many to start is your judgment.");
+  expect(asked).toMatch(new RegExp("This computer as this turn started: " + FACTS.source));
 });

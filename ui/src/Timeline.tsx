@@ -2,7 +2,7 @@ import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { ArrowDownIcon } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { earlier, holds, useMontroop } from "./Montroop.ts";
+import { holds, useMontroop } from "./Montroop.ts";
 import { items_of, rose_keep, Row, useWork, type Item } from "./Rows.tsx";
 
 // more items than this coming at once stay still
@@ -36,11 +36,10 @@ function MineIcon(): ReactNode {
   );
 }
 
-// sub: a subagent's page, which loads its earlier entries near its top;
 // head: the header's end, where the way up shows, out of the last row's way.
 // Each tap goes one of the user's messages further up, and the way shows as
 // long as one of them is above the face's room.
-export function Timeline({ sub, head }: { sub: boolean; head: HTMLElement | null }): ReactNode {
+export function Timeline({ head }: { head: HTMLElement | null }): ReactNode {
   const rows = useMontroop((s) => s.rows);
   const tail = useMontroop((s) => s.tail);
   const greeted = useMontroop((s) => s.greeted);
@@ -148,7 +147,6 @@ export function Timeline({ sub, head }: { sub: boolean; head: HTMLElement | null
         maintainScrollAtEnd
         maintainVisibleContentPosition
         onScroll={scrolled}
-        onStartReached={sub ? earlier : undefined}
         style={{ height: "100%" }}
       />
       {head === null ? null : createPortal(

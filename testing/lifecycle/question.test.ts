@@ -1,5 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
-import { down, fake, procs, repo, said, tag, Troop, until, type Via } from "../rig.ts";
+import { down, fake, procs, repo, said, tag, Troop, until } from "../rig.ts";
 
 afterAll(down);
 
@@ -12,10 +12,10 @@ function asking(t: string): [string, Record<string, unknown>] {
   ] }];
 }
 
-// a session or subagent whose model asks the user, and the card it waits on
-async function asked(k: Troop, via: Via, name: string, t: string) {
+// a subagent whose model asks the user, and the card it waits on
+async function asked(k: Troop, name: string, t: string) {
   await fake.next(t + ": work", { what: "tool", calls: [asking(t)] });
-  const s = await k.work(via, name, t + ": work", repo());
+  const s = await k.work("subagent", name, t + ": work", repo());
   const card = await until("its card", () => k.cards().find((c) => c.input.includes("Which bird " + t)));
   return { s, card };
 }
@@ -28,7 +28,7 @@ async function heard(text: string): Promise<boolean> {
 test.concurrent("a question Claude Code asks the user waits on the owner's card, and their picks go back to the model as its answer", async () => {
   const k = await Troop.up();
   const t = tag();
-  const { s, card } = await asked(k, "session", "qa", t);
+  const { s, card } = await asked(k, "qa", t);
 
   expect(card.tool).toBe("AskUserQuestion");
   expect((await s.status("waiting")).waits).toBe("question");
@@ -44,7 +44,7 @@ test.concurrent("a question Claude Code asks the user waits on the owner's card,
 test.concurrent("a question the owner dismisses tells the model it went unanswered", async () => {
   const k = await Troop.up();
   const t = tag();
-  const { s, card } = await asked(k, "subagent", "qd", t);
+  const { s, card } = await asked(k, "qd", t);
 
   expect((await k.api("POST", "/api/approve", { id: card.id, ok: false, note: "" })).status).toBe(200);
   const done = await s.status("done");
@@ -54,7 +54,7 @@ test.concurrent("a question the owner dismisses tells the model it went unanswer
 test.concurrent("a question still waits on its card across a server restart, and the answer given after it reaches the model", async () => {
   const k = await Troop.up();
   const t = tag();
-  const { s } = await asked(k, "subagent", "qr", t);
+  const { s } = await asked(k, "qr", t);
   await k.kill();
   await k.start();
 
@@ -65,10 +65,10 @@ test.concurrent("a question still waits on its card across a server restart, and
   await s.status("done");
 });
 
-test.concurrent("a session stopped while its question waits takes its card down, and its holder and Claude Code end", async () => {
+test.concurrent("a subagent stopped while its question waits takes its card down, and its holder and Claude Code end", async () => {
   const k = await Troop.up();
   const t = tag();
-  const { s } = await asked(k, "session", "qs", t);
+  const { s } = await asked(k, "qs", t);
   const holder = await until("its holder", () => s.holder());
 
   expect((await k.api("POST", "/api/sessions/" + s.id + "/stop", {})).status).toBe(200);

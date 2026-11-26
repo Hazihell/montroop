@@ -788,11 +788,8 @@
     height: 0.3125rem;
     margin: 0 0.4375rem 0.125rem 0;
     border-radius: 50%;
-    background: var(--act);
-    vertical-align: middle;
-  }
-  .tag i.off::before {
     background: var(--bad);
+    vertical-align: middle;
   }
   .talk {
     position: relative;
@@ -838,13 +835,6 @@
     grid-column: 3;
     justify-self: end;
     align-items: center;
-  }
-  .under {
-    z-index: 2;
-    margin: 0 auto 0.75rem;
-    color: var(--mid);
-    font-size: 0.8125rem;
-    text-align: center;
   }
   .row {
     max-width: 46rem;

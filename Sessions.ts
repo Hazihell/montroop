@@ -1,20 +1,21 @@
 // Sessions
 // ========
-// The server's side of work sessions: each run is a holder's (Holders),
-// running Claude Code in the session's worktree; what it tells goes into
-// the session's record (Session); each call it parks shows as the owner's
-// Ask card (Gate), whose answer goes back to it; each call of Montroop's
-// tools it sends runs here once (Tools), its result kept till the holder
-// took it. On boot the holders still running are adopted, and the
-// sessions whose holder is gone marked as failed, to resume. When a run
-// ends, or waits on the owner or on its agent's answer, the agent gets
-// one message that starts its turn ("[Session name] done: …"), kept in
-// the record till it's in the agent's chat, so a restart neither loses
-// nor repeats it. Agents drive their own sessions with the session tool.
-// A subagent of the engine (Subagents) is a session too, run on its
-// provider's driver as its job file says, in its worktree or a folder of
-// its own; a holder of one that died is tried again by the server itself,
-// and siblings started together launch once the first has begun to answer.
+// The server's side of subagents (Subagents), each a session: each run is
+// a holder's (Holders), running its provider's driver as its job file says,
+// in its worktree or a folder of its own; what it tells goes into the
+// session's record (Session); each call it parks shows as the owner's Ask
+// card (Gate), whose answer goes back to it; each call of Montroop's tools
+// it sends runs here once (Tools), its result kept till the holder took
+// it. On boot the holders still running are adopted, and the sessions
+// whose holder is gone marked as failed, to resume; a holder of one that
+// died is tried again by the server itself, and siblings started together
+// launch once the first has begun to answer. When a run ends, or waits on
+// the owner or on its agent's answer, the agent gets one message that
+// starts its turn ("[Subagent name] done: …"), kept in the record till
+// it's in the agent's chat, so a restart neither loses nor repeats it.
+// Work sessions (Claude Code in a worktree, the session tool's) start no
+// more: the old ones still read, resume and run here, till the old
+// engine's cleanup removes them.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -24,20 +25,17 @@ import { Browser, MEDIA } from "./Browser.ts";
 import { call_gist, call_parse } from "./Call.ts";
 import * as config from "./Config.ts";
 import { Gate, type Asked } from "./Gate.ts";
-import { Hold, SPEC, type Spec } from "./Hold.ts";
+import { Hold } from "./Hold.ts";
 import { Holders, type Holder } from "./Holders.ts";
 import { err_why } from "./Err.ts";
 import { get, parse, rec, str, text_of } from "./Json.ts";
-import { Machine } from "./Machine.ts";
 import { Owner } from "./Owner.ts";
 import { QUESTION, Question } from "./Question.ts";
 import { Room } from "./Room.ts";
 import { Setup } from "./Setup.ts";
 import { LABELS, Pick } from "./Pick.ts";
-import { Brief } from "./Brief.ts";
 import type { Job } from "./Driver.ts";
-import { transients } from "./Service.ts";
-import { LIVE, Session, type Effect, type Kind, type Mode, type Parked, type Run } from "./Session.ts";
+import { LIVE, Session, type Effect, type Mode, type Parked, type Run } from "./Session.ts";
 import type { Wake } from "./Wake.ts";
 import { Team } from "./Team.ts";
 import { Tools } from "./Tools.ts";
@@ -45,12 +43,6 @@ import * as Prompts from "./Prompts.ts";
 import { clock, PICTURE, VIDEO, type SessionPage, type SessionRow, type Waits } from "./View.ts";
 import { Wire, type Ev, type Told } from "./Wire.ts";
 import { Worktree } from "./Worktree.ts";
-
-// what a new session needs: its agent; a repo on this computer, the ref
-// its branch starts from and the branch ("": troop/<name>); its name; the
-// brief its system prompt adds; the first message; the model ("": the
-// account's default)
-type Begin = { agent: string; repo: string; base: string; branch: string; name: string; brief: string; prompt: string; model: string };
 
 // what became of a message: into the run at work, kept for the next run,
 // the answer to the session's question, a run started on it, or nothing
@@ -193,47 +185,6 @@ export namespace Sessions {
   function held(id: string): { holder: Holder; ack: number } | null {
     const s = Session.get(id);
     return s === null || !LIVE.includes(s.status) ? null : { holder: holder(s), ack: s.ack };
-  }
-
-  function start(b: Begin): Session | string {
-    const agent = Team.get(b.agent);
-    if (agent === null || agent.archived !== 0) {
-      return "No agent " + b.agent + ".";
-    }
-    if (!NAME.test(b.name)) {
-      return "A session's name is 1 to 40 lowercase letters, digits and dashes.";
-    }
-    if (Session.list(b.agent).some((s) => s.name === b.name)) {
-      return "This agent has a session " + b.name + " already: archive it first, or pick another name.";
-    }
-    if (b.prompt.trim() === "") {
-      return "A session starts with a message.";
-    }
-    if (!transients()) {
-      return "Work sessions run as systemd user units, and systemd-run isn't here.";
-    }
-    const top = Worktree.top(b.repo);
-    if ("why" in top) {
-      return top.why;
-    }
-    const id = crypto.randomUUID().slice(0, 8);
-    const base = Worktree.named(top.dir, b.base || "HEAD");
-    const branch = b.branch || "troop/" + b.name;
-    const worktree = path.join(Machine.agent_dir(b.agent), "sessions", b.name);
-    fs.mkdirSync(path.dirname(worktree), { recursive: true });
-    const made = Worktree.make(top.dir, base, branch, worktree);
-    if (made !== null) {
-      return made;
-    }
-    const dir = path.join(DIR, id);
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    Setup.arm(b.agent, top.dir, worktree, dir);
-    const media = Browser.make(dir, id) ? path.join(dir, MEDIA) : null;
-    const spec: Spec = { cwd: worktree, claude: config.claude_dir(agent.claude), model: b.model, append: Brief.append(agent, media, b.brief, HOOKS.tools) };
-    fs.writeFileSync(path.join(dir, SPEC), JSON.stringify(spec, null, 1) + "\n", { mode: 0o600 });
-    const s = Session.add({ id, name: b.name, agent: b.agent, repo: top.dir, base, branch, worktree, account: agent.claude, model: b.model, dir }, b.prompt);
-    const why = launch(s, b.prompt, null);
-    return why === null ? Session.get(id) ?? s : why + "\nThe session " + b.name + " is kept, as failed: once that's fixed, send it a message to start it.";
   }
 
   // a run's holder started on its first message, resuming the session's
@@ -707,44 +658,24 @@ export namespace Sessions {
     return names.map((f) => ({ f, at: fs.statSync(path.join(dir, f)).mtimeMs })).sort((a, b) => a.at - b.at).map(({ f }) => f);
   }
 
-  // the session tool: an agent starts and drives its own sessions, by name
-  export function tool(agent: string, args: Record<string, unknown>): Out {
-    const arg = (k: string) => (args[k] === undefined || args[k] === null ? "" : text_of(args[k]).trim());
-    if (arg("action") !== "start") {
-      return Sessions.act(agent, "session", args);
-    }
-    const had = Session.list(agent).map(row).find((x) => x.name === arg("name"));
-    if (had !== undefined) {
-      return { text: "You have a session " + had.name + " already (" + state(had) + "): read it, or pick another name.", fail: true };
-    }
-    const no = Room.refused(Room.now(agent));
-    if (no !== null) {
-      return { text: no, fail: true };
-    }
-    const brief = arg("brief");
-    const s = start({ agent, repo: Machine.home(arg("repo")), base: arg("base"), branch: arg("branch"), name: arg("name"), brief, prompt: brief, model: arg("model") });
-    const bare = typeof s === "string" || fs.existsSync(Browser.script(s.dir)) ? "" : " It has no browser: agent-browser is neither on this computer's PATH nor set as agent_browser in Montroop's config.";
-    return typeof s === "string" ? { text: s, fail: true } : { text: "Started session " + s.name + " on branch " + s.branch + " (from " + s.base + "), in " + s.worktree + "." + bare + " It works on its own: you get one message \"[Session " + s.name + "] …\" when it's done, fails, waits on the user's approval or asks you something. Don't wait for it or read it to check: go on with other work, or end your turn.", fail: false };
-  }
-
-  // what the session or subagent tool does but start: on the agent's own
-  // sessions, or subagents, by name
-  export function act(agent: string, kind: Kind, args: Record<string, unknown>): Out {
+  // what the subagent tool does but start: on the agent's own subagents,
+  // and its old work sessions, by name
+  export function act(agent: string, args: Record<string, unknown>): Out {
     const arg = (k: string) => (args[k] === undefined || args[k] === null ? "" : text_of(args[k]).trim());
     const ok = (text: string): Out => ({ text, fail: false });
     const no = (text: string): Out => ({ text, fail: true });
-    const mine = Session.list(agent).filter((x) => Session.kind(x) === kind).map(row);
+    const mine = Session.list(agent).map(row);
     const action = arg("action");
     if (action === "setup") {
       return Setup.tool(agent, args);
     }
     if (action === "list") {
-      const rows = mine.length === 0 ? ["You have no " + kind + "s."] : mine.map((x) => x.name + ": " + state(x) + (x.branch === "" ? "" : ", branch " + x.branch) + used(x.id, ", ") + (x.last === "" ? "" : ", last: " + line(x.last, 80)));
-      return ok([...rows, ...Setup.listed(agent), ...(kind === "subagent" ? ["This computer: " + Room.said(Room.now(agent)) + "."] : [])].join("\n"));
+      const rows = mine.length === 0 ? ["You have no subagents."] : mine.map((x) => x.name + ": " + state(x) + (x.branch === "" ? "" : ", branch " + x.branch) + used(x.id, ", ") + (x.last === "" ? "" : ", last: " + line(x.last, 80)));
+      return ok([...rows, ...Setup.listed(agent), "This computer: " + Room.said(Room.now(agent)) + "."].join("\n"));
     }
     const s = mine.find((x) => x.name === arg("name"));
     if (s === undefined) {
-      return no("You have no " + kind + " " + JSON.stringify(arg("name")) + ". Yours: " + (mine.map((x) => x.name).join(", ") || "none") + ".");
+      return no("You have no subagent " + JSON.stringify(arg("name")) + ". Yours: " + (mine.map((x) => x.name).join(", ") || "none") + ".");
     }
     switch (action) {
       case "send": {
@@ -761,21 +692,22 @@ export namespace Sessions {
           return no(floor);
         }
         const sent = say(s.id, arg("text"), arg("request"), mode);
-        return typeof sent !== "string" ? no(sent.why) : ok(Prompts.fill(SENT[sent], { kind }) + " You get a message when it's done or needs you: don't wait for it.");
+        const record = Session.get(s.id);
+        return typeof sent !== "string" ? no(sent.why) : ok(Prompts.fill(SENT[sent], { kind: record === null ? "subagent" : Session.kind(record) }) + " You get a message when it's done or needs you: don't wait for it.");
       }
       case "read": {
         const record = Session.get(s.id);
-        return record === null ? no("No " + kind + " " + s.name + ".") : ok(read(record, args.after === undefined ? null : Number(args.after) || 0, Number(args.n) || LINES));
+        return record === null ? no("No subagent " + s.name + ".") : ok(read(record, args.after === undefined ? null : Number(args.after) || 0, Number(args.n) || LINES));
       }
       case "stop": {
         const why = stop(s.id, false, arg("why"));
         const record = Session.get(s.id);
-        return why !== null || record === null ? no(why ?? "No " + kind + " " + s.name + ".") : ok("Stopped " + s.name + ". " + kept(record) + ": send it a message to go on, or archive it.");
+        return why !== null || record === null ? no(why ?? "No subagent " + s.name + ".") : ok("Stopped " + s.name + ". " + kept(record) + ": send it a message to go on, or archive it.");
       }
       case "archive": {
         const why = archive(s.id, args.force === true);
         const record = Session.get(s.id);
-        return why !== null || record === null ? no(why ?? "No " + kind + " " + s.name + ".") : ok("Archived " + s.name + ": " + ({ folder: "its folder is", detached: "its worktree is", branch: "its worktree and branch are" }[place(record)]) + " removed, its record kept.");
+        return why !== null || record === null ? no(why ?? "No subagent " + s.name + ".") : ok("Archived " + s.name + ": " + ({ folder: "its folder is", detached: "its worktree is", branch: "its worktree and branch are" }[place(record)]) + " removed, its record kept.");
       }
     }
     return no("action is start, send, read, stop, list, archive or setup.");
@@ -889,12 +821,11 @@ export namespace Sessions {
     if (!Owner.browser(req)) {
       return Response.json({ error: "Start or change a session in the web app: a device can't." }, { status: 403 });
     }
+    if (id === undefined) {
+      return Response.json({ error: "A subagent is started with its agent's subagent tool." }, { status: 405 });
+    }
     const body: unknown = await req.json().catch(() => null);
     const text = (k: string) => str(get(body, k)) ?? "";
-    if (id === undefined) {
-      const s = start({ agent: text("agent"), repo: Machine.home(text("repo")), base: text("base"), branch: text("branch"), name: text("name"), brief: text("brief"), prompt: text("prompt"), model: text("model") });
-      return typeof s === "string" ? Response.json({ error: s }, { status: 409 }) : Response.json(row(s));
-    }
     switch (act) {
       case "say": {
         const sent = say(id, text("text"), text("request") || crypto.randomUUID(), text("mode") === "queue" ? "queue" : "steer");
